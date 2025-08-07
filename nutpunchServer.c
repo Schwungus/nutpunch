@@ -1,5 +1,11 @@
+#ifndef NUTPUNCH_IMPLEMENTATION
 #define NUTPUNCH_IMPLEMENTATION
+#endif
+
+#ifndef NUTPUNCH_COMPILE_SERVER
 #define NUTPUNCH_COMPILE_SERVER
+#endif
+
 #include "nutpunch.h"
 
 #ifdef NUTPUNCH_WINDOSE

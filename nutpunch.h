@@ -33,31 +33,23 @@
 /// How many `NutPunch_Query` calls to send a heartbeat.
 #define NUTPUNCH_SEND_INTERVAL (10)
 
-#ifdef NUTPUNCH_WINDOSE
-
-#pragma comment(lib, "Ws2_32.lib")
-
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-
-#ifndef _CRT_SECURE_NO_WARNINGS
-#define _CRT_SECURE_NO_WARNINGS
-#endif
-
-#include <windows.h>
-#include <winerror.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
-#endif
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#if defined(NUTPUNCH_IMPLEMENTATION) && !defined(TINYCSOCKET_IMPLEMENTATION)
+#define TINYCSOCKET_IMPLEMENTATION
+#endif
+
+#include "tinycsocket.h"
+
+#if defined(NUTPUNCH_IMPLEMENTATION) && defined(NUTPUNCH_WINDOSE)
+#include <windows.h>
+#include <winsock2.h>
+#endif
 
 enum {
 	NP_Status_Idle,
@@ -112,132 +104,129 @@ int NutPunch_GetPeerCount();
 	} while (0)
 
 static const char* NutPunch_LastError = NULL;
+static int NutPunch_LastErrorCode = 0;
 
-static char NutPunch_ServerAddr[512] = {0}; /* TODO: add a default value... */
-static char NutPunch_ServerPort[64] = {0};
-static bool NutPunch_Srand = false;
-
-static bool NutPunch_WsaInit = false;
+static bool NutPunch_HadInit = false;
 static int NutPunch_LastStatus = NP_Status_Idle;
 
-static char NutPunch_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
+static uint8_t NutPunch_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
 static struct NutPunch NutPunch_List[NUTPUNCH_MAX_PLAYERS];
 static size_t NutPunch_Count = 0;
 
-static SOCKET NutPunch_LocalSock = INVALID_SOCKET;
-static struct sockaddr NutPunch_RemoteAddr = {0};
+static TcsSocket NutPunch_LocalSock;
+static struct TcsAddress NutPunch_RemoteAddr = {0}, NutPunch_PuncherServer = {0};
+
+static void NutPunch_LazyInit() {
+	if (!NutPunch_HadInit) {
+		tcs_lib_init();
+		srand(time(NULL));
+		NutPunch_LocalSock = TCS_NULLSOCKET;
+		NutPunch_HadInit = true;
+	}
+}
 
 uint16_t NutPunch_GeneratePort() {
-	if (!NutPunch_Srand) {
-		srand(time(NULL));
-		NutPunch_Srand = true;
-	}
+	NutPunch_LazyInit();
 	return NUTPUNCH_MIN_PORT + rand() % (NUTPUNCH_MAX_PORT - NUTPUNCH_MIN_PORT + 1);
 }
 
 void NutPunch_SetServerAddr(const char* addr) {
 	if (addr == NULL)
-		NutPunch_ServerAddr[0] = 0;
+		goto null;
+
+	static char buf[128] = {0};
+	snprintf(buf, sizeof(buf), "%s:%d", addr, NUTPUNCH_SERVER_PORT);
+	if (tcs_util_string_to_address(buf, &NutPunch_PuncherServer) == TCS_SUCCESS)
+		return;
+
+null:
+	memset(&NutPunch_PuncherServer, 0, sizeof(NutPunch_PuncherServer));
+}
+
+static void NutPunch_PrintError() {
+	if (!NutPunch_LastErrorCode)
+		NutPunch_Log("WARN: %s\n", NutPunch_LastError);
 	else
-		snprintf(NutPunch_ServerAddr, sizeof(NutPunch_ServerAddr), "%s", addr);
-	snprintf(NutPunch_ServerPort, sizeof(NutPunch_ServerPort), "%d", NUTPUNCH_SERVER_PORT);
+		NutPunch_Log("WARN: %s (error code: %d)\n", NutPunch_LastError, NutPunch_LastErrorCode);
 }
 
-static void NutPunch_InitWsa() {
-	if (!NutPunch_WsaInit) {
-		WSADATA wsaData;
-		if (WSAStartup(MAKEWORD(2, 2), &wsaData)) {
-			NutPunch_Log("FATAL: WSA failed to initialize\n");
-			exit(EXIT_FAILURE);
-		}
-		NutPunch_WsaInit = true;
-	}
-}
+static bool NutPunch_BindSocket(uint16_t port) {
+	NutPunch_LocalSock = TCS_NULLSOCKET;
 
-static void NutPunch_PrintWsaError() {
-	NutPunch_Log("WARN: \"%s\" caused by:\n", NutPunch_LastError);
-	NutPunch_Log("WARN: WSA error %d\n", WSAGetLastError());
-}
-
-static struct sockaddr NutPunch_SockAddr(const char* host, uint16_t port) {
-	struct sockaddr_in addr = {0};
-	addr.sin_family = AF_INET;
-	addr.sin_port = port;
-	if (host != NULL)
-		inet_pton(addr.sin_family, host, &addr.sin_addr);
-	return *(struct sockaddr*)&addr;
-}
-
-static bool NutPunch_CreateSocket() {
-	NutPunch_LocalSock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (NutPunch_LocalSock == INVALID_SOCKET) {
-		NutPunch_LastError = "Failed to create underlying UDP socket";
+	NutPunch_LastErrorCode = tcs_create(&NutPunch_LocalSock, TCS_TYPE_UDP_IP4);
+	if (NutPunch_LastErrorCode != TCS_SUCCESS) {
+		NutPunch_LocalSock = TCS_NULLSOCKET;
+		NutPunch_LastError = "Failed to create the underlying UDP socket";
 		goto fail;
 	}
 
-	DWORD arg = 1; // nonblocking
-	if (ioctlsocket(NutPunch_LocalSock, FIONBIO, &arg)) {
-		NutPunch_LastError = "Failed to make the UDP socket non-blocking";
-		goto fail;
+	NutPunch_LastErrorCode = tcs_set_receive_timeout(NutPunch_LocalSock, 0);
+	if (NutPunch_LastErrorCode != TCS_SUCCESS) {
+		NutPunch_LastError = "Failed to set receive timeout";
+		goto failSock;
+	}
+
+	NutPunch_LastErrorCode = tcs_bind(NutPunch_LocalSock, port);
+	if (NutPunch_LastErrorCode != TCS_SUCCESS) {
+		NutPunch_LastError = "Failed to bind the underlying UDP socket";
+		goto failSock;
 	}
 
 	return true;
 
+failSock:
+	tcs_destroy(&NutPunch_LocalSock);
 fail:
-	if (NutPunch_LocalSock != INVALID_SOCKET)
-		closesocket(NutPunch_LocalSock);
-	NutPunch_LocalSock = INVALID_SOCKET;
 	NutPunch_LastStatus = NP_Status_Error;
-	NutPunch_PrintWsaError();
-
+	NutPunch_PrintError();
 	return false;
 }
 
-static int NutPunch_SockStatus() {
+static bool NutPunch_GotData() {
+#ifdef NUTPUNCH_WINDOSE
 	struct timeval instantBitchNoodles = {0};
 	fd_set s = {1, {NutPunch_LocalSock}};
-	return select(0, &s, NULL, NULL, &instantBitchNoodles);
+	NutPunch_LastErrorCode = select(0, &s, NULL, NULL, &instantBitchNoodles);
+
+	if (NutPunch_LastErrorCode < 0) {
+		NutPunch_LastErrorCode = WSAGetLastError();
+		NutPunch_LastError = "Socket poll failed";
+		NutPunch_PrintError();
+
+		tcs_destroy(&NutPunch_LocalSock);
+		return 0;
+	}
+
+	return NutPunch_LastErrorCode > 0;
+#else
+#error Bad luck...
+#endif
 }
 
 void NutPunch_Join(const char* lobby) {
-	NutPunch_InitWsa();
+	NutPunch_LazyInit();
 
-	if (!NutPunch_ServerPort[0]) {
-		NutPunch_LastError = "Holepuncher server address/port unset";
-		goto fail;
+	if (!*(uint8_t*)&NutPunch_PuncherServer) {
+		NutPunch_LastError = "Holepuncher server address unset";
+		NutPunch_LastErrorCode = 0;
+		NutPunch_PrintError();
+
+		NutPunch_LastStatus = NP_Status_Error;
+		return;
 	}
 
-	snprintf(NutPunch_LobbyId, sizeof(NutPunch_LobbyId), "%s", lobby);
-	NutPunch_LastStatus = NP_Status_Idle;
-
-	if (!NutPunch_CreateSocket()) {
-		NutPunch_LastError = "Failed to create the UDP socket";
-		goto fail;
-	}
-
-	struct sockaddr addr = NutPunch_SockAddr(NULL, NutPunch_GeneratePort());
-	if (0 > bind(NutPunch_LocalSock, &addr, sizeof(addr))) {
-		NutPunch_LastError = "Failed to bind to punching port";
-		goto fail;
-	}
-
-	NutPunch_LastStatus = NP_Status_InProgress;
-	NutPunch_RemoteAddr = NutPunch_SockAddr(NutPunch_ServerAddr, NUTPUNCH_SERVER_PORT);
-	return;
-
-fail:
-	NutPunch_LastStatus = NP_Status_Error;
-	NutPunch_PrintWsaError();
-	return;
+	if (NutPunch_BindSocket(NutPunch_GeneratePort())) {
+		snprintf((char*)NutPunch_LobbyId, sizeof(NutPunch_LobbyId), "%s", lobby);
+		NutPunch_RemoteAddr = NutPunch_PuncherServer;
+		NutPunch_LastStatus = NP_Status_Idle;
+	} else
+		NutPunch_LastStatus = NP_Status_Error;
 }
 
 void NutPunch_Cleanup() {
-	if (NutPunch_LocalSock != INVALID_SOCKET) {
-		closesocket(NutPunch_LocalSock);
-		NutPunch_LocalSock = INVALID_SOCKET;
-	}
-
-	WSACleanup();
+	if (NutPunch_LocalSock != TCS_NULLSOCKET)
+		tcs_destroy(&NutPunch_LocalSock);
+	tcs_lib_free();
 }
 
 const char* NutPunch_GetLastError() {
@@ -247,42 +236,36 @@ const char* NutPunch_GetLastError() {
 static int NutPunch_QueryImpl() {
 	NutPunch_Count = 0;
 
-	if (!strlen(NutPunch_LobbyId) || NutPunch_LocalSock == INVALID_SOCKET)
+	if (!NutPunch_LobbyId[0] || NutPunch_LocalSock == TCS_NULLSOCKET)
 		return NP_Status_Idle;
-	if (!strlen(NutPunch_ServerAddr)) {
-		NutPunch_LastError =
-		    "NutPunch server address unset. Maybe you forgot to call `NutPunch_SetServerAddr()`?";
+	if (!*(uint8_t*)&NutPunch_PuncherServer) {
+		NutPunch_LastErrorCode = 0;
+		NutPunch_LastError = "Holepuncher server address unset";
 		goto fail;
 	}
 
-	static uint64_t queryCount = 0;
+	static uint64_t queryCount = 0, nRecv = 0;
 	if (!(queryCount++ % NUTPUNCH_SEND_INTERVAL)) {
-		int result = sendto(
-		    NutPunch_LocalSock, NutPunch_LobbyId, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&NutPunch_RemoteAddr,
-		    sizeof(NutPunch_RemoteAddr)
-		);
-		if (result < 0) {
+		NutPunch_LastErrorCode =
+		    tcs_send_to(NutPunch_LocalSock, NutPunch_LobbyId, NUTPUNCH_ID_MAX, 0, &NutPunch_RemoteAddr, &nRecv);
+		if (NutPunch_LastErrorCode != TCS_SUCCESS) {
 			queryCount = 0;
 			NutPunch_LastError = "Failed to send lobby ID";
 			goto fail;
 		}
 	}
 
-	int status = NutPunch_SockStatus(), junk = sizeof(NutPunch_RemoteAddr);
-	if (!status)
+	if (!NutPunch_GotData())
 		return NP_Status_InProgress;
-	if (status < 0) {
-		NutPunch_LastError = "Cannot receive from holepunch server";
-		goto fail;
-	}
-
-	char buf[NUTPUNCH_PAYLOAD_SIZE] = {0}, *ptr = buf;
-	if (0 > recvfrom(NutPunch_LocalSock, buf, sizeof(buf), 0, (struct sockaddr*)&NutPunch_RemoteAddr, &junk)) {
-		if (WSAGetLastError() == WSAEWOULDBLOCK)
-			return NP_Status_InProgress;
+	uint8_t buf[NUTPUNCH_PAYLOAD_SIZE] = {0}, *ptr = buf;
+	NutPunch_LastErrorCode =
+	    tcs_receive_from(NutPunch_LocalSock, buf, sizeof(buf), 0, &NutPunch_RemoteAddr, &nRecv);
+	if (NutPunch_LastErrorCode != TCS_SUCCESS) {
 		NutPunch_LastError = "Failed to receive from holepunch server";
 		goto fail;
 	}
+	if (!nRecv)
+		return NP_Status_InProgress;
 
 	for (size_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		for (size_t j = 0; j < 4; j++)
@@ -299,17 +282,17 @@ static int NutPunch_QueryImpl() {
 	return NP_Status_Punched;
 
 fail:
-	NutPunch_PrintWsaError();
+	NutPunch_PrintError();
 
 	NutPunch_Count = 0;
 	memset(&NutPunch_RemoteAddr, 0, sizeof(NutPunch_RemoteAddr));
-	memset(NutPunch_List, 0, sizeof(struct NutPunch) * NUTPUNCH_MAX_PLAYERS);
+	memset(NutPunch_List, 0, sizeof(*NutPunch_List) * NUTPUNCH_MAX_PLAYERS);
 
 	return NP_Status_Error;
 }
 
 int NutPunch_Query() {
-	NutPunch_InitWsa();
+	NutPunch_LazyInit();
 	if (NutPunch_LastStatus == NP_Status_Error)
 		return NP_Status_Error;
 	else
@@ -318,9 +301,8 @@ int NutPunch_Query() {
 
 uint16_t NutPunch_Release() {
 	NutPunch_LobbyId[0] = 0;
-	if (NutPunch_LocalSock != INVALID_SOCKET)
-		closesocket(NutPunch_LocalSock);
-	NutPunch_LocalSock = INVALID_SOCKET;
+	if (NutPunch_LocalSock != TCS_NULLSOCKET)
+		tcs_destroy(&NutPunch_LocalSock);
 	return NutPunch_GetPeerCount() ? NutPunch_List[0].port : 0;
 }
 
@@ -340,6 +322,7 @@ int NutPunch_GetPeerCount() {
 
 struct NutPunch_Trailer {
 	int heartbeat;
+	struct TcsAddress tcsAddr;
 };
 
 struct NutPunch_Lobby {
@@ -351,25 +334,17 @@ struct NutPunch_Lobby {
 static struct NutPunch_Lobby lobbies[NUTPUNCH_LOBBY_MAX];
 
 static void NutPunch_Serve_Init() {
+	NutPunch_LazyInit();
 	NutPunch_SetServerAddr(NULL);
 
-	if (!NutPunch_CreateSocket()) {
-		NutPunch_LastError = "Failed to create the listener socket";
-		goto fail;
+	if (!NutPunch_BindSocket(NUTPUNCH_SERVER_PORT)) {
+		NutPunch_LastError = "Server init failed";
+		NutPunch_LastErrorCode = 0;
+		NutPunch_PrintError();
+
+		NutPunch_Cleanup();
+		exit(EXIT_FAILURE);
 	}
-
-	struct sockaddr local = NutPunch_SockAddr(NULL, NUTPUNCH_SERVER_PORT);
-	if (0 > bind(NutPunch_LocalSock, &local, sizeof(local))) {
-		NutPunch_LastError = "Failed to bind to the listener socket";
-		goto fail;
-	}
-
-	return;
-
-fail:
-	NutPunch_PrintWsaError();
-	WSACleanup();
-	exit(EXIT_FAILURE);
 }
 
 static void NutPunch_Serve_KillLobby(struct NutPunch_Lobby* lobby) {
@@ -403,32 +378,26 @@ static void NutPunch_WritePayload(const struct NutPunch_Lobby* lobby, size_t pla
 }
 
 static void NutPunch_Serve_UpdateLobbies() {
-	static char recvBuf[NUTPUNCH_ID_MAX + 1] = {0};
+	static uint8_t recvBuf[NUTPUNCH_ID_MAX + 1] = {0};
 
 	for (struct NutPunch_Lobby* lobby = lobbies; lobby < lobbies + NUTPUNCH_LOBBY_MAX; lobby++) {
 		for (size_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			if (lobby->trailers[i].heartbeat > 0)
 				lobby->trailers[i].heartbeat -= 1;
-
-			struct sockaddr_in addr = {0};
-			int addrLen = sizeof(addr);
-
-			addr.sin_family = AF_INET;
-			memcpy(&addr.sin_addr, lobby->players[i].addr, 4);
-			addr.sin_port = lobby->players[i].port;
-
-			memset(recvBuf, 0, sizeof(recvBuf));
-			int result = recvfrom(
-			    NutPunch_LocalSock, recvBuf, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&addr, &addrLen
-			);
-			if (!result)
+			if (!NutPunch_GotData())
 				continue;
-			if (result < 0) {
-				if (WSAGetLastError() == WSAEWOULDBLOCK)
-					continue;
-				lobby->trailers[i].heartbeat = 0; // just kill him.....
+
+			size_t nRecv = 0;
+			memset(recvBuf, 0, sizeof(recvBuf));
+			NutPunch_LastErrorCode = tcs_receive_from(
+			    NutPunch_LocalSock, recvBuf, NUTPUNCH_ID_MAX, 0, &lobby->trailers[i].tcsAddr, &nRecv
+			);
+
+			if (NutPunch_LastErrorCode == TCS_SUCCESS) {
+				if (nRecv)
+					lobby->trailers[i].heartbeat = NUTPUNCH_HEARTBEAT_RATE;
 			} else
-				lobby->trailers[i].heartbeat = NUTPUNCH_HEARTBEAT_RATE;
+				lobby->trailers[i].heartbeat = 0; // just kill him.....
 		}
 
 		bool allGay = true;
@@ -454,17 +423,12 @@ static void NutPunch_Serve_UpdateLobbies() {
 				if (i != recptIdx)
 					NutPunch_WritePayload(lobby, i, &ptr);
 
-			struct sockaddr_in addr = {0};
-			int addrLen = sizeof(addr);
+			size_t junk = 0;
+			NutPunch_LastErrorCode = tcs_send_to(
+			    NutPunch_LocalSock, packet, sizeof(packet), 0, &lobby->trailers[recptIdx].tcsAddr, &junk
+			);
 
-			addr.sin_family = AF_INET;
-			memcpy(&addr.sin_addr, lobby->players[recptIdx].addr, 4);
-			addr.sin_port = lobby->players[recptIdx].port;
-
-			if (0 > sendto(
-				    NutPunch_LocalSock, (const char*)packet, sizeof(packet), 0, (struct sockaddr*)&addr,
-				    sizeof(addr)
-				))
+			if (NutPunch_LastErrorCode != TCS_SUCCESS)
 				lobby->trailers[recptIdx].heartbeat = 0;
 		}
 	}
@@ -480,35 +444,27 @@ static bool NutPunch_Serve_LobbyEmpty(const struct NutPunch_Lobby* lobby) {
 /// Update the hole-punch server. Needs to be run in a loop, preferrably at 50Hz; otherwise, it's a waste of CPU
 /// cycles.
 void NutPunch_Serve() {
-	if (!NutPunch_WsaInit) {
+	if (!NutPunch_HadInit) {
 		NutPunch_Serve_Reset();
-		NutPunch_InitWsa();
+		NutPunch_LazyInit();
 		NutPunch_Serve_Init();
 	}
 
-	int result = NutPunch_SockStatus();
-	if (!result)
-		goto skip;
-	if (result < 0) {
-		NutPunch_LastError = "Server socket select error";
-		NutPunch_PrintWsaError();
-		goto skip;
-	}
-
-	struct sockaddr_in clientAddr = {0};
-	int clientAddrLen = sizeof(clientAddr);
-
-	static char buf[NUTPUNCH_ID_MAX + 1] = {0};
+	struct TcsAddress clientAddr = {0};
+	static uint8_t buf[NUTPUNCH_ID_MAX + 1] = {0};
 	memset(buf, 0, sizeof(buf));
+	size_t nRecv = 0;
 
-	result = recvfrom(NutPunch_LocalSock, buf, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&clientAddr, &clientAddrLen);
-	if (result < 0) {
-		if (WSAGetLastError() != WSAEWOULDBLOCK || WSAGetLastError() != WSAECONNRESET) {
-			NutPunch_LastError = "Client socket recv error";
-			NutPunch_PrintWsaError();
-		}
+	if (!NutPunch_GotData())
+		goto skip;
+
+	NutPunch_LastErrorCode = tcs_receive_from(NutPunch_LocalSock, buf, NUTPUNCH_ID_MAX, 0, &clientAddr, &nRecv);
+	if (NutPunch_LastErrorCode != TCS_SUCCESS) {
+		NutPunch_LastError = "Client socket recv error";
+		NutPunch_PrintError();
+		goto skip;
 	}
-	if (result <= 0)
+	if (!nRecv)
 		goto skip;
 
 	struct NutPunch_Lobby* perfectLobby = NULL; // find lobby by supplied ID
@@ -539,11 +495,17 @@ void NutPunch_Serve() {
 
 	// Lobby found. Join it.
 	for (size_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		bool sameAddr = !memcmp(perfectLobby->players[i].addr, &clientAddr.sin_addr, 4);
-		bool samePort = perfectLobby->players[i].port == clientAddr.sin_port;
+		uint32_t fuckyHost = 0;
+		const uint8_t* cp = perfectLobby->players[i].addr;
+		tcs_util_ipv4_args(cp[0], cp[1], cp[2], cp[3], &fuckyHost);
 
-		if (sameAddr && samePort)
+		bool sameHost = !memcmp(&fuckyHost, &clientAddr.data.af_inet.address, 4);
+		bool samePort = clientAddr.data.af_inet.port == perfectLobby->players[i].port;
+
+		if (sameHost && samePort)
 			goto skip; // already in
+	}
+	for (size_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (!perfectLobby->trailers[i].heartbeat) {
 			punch = i;
 			goto accept;
@@ -556,12 +518,11 @@ void NutPunch_Serve() {
 accept:
 	if (punch >= NUTPUNCH_MAX_PLAYERS)
 		goto skip;
-
 	NutPunch_Log("New client is in...\n");
 	perfectLobby->trailers[punch].heartbeat = NUTPUNCH_HEARTBEAT_RATE;
-	memcpy(perfectLobby->players[punch].addr, &clientAddr.sin_addr, 4);
-	perfectLobby->players[punch].port = clientAddr.sin_port;
-
+	perfectLobby->trailers[punch].tcsAddr = clientAddr;
+	memcpy(perfectLobby->players[punch].addr, &clientAddr.data.af_inet.address, 4);
+	perfectLobby->players[punch].port = clientAddr.data.af_inet.port;
 skip:
 	NutPunch_Serve_UpdateLobbies();
 }
