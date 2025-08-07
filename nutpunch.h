@@ -6,6 +6,20 @@
 #error OS not supported by nutpunch (yet)
 #endif
 
+#ifndef NUTPUNCH_MIN_PORT
+/// Minimum port number to be punched.
+#define NUTPUNCH_MIN_PORT (20000)
+#endif
+
+#ifndef NUTPUNCH_MAX_PORT
+/// Maximum port number to be punched.
+#define NUTPUNCH_MAX_PORT (30000)
+#endif
+
+#if NUTPUNCH_MIN_PORT > NUTPUNCH_MAX_PORT
+#error nutpunch: impossible min/max port
+#endif
+
 /// Maximum amount of players in a lobby. Not intended to be customizable.
 #define NUTPUNCH_MAX_PLAYERS (16)
 #define NUTPUNCH_PAYLOAD_SIZE (NUTPUNCH_MAX_PLAYERS * 6)
@@ -59,6 +73,9 @@ struct NutPunch {
 
 // Forward-declarations:
 
+/// Generate a random port to punch through.
+uint16_t NutPunch_GeneratePort();
+
 /// Set a custom hole-puncher server address.
 void NutPunch_SetServerAddr(const char*);
 
@@ -91,12 +108,14 @@ int NutPunch_GetPeerCount();
 #define NutPunch_Log(...)                                                                                              \
 	do {                                                                                                           \
 		fprintf(stderr, __VA_ARGS__);                                                                          \
+		fflush(stderr);                                                                                        \
 	} while (0)
 
 static const char* NutPunch_LastError = NULL;
 
 static char NutPunch_ServerAddr[512] = {0}; /* TODO: add a default value... */
 static char NutPunch_ServerPort[64] = {0};
+static bool NutPunch_Srand = false;
 
 static bool NutPunch_WsaInit = false;
 static int NutPunch_LastStatus = NP_Status_Idle;
@@ -106,7 +125,15 @@ static struct NutPunch NutPunch_List[NUTPUNCH_MAX_PLAYERS];
 static size_t NutPunch_Count = 0;
 
 static SOCKET NutPunch_LocalSock = INVALID_SOCKET;
-static struct sockaddr_in NutPunch_RemoteAddr = {0};
+static struct sockaddr NutPunch_RemoteAddr = {0};
+
+uint16_t NutPunch_GeneratePort() {
+	if (!NutPunch_Srand) {
+		srand(time(NULL));
+		NutPunch_Srand = true;
+	}
+	return NUTPUNCH_MIN_PORT + rand() % (NUTPUNCH_MAX_PORT - NUTPUNCH_MIN_PORT + 1);
+}
 
 void NutPunch_SetServerAddr(const char* addr) {
 	if (addr == NULL)
@@ -120,7 +147,7 @@ static void NutPunch_InitWsa() {
 	if (!NutPunch_WsaInit) {
 		WSADATA wsaData;
 		if (WSAStartup(MAKEWORD(2, 2), &wsaData)) {
-			NutPunch_Log("Fatal: WSA failed to initialize\n");
+			NutPunch_Log("FATAL: WSA failed to initialize\n");
 			exit(EXIT_FAILURE);
 		}
 		NutPunch_WsaInit = true;
@@ -132,12 +159,13 @@ static void NutPunch_PrintWsaError() {
 	NutPunch_Log("WARN: WSA error %d\n", WSAGetLastError());
 }
 
-static struct sockaddr_in NutPunch_SockAddr(const char* addr, uint16_t port) {
-	struct sockaddr_in local = {0};
-	local.sin_family = AF_INET;
-	inet_pton(local.sin_family, addr, &local.sin_addr);
-	local.sin_port = port;
-	return local;
+static struct sockaddr NutPunch_SockAddr(const char* host, uint16_t port) {
+	struct sockaddr_in addr = {0};
+	addr.sin_family = AF_INET;
+	addr.sin_port = port;
+	if (host != NULL)
+		inet_pton(addr.sin_family, host, &addr.sin_addr);
+	return *(struct sockaddr*)&addr;
 }
 
 static bool NutPunch_CreateSocket() {
@@ -148,7 +176,7 @@ static bool NutPunch_CreateSocket() {
 	}
 
 	DWORD arg = 1; // nonblocking
-	if (SOCKET_ERROR == ioctlsocket(NutPunch_LocalSock, FIONBIO, &arg)) {
+	if (ioctlsocket(NutPunch_LocalSock, FIONBIO, &arg)) {
 		NutPunch_LastError = "Failed to make the UDP socket non-blocking";
 		goto fail;
 	}
@@ -158,24 +186,17 @@ static bool NutPunch_CreateSocket() {
 fail:
 	if (NutPunch_LocalSock != INVALID_SOCKET)
 		closesocket(NutPunch_LocalSock);
+	NutPunch_LocalSock = INVALID_SOCKET;
 	NutPunch_LastStatus = NP_Status_Error;
 	NutPunch_PrintWsaError();
 
 	return false;
 }
 
-enum {
-	NP_SocketStatus_Read = 1,
-	NP_SocketStatus_Write = 2,
-	NP_SocketStatus_Except = 4,
-};
-static int NutPunch_SockStatus(int status) {
+static int NutPunch_SockStatus() {
 	struct timeval instantBitchNoodles = {0};
 	fd_set s = {1, {NutPunch_LocalSock}};
-	return select(
-	    0, status & NP_SocketStatus_Read ? &s : NULL, status & NP_SocketStatus_Write ? &s : NULL,
-	    status & NP_SocketStatus_Except ? &s : NULL, &instantBitchNoodles
-	);
+	return select(0, &s, NULL, NULL, &instantBitchNoodles);
 }
 
 void NutPunch_Join(const char* lobby) {
@@ -183,17 +204,31 @@ void NutPunch_Join(const char* lobby) {
 
 	if (!NutPunch_ServerPort[0]) {
 		NutPunch_LastError = "Holepuncher server address/port unset";
-		NutPunch_LastStatus = NP_Status_Error;
-		return;
+		goto fail;
 	}
 
 	snprintf(NutPunch_LobbyId, sizeof(NutPunch_LobbyId), "%s", lobby);
 	NutPunch_LastStatus = NP_Status_Idle;
 
-	if (NutPunch_CreateSocket()) {
-		NutPunch_LastStatus = NP_Status_InProgress;
-		NutPunch_RemoteAddr = NutPunch_SockAddr(NutPunch_ServerAddr, NUTPUNCH_SERVER_PORT);
+	if (!NutPunch_CreateSocket()) {
+		NutPunch_LastError = "Failed to create the UDP socket";
+		goto fail;
 	}
+
+	struct sockaddr addr = NutPunch_SockAddr(NULL, NutPunch_GeneratePort());
+	if (0 > bind(NutPunch_LocalSock, &addr, sizeof(addr))) {
+		NutPunch_LastError = "Failed to bind to punching port";
+		goto fail;
+	}
+
+	NutPunch_LastStatus = NP_Status_InProgress;
+	NutPunch_RemoteAddr = NutPunch_SockAddr(NutPunch_ServerAddr, NUTPUNCH_SERVER_PORT);
+	return;
+
+fail:
+	NutPunch_LastStatus = NP_Status_Error;
+	NutPunch_PrintWsaError();
+	return;
 }
 
 void NutPunch_Cleanup() {
@@ -217,7 +252,7 @@ static int NutPunch_QueryImpl() {
 	if (!strlen(NutPunch_ServerAddr)) {
 		NutPunch_LastError =
 		    "NutPunch server address unset. Maybe you forgot to call `NutPunch_SetServerAddr()`?";
-		return NP_Status_Error;
+		goto fail;
 	}
 
 	static uint64_t queryCount = 0;
@@ -226,28 +261,27 @@ static int NutPunch_QueryImpl() {
 		    NutPunch_LocalSock, NutPunch_LobbyId, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&NutPunch_RemoteAddr,
 		    sizeof(NutPunch_RemoteAddr)
 		);
-		if (SOCKET_ERROR == result) {
+		if (result < 0) {
+			queryCount = 0;
 			NutPunch_LastError = "Failed to send lobby ID";
-			return NP_Status_Error;
+			goto fail;
 		}
 	}
 
-	int status = NutPunch_SockStatus(NP_SocketStatus_Read), junk = sizeof(NutPunch_RemoteAddr);
+	int status = NutPunch_SockStatus(), junk = sizeof(NutPunch_RemoteAddr);
 	if (!status)
 		return NP_Status_InProgress;
-
 	if (status < 0) {
 		NutPunch_LastError = "Cannot receive from holepunch server";
-		return NP_Status_Error;
+		goto fail;
 	}
 
 	char buf[NUTPUNCH_PAYLOAD_SIZE] = {0}, *ptr = buf;
-	if (SOCKET_ERROR ==
-	    recvfrom(
-		NutPunch_LocalSock, buf, NUTPUNCH_PAYLOAD_SIZE, 0, (struct sockaddr*)&NutPunch_RemoteAddr, &junk
-	    )) {
+	if (0 > recvfrom(NutPunch_LocalSock, buf, sizeof(buf), 0, (struct sockaddr*)&NutPunch_RemoteAddr, &junk)) {
+		if (WSAGetLastError() == WSAEWOULDBLOCK)
+			return NP_Status_InProgress;
 		NutPunch_LastError = "Failed to receive from holepunch server";
-		return NP_Status_Error;
+		goto fail;
 	}
 
 	for (size_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
@@ -263,17 +297,22 @@ static int NutPunch_QueryImpl() {
 	}
 
 	return NP_Status_Punched;
+
+fail:
+	NutPunch_PrintWsaError();
+
+	NutPunch_Count = 0;
+	memset(&NutPunch_RemoteAddr, 0, sizeof(NutPunch_RemoteAddr));
+	memset(NutPunch_List, 0, sizeof(struct NutPunch) * NUTPUNCH_MAX_PLAYERS);
+
+	return NP_Status_Error;
 }
 
 int NutPunch_Query() {
 	NutPunch_InitWsa();
-
-	if (NutPunch_LastStatus == NP_Status_Error) {
-		NutPunch_Count = 0;
-		memset(&NutPunch_RemoteAddr, 0, sizeof(NutPunch_RemoteAddr));
-		memset(NutPunch_List, 0, sizeof(struct NutPunch) * NUTPUNCH_MAX_PLAYERS);
+	if (NutPunch_LastStatus == NP_Status_Error)
 		return NP_Status_Error;
-	} else
+	else
 		return (NutPunch_LastStatus = NutPunch_QueryImpl());
 }
 
@@ -281,6 +320,7 @@ uint16_t NutPunch_Release() {
 	NutPunch_LobbyId[0] = 0;
 	if (NutPunch_LocalSock != INVALID_SOCKET)
 		closesocket(NutPunch_LocalSock);
+	NutPunch_LocalSock = INVALID_SOCKET;
 	return NutPunch_GetPeerCount() ? NutPunch_List[0].port : 0;
 }
 
@@ -313,11 +353,13 @@ static struct NutPunch_Lobby lobbies[NUTPUNCH_LOBBY_MAX];
 static void NutPunch_Serve_Init() {
 	NutPunch_SetServerAddr(NULL);
 
-	if (!NutPunch_CreateSocket())
+	if (!NutPunch_CreateSocket()) {
+		NutPunch_LastError = "Failed to create the listener socket";
 		goto fail;
+	}
 
-	struct sockaddr_in local = NutPunch_SockAddr("127.0.0.1", NUTPUNCH_SERVER_PORT);
-	if (SOCKET_ERROR == bind(NutPunch_LocalSock, (const struct sockaddr*)&local, sizeof(local))) {
+	struct sockaddr local = NutPunch_SockAddr(NULL, NUTPUNCH_SERVER_PORT);
+	if (0 > bind(NutPunch_LocalSock, &local, sizeof(local))) {
 		NutPunch_LastError = "Failed to bind to the listener socket";
 		goto fail;
 	}
@@ -325,8 +367,9 @@ static void NutPunch_Serve_Init() {
 	return;
 
 fail:
-	exit(EXIT_FAILURE);
+	NutPunch_PrintWsaError();
 	WSACleanup();
+	exit(EXIT_FAILURE);
 }
 
 static void NutPunch_Serve_KillLobby(struct NutPunch_Lobby* lobby) {
@@ -418,10 +461,10 @@ static void NutPunch_Serve_UpdateLobbies() {
 			memcpy(&addr.sin_addr, lobby->players[recptIdx].addr, 4);
 			addr.sin_port = lobby->players[recptIdx].port;
 
-			if (SOCKET_ERROR == sendto(
-						NutPunch_LocalSock, (const char*)packet, sizeof(packet), 0,
-						(struct sockaddr*)&addr, sizeof(addr)
-					    ))
+			if (0 > sendto(
+				    NutPunch_LocalSock, (const char*)packet, sizeof(packet), 0, (struct sockaddr*)&addr,
+				    sizeof(addr)
+				))
 				lobby->trailers[recptIdx].heartbeat = 0;
 		}
 	}
@@ -443,7 +486,7 @@ void NutPunch_Serve() {
 		NutPunch_Serve_Init();
 	}
 
-	int result = NutPunch_SockStatus(NP_SocketStatus_Read);
+	int result = NutPunch_SockStatus();
 	if (!result)
 		goto skip;
 	if (result < 0) {
@@ -455,18 +498,18 @@ void NutPunch_Serve() {
 	struct sockaddr_in clientAddr = {0};
 	int clientAddrLen = sizeof(clientAddr);
 
-	char buf[NUTPUNCH_ID_MAX + 1] = {0};
+	static char buf[NUTPUNCH_ID_MAX + 1] = {0};
+	memset(buf, 0, sizeof(buf));
+
 	result = recvfrom(NutPunch_LocalSock, buf, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&clientAddr, &clientAddrLen);
-	if (!result)
-		goto skip;
 	if (result < 0) {
-		result = WSAGetLastError();
-		if (result == WSAEWOULDBLOCK || result == WSAECONNRESET)
-			goto skip;
-		NutPunch_LastError = "Client socket recv error";
-		NutPunch_PrintWsaError();
-		goto skip;
+		if (WSAGetLastError() != WSAEWOULDBLOCK || WSAGetLastError() != WSAECONNRESET) {
+			NutPunch_LastError = "Client socket recv error";
+			NutPunch_PrintWsaError();
+		}
 	}
+	if (result <= 0)
+		goto skip;
 
 	struct NutPunch_Lobby* perfectLobby = NULL; // find lobby by supplied ID
 	for (size_t i = 0; i < NUTPUNCH_LOBBY_MAX; i++)
