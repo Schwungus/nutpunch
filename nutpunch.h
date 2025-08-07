@@ -257,13 +257,15 @@ static int NutPunch_QueryImpl() {
 	}
 
 	for (size_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		NutPunch_List[i].addr[0] = *ptr++;
-		NutPunch_List[i].addr[1] = *ptr++;
-		NutPunch_List[i].addr[2] = *ptr++;
-		NutPunch_List[i].addr[3] = *ptr++;
-		NutPunch_List[i].port = *ptr++ << 8;
-		NutPunch_List[i].port |= *ptr++;
-		NutPunch_Count += NutPunch_List[i].port != 0;
+		for (size_t j = 0; j < 4; j++)
+			NutPunch_List[i].addr[j] = *ptr++;
+		uint16_t portNE = (uint16_t)(*ptr++) << 8;
+		portNE |= (uint16_t)(*ptr++) << 0;
+#ifdef __BIG_ENDIAN__
+		portNE = (portNE >> 8) | (portNE << 8);
+#endif
+		NutPunch_List[i].port = portNE;
+		NutPunch_Count += portNE != 0;
 	}
 
 	return NP_Status_Punched;
@@ -347,7 +349,7 @@ static void NutPunch_Serve_Reset() {
 }
 
 static void NutPunch_Serve_UpdateLobbies() {
-	static char buf[NUTPUNCH_ID_MAX + 1] = {0};
+	static char recvBuf[NUTPUNCH_ID_MAX + 1] = {0};
 
 	for (struct NutPunch_Lobby* lobby = lobbies; lobby < lobbies + NUTPUNCH_LOBBY_MAX; lobby++) {
 		for (size_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
@@ -361,23 +363,18 @@ static void NutPunch_Serve_UpdateLobbies() {
 			memcpy(&addr.sin_addr, lobby->players[i].addr, 4);
 			addr.sin_port = lobby->players[i].port;
 
-			memset(buf, 0, sizeof(buf));
-			int result =
-			    recvfrom(NutPunch_LocalSock, buf, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&addr, &addrLen);
+			memset(recvBuf, 0, sizeof(recvBuf));
+			int result = recvfrom(
+			    NutPunch_LocalSock, recvBuf, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&addr, &addrLen
+			);
 			if (!result)
 				continue;
 			if (result < 0) {
 				if (WSAGetLastError() == WSAEWOULDBLOCK)
-					goto beat;
-				goto kill; // just kill him.....
-			}
-
-		beat:
-			lobby->trailers[i].heartbeat = NUTPUNCH_HEARTBEAT_RATE;
-			continue;
-
-		kill:
-			lobby->trailers[i].heartbeat = 0;
+					continue;
+				lobby->trailers[i].heartbeat = 0; // just kill him.....
+			} else
+				lobby->trailers[i].heartbeat = NUTPUNCH_HEARTBEAT_RATE;
 		}
 
 		bool allGay = true;
@@ -400,8 +397,13 @@ static void NutPunch_Serve_UpdateLobbies() {
 			} else {
 				memcpy(ptr, lobby->players[i].addr, 4);
 				ptr += 4;
-				*ptr++ = (lobby->players[i].port & 0xFF00) >> 8;
-				*ptr++ = (lobby->players[i].port & 0x00FF) >> 0;
+
+				uint16_t portLE = lobby->players[i].port;
+#ifdef __BIG_ENDIAN__
+				portLE = (portLE >> 8) | (portLE << 8);
+#endif
+				*ptr++ = (portLE & 0xFF00) >> 8;
+				*ptr++ = (portLE & 0x00FF) >> 0;
 			}
 		}
 
