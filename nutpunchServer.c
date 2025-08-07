@@ -3,7 +3,6 @@
 #include "nutpunch.h"
 
 #ifdef NUTPUNCH_WINDOSE
-#include <windows.h>
 #define sleepMs(ms) (Sleep((ms)))
 #else
 #error Bad luck.
@@ -12,6 +11,6 @@
 int main(int argc, char* argv[]) {
 	for (;;) {
 		NutPunch_Serve();
-		sleepMs(20);
+		sleepMs(5000 / NUTPUNCH_HEARTBEAT_RATE);
 	}
 }

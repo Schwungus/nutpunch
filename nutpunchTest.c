@@ -28,11 +28,11 @@ int main(int argc, char* argv[]) {
 		printf("\n\rcount = %d; our port = ", NutPunch_GetPeerCount());
 		if (query == NP_Status_Punched) {
 			printf("%d", NutPunch_Release());
+			sleepMs(5000);
 		} else {
 			printf("none yet");
+			sleepMs(500);
 		}
-
-		sleepMs(500);
 	}
 
 	NutPunch_Cleanup();
