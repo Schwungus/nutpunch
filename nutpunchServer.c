@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
 
 	for (;;) {
 		NutPunch_Serve();
-		sleepMs(5000 / NUTPUNCH_HEARTBEAT_RATE);
+		sleepMs(2000 / NUTPUNCH_HEARTBEAT_RATE);
 	}
 
 	return 0;

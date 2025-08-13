@@ -14,12 +14,12 @@
 static uint16_t punchedPort = 0;
 
 void tickTestServer() {
-	if (NutPunch_LocalSock == INVALID_SOCKET) {
+	if (NutPunch_LocalSocket == INVALID_SOCKET) {
 		if (!NutPunch_BindSocket(punchedPort))
 			goto fail;
 	}
 
-	printf("\n%d peers", NutPunch_GetPeerCount());
+	printf("%d peers\n", NutPunch_GetPeerCount());
 	static uint8_t data[NUTPUNCH_PAYLOAD_SIZE + 1] = {0};
 
 	// Receive from all...
@@ -29,12 +29,12 @@ void tickTestServer() {
 
 		memset(data, 0, sizeof(data));
 		int fugg = sizeof(baseAddr),
-		    io = recvfrom(NutPunch_LocalSock, (char*)data, sizeof(data) - 1, 0, addr, &fugg);
+		    io = recvfrom(NutPunch_LocalSocket, (char*)data, sizeof(data) - 1, 0, addr, &fugg);
 
 		if (SOCKET_ERROR == io) {
 			if (WSAGetLastError() == WSAEWOULDBLOCK)
 				continue;
-			printf("\nFailed to receive from socket (%d)", WSAGetLastError());
+			printf("Failed to receive from socket (%d)\n", WSAGetLastError());
 			goto fail;
 		}
 		if (!io)
@@ -44,7 +44,7 @@ void tickTestServer() {
 			bool sameHost = !memcmp(&baseAddr.sin_addr, NutPunch_GetPeers()[i].addr, 4);
 			bool samePort = baseAddr.sin_port == NutPunch_GetPeers()[i].port;
 			if (sameHost && samePort) {
-				printf("\nrecv(%d): [%d] %s", i + 1, io, data);
+				printf("recv(%d): [%d] %s\n", i + 1, io, data);
 				break;
 			}
 		}
@@ -63,11 +63,11 @@ void tickTestServer() {
 		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
 
 		memcpy(data, "Hello!", sizeof(data) - 1);
+		printf("send(%d) attempt: %s\n", i + 1, data);
 
-		printf("\nsend(%d) attempt: %s", i + 1, data);
-		int64_t io = sendto(NutPunch_LocalSock, (char*)data, sizeof(data) - 1, 0, addr, sizeof(baseAddr));
+		int64_t io = sendto(NutPunch_LocalSocket, (char*)data, sizeof(data) - 1, 0, addr, sizeof(baseAddr));
 		if (SOCKET_ERROR == io) {
-			printf("\nFailed to send echo (%d)", WSAGetLastError());
+			printf("Failed to send echo (%d)\n", WSAGetLastError());
 			goto fail;
 		}
 	}
@@ -75,28 +75,27 @@ void tickTestServer() {
 	return;
 
 fail:
-	NutPunch_LocalSock = INVALID_SOCKET;
+	NutPunch_LocalSocket = INVALID_SOCKET;
 	punchedPort = 0;
 }
 
 void tickNutpunch() {
-	int query = NutPunch_Query();
-	if (query == NP_Status_Error)
-		printf("\nnutpunch failed......");
-	if (query == NP_Status_Idle || query == NP_Status_Error) {
+	int status = NutPunch_Query();
+	if (status == NP_Status_Error)
+		printf("nutpunch failed......\n");
+	if (status == NP_Status_Idle || status == NP_Status_Error) {
 		punchedPort = 0;
-		printf("\nreconnecting...");
-		NutPunch_Join("aabb");
+		printf("reconnecting...\n");
+		NutPunch_Join("LIGMA");
 	}
 
-	printf("\ncount = %d; our port = ", NutPunch_GetPeerCount());
-	if (query == NP_Status_Punched && NutPunch_GetPeerCount() >= 2) {
+	printf("count = %d; our port = ", NutPunch_GetPeerCount());
+	if (status == NP_Status_Punched && NutPunch_GetPeerCount() >= 1)
+		printf("%d\n", NutPunch_GetPeers()[0].port);
+	else
+		printf("none yet\n");
+	if (status == NP_Status_Punched && NutPunch_GetPeerCount() >= 2)
 		punchedPort = NutPunch_Release();
-		closesocket(NutPunch_LocalSock);
-		NutPunch_LocalSock = INVALID_SOCKET;
-		printf("%d", punchedPort);
-	} else
-		printf("none yet");
 }
 
 int main(int argc, char* argv[]) {
@@ -109,10 +108,10 @@ int main(int argc, char* argv[]) {
 	for (;;) {
 		if (punchedPort) {
 			tickTestServer();
-			sleepMs(500);
+			sleepMs(200);
 		} else {
 			tickNutpunch();
-			sleepMs(100);
+			sleepMs(1000 / 60);
 		}
 	}
 

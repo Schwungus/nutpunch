@@ -1,2 +1,5 @@
 /build
 /.cache
+
+/*.bat
+!/localhost.bat
