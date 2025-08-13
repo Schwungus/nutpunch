@@ -1,7 +1,6 @@
-#include <stdlib.h>
-
 #ifndef NUTPUNCH_IMPLEMENTATION
 #define NUTPUNCH_IMPLEMENTATION
+#include <winsock2.h>
 #endif
 
 #include "nutpunch.h"
@@ -15,48 +14,59 @@
 static uint16_t punchedPort = 0;
 
 void tickTestServer() {
-	// CRAZY HAXXXX!!!
-
-	if (NutPunch_LocalSock == TCS_NULLSOCKET) {
+	if (NutPunch_LocalSock == INVALID_SOCKET) {
 		if (!NutPunch_BindSocket(punchedPort))
 			goto fail;
 	}
 
 	printf("\n%d peers", NutPunch_GetPeerCount());
+	static uint8_t data[NUTPUNCH_PAYLOAD_SIZE + 1] = {0};
 
-	// Receive from all and echo back.
-	static uint8_t data[33] = {0};
-	for (int i = 1; i < NutPunch_GetPeerCount(); i++) {
+	// Receive from all...
+	while (NutPunch_MayAccept()) {
+		struct sockaddr_in baseAddr;
+		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
+
 		memset(data, 0, sizeof(data));
+		int fugg = sizeof(baseAddr),
+		    io = recvfrom(NutPunch_LocalSock, (char*)data, sizeof(data) - 1, 0, addr, &fugg);
 
-		struct TcsAddress addr = {0};
-		const uint8_t* cp = NutPunch_GetPeers()[i].addr;
-		addr.family = TCS_AF_IP4;
-		addr.data.af_inet.port = NutPunch_GetPeers()[i].port;
-		tcs_util_ipv4_args(cp[0], cp[1], cp[2], cp[3], &addr.data.af_inet.address);
-
-		if (!(rand() % 20)) {
-			memcpy(data, "Hello!", sizeof(data) - 1);
-			goto send;
-		}
-
-		if (!NutPunch_GotData())
-			continue;
-
-		size_t io = 0;
-		if (TCS_SUCCESS != tcs_receive_from(NutPunch_LocalSock, data, sizeof(data), 0, &addr, &io)) {
+		if (SOCKET_ERROR == io) {
+			if (WSAGetLastError() == WSAEWOULDBLOCK)
+				continue;
 			printf("\nFailed to receive from socket (%d)", WSAGetLastError());
 			goto fail;
 		}
 		if (!io)
 			continue;
 
-		printf("\nrecv(%d): %s", i, data);
-		continue;
+		for (int i = 1; i < NutPunch_GetPeerCount(); i++) {
+			bool sameHost = !memcmp(&baseAddr.sin_addr, NutPunch_GetPeers()[i].addr, 4);
+			bool samePort = baseAddr.sin_port == NutPunch_GetPeers()[i].port;
+			if (sameHost && samePort) {
+				printf("\nrecv(%d): [%d] %s", i + 1, io, data);
+				break;
+			}
+		}
+	}
 
-	send:
-		printf("\nsend(%d) attempt: %s", i, data);
-		if (TCS_SUCCESS != tcs_send_to(NutPunch_LocalSock, data, sizeof(data), 0, &addr, &io)) {
+	// And echo back:
+	for (int i = 1; i < NutPunch_GetPeerCount(); i++) {
+		if (rand() % 20)
+			continue;
+		memset(data, 0, sizeof(data));
+
+		struct sockaddr_in baseAddr;
+		baseAddr.sin_family = AF_INET;
+		baseAddr.sin_port = NutPunch_GetPeers()[i].port;
+		memcpy(&baseAddr.sin_addr, &NutPunch_GetPeers()[i].addr, 4);
+		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
+
+		memcpy(data, "Hello!", sizeof(data) - 1);
+
+		printf("\nsend(%d) attempt: %s", i + 1, data);
+		int64_t io = sendto(NutPunch_LocalSock, (char*)data, sizeof(data) - 1, 0, addr, sizeof(baseAddr));
+		if (SOCKET_ERROR == io) {
 			printf("\nFailed to send echo (%d)", WSAGetLastError());
 			goto fail;
 		}
@@ -65,7 +75,7 @@ void tickTestServer() {
 	return;
 
 fail:
-	NutPunch_LocalSock = TCS_NULLSOCKET;
+	NutPunch_LocalSock = INVALID_SOCKET;
 	punchedPort = 0;
 }
 
@@ -83,7 +93,7 @@ void tickNutpunch() {
 	if (query == NP_Status_Punched && NutPunch_GetPeerCount() >= 2) {
 		punchedPort = NutPunch_Release();
 		closesocket(NutPunch_LocalSock);
-		NutPunch_LocalSock = TCS_NULLSOCKET;
+		NutPunch_LocalSock = INVALID_SOCKET;
 		printf("%d", punchedPort);
 	} else
 		printf("none yet");
