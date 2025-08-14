@@ -1,3 +1,2 @@
 @echo off
-.\build\nutpunchTest.exe 127.0.0.1
-pause
+start .\build\nutpunchTest.exe 2 127.0.0.1
