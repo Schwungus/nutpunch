@@ -1,5 +1,7 @@
-#include <stdlib.h>
+#ifndef NUTPUNCH_IMPLEMENTATION
 #define NUTPUNCH_IMPLEMENTATION
+#endif
+
 #include "nutpunch.h"
 #include "raylib.h"
 
@@ -108,7 +110,7 @@ fail:
 	NutPunch_CloseSocket();
 }
 
-static uintmax_t playerCount = 0;
+static int playerCount = 0;
 
 int main(int argc, char* argv[]) {
 	if (argc != 3) {
@@ -153,11 +155,6 @@ int main(int argc, char* argv[]) {
 				NutPunch_Join(lobbyName);
 		}
 
-		if (NutPunch_GetPeerCount()) {
-			static char buf[64] = {0};
-			snprintf(buf, sizeof(buf), "port: %d", NutPunch_GetPeers()[0].port);
-			DrawText(buf, 200, 5, fs, BLACK);
-		}
 		if (NutPunch_GetPeerCount() >= playerCount && status == NP_Status_Punched) {
 			NutPunch_Release();
 
@@ -176,6 +173,12 @@ int main(int argc, char* argv[]) {
 				for (int i = 0; i < NutPunch_GetPeerCount() + 1; i++)
 					DrawRectangle(players[i].x, players[i].y, sqr, sqr, players[i].color);
 			}
+		}
+
+		if (NutPunch_GetPeerCount()) {
+			static char buf[64] = {0};
+			snprintf(buf, sizeof(buf), "port: %d", NutPunch_GetPeers()[0].port);
+			DrawText(buf, 200, 5, fs, BLACK);
 		}
 
 		EndDrawing();

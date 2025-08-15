@@ -96,10 +96,16 @@ const char* NutPunch_GetLastError();
 
 /// Get the array of peers discovered by `NutPunch_Join()`. Updated every `NutPunch_Query()` call.
 ///
-/// NOTE: the initial element is ALWAYS the remote representation of the local peer.
+/// NOTE: Remote peers you can connect to start at index 1. The initial (index 0) element is always the remote
+/// representation of the local peer.
+///
+/// TIP: 0th peer's port is the same as the one you would get from `NutPunch_Release()`, meaning you don't need to save
+/// the result of that call for future use.
 const struct NutPunch* NutPunch_GetPeers();
 
-/// Get the amount of peers discovered by `NutPunch_Join()`. Updated every `NutPunch_Query()` call.
+/// Count the peers discovered in the lobby after `NutPunch_Join()`. Updated every `NutPunch_Query()` call.
+///
+/// Returns 0 in case of an error.
 int NutPunch_GetPeerCount();
 
 // Implementation details:
@@ -216,13 +222,13 @@ fail:
 
 static bool NutPunch_MayAccept() {
 	if (NutPunch_LocalSocket == INVALID_SOCKET)
-		return 0;
+		return false;
 
 	static struct timeval instantBitchNoodles = {0, 0};
 	fd_set s = {1, {NutPunch_LocalSocket}};
-	NutPunch_LastErrorCode = select(0, &s, NULL, NULL, &instantBitchNoodles);
+	int res = select(0, &s, NULL, NULL, &instantBitchNoodles);
 
-	if (NutPunch_LastErrorCode == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
+	if (res == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
 		NutPunch_LastErrorCode = WSAGetLastError();
 		NutPunch_LastError = "Socket poll failed";
 		NutPunch_PrintError();
@@ -230,10 +236,10 @@ static bool NutPunch_MayAccept() {
 		closesocket(NutPunch_LocalSocket);
 		NutPunch_LocalSocket = INVALID_SOCKET;
 
-		return 0;
+		return false;
 	}
 
-	return NutPunch_LastErrorCode > 0;
+	return res > 0;
 }
 
 bool NutPunch_Join(const char* lobby) {
@@ -369,7 +375,7 @@ const struct NutPunch* NutPunch_GetPeers() {
 }
 
 int NutPunch_GetPeerCount() {
-	return NutPunch_Count;
+	return NutPunch_LastStatus == NP_Status_Error ? 0 : NutPunch_Count;
 }
 
 // The integrated hole-punch server:
@@ -459,7 +465,7 @@ static void NutPunch_Server_UpdateLobby(struct NutPunch_Lobby* lobby) {
 		if (nRecv != NUTPUNCH_ID_MAX)
 			continue;
 		if (memcmp(lobby->identifier, id, NUTPUNCH_ID_MAX)) {
-			NutPunch_Log("Peer %d sent a different lobby ID, which is currently unhandled", i + 1);
+			NutPunch_Log("Peer %d changed its lobby ID, which is currently unsupported", i + 1);
 			lobby->trailers[i].heartbeat = 0;
 			continue;
 		}
@@ -537,7 +543,7 @@ void NutPunch_Serve() {
 
 	int64_t nRecv =
 		recvfrom(NutPunch_LocalSocket, recvBuf, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&clientAddr, &addrLen);
-	if (SOCKET_ERROR == nRecv && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET) {
+	if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET) {
 		NutPunch_LastErrorCode = WSAGetLastError();
 		NutPunch_LastError = "Socket recv error";
 		NutPunch_PrintError();
@@ -549,7 +555,7 @@ void NutPunch_Serve() {
 	struct NutPunch_Lobby* lobby = NULL; // find lobby by supplied ID
 	for (size_t i = 0; i < NUTPUNCH_LOBBY_MAX; i++) {
 		lobby = &lobbies[i];
-		if (!memcmp(lobbies[i].identifier, recvBuf, sizeof(recvBuf)))
+		if (!memcmp(lobbies[i].identifier, recvBuf, NUTPUNCH_ID_MAX))
 			goto checkPlayer;
 	}
 
@@ -558,7 +564,7 @@ void NutPunch_Serve() {
 		lobby = &lobbies[i];
 		if (!NutPunch_Server_LobbyEmpty(lobby))
 			continue;
-		memcpy(lobby->identifier, recvBuf, sizeof(recvBuf));
+		memcpy(lobby->identifier, recvBuf, NUTPUNCH_ID_MAX);
 		NutPunch_Log("Lobby '%s' created!", recvBuf);
 		player = 0;
 		goto addPlayer;
@@ -587,7 +593,8 @@ addPlayer:
 	lobby->players[player].port = clientAddr.sin_port;
 
 	memcpy(&lobby->trailers[player].addr, &clientAddr, sizeof(struct sockaddr));
-	lobby->trailers[player].heartbeat = NUTPUNCH_HEARTBEAT_REFILL;
+	lobby->trailers[player].heartbeat = NUTPUNCH_HEARTBEAT_REFILL + 1;
+	lobby->trailers[player].prevHeartbeat = NUTPUNCH_HEARTBEAT_REFILL + 2;
 
 done:
 	for (size_t i = 0; i < NUTPUNCH_LOBBY_MAX; i++)
