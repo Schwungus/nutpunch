@@ -107,7 +107,7 @@ static void sendReceiveUpdates() {
 	return;
 
 fail:
-	NutPunch_CloseSocket();
+	NutPunch_Reset();
 }
 
 static int playerCount = 0;
@@ -124,8 +124,6 @@ int main(int argc, char* argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	NutPunch_SetServerAddr(argv[2]);
-
 	InitWindow(400, 300, "nutpunch test");
 	InitAudioDevice();
 
@@ -140,6 +138,16 @@ int main(int argc, char* argv[]) {
 		ClearBackground(RAYWHITE);
 
 		if (NutPunch_GetPeerCount() >= playerCount) {
+			if (status == NP_Status_Punched) {
+				NutPunch_Release();
+
+				memset(players, 0, sizeof(players));
+				players[0].x = 200 - sqr / 2;
+				players[0].y = 150 - sqr / 2;
+				players[0].color = RED;
+				startGame();
+			}
+
 			const int32_t spd = 5;
 			if (IsKeyDown(KEY_A))
 				players[0].x -= spd;
@@ -149,29 +157,22 @@ int main(int argc, char* argv[]) {
 				players[0].y -= spd;
 			if (IsKeyDown(KEY_S))
 				players[0].y += spd;
-		} else if (status == NP_Status_Idle || status == NP_Status_Error) {
-			DrawText("Press J to join", 5, 5, fs, BLACK);
-			if (IsKeyPressed(KEY_J))
+
+			sendReceiveUpdates();
+			for (int i = 0; i < NutPunch_GetPeerCount() + 1; i++)
+				DrawRectangle(players[i].x, players[i].y, sqr, sqr, players[i].color);
+		}
+
+		if (NutPunch_LocalSocket == INVALID_SOCKET) {
+			DrawText("DISCONNECTED", 5, 5, fs, RED);
+			DrawText("Press J to join", 5, 5 + fs, fs, BLACK);
+			DrawText("Press K to reset", 5, 5 + fs + fs, fs, BLACK);
+
+			if (IsKeyPressed(KEY_K))
+				NutPunch_Reset();
+			else if (IsKeyPressed(KEY_J)) {
+				NutPunch_SetServerAddr(argv[2]);
 				NutPunch_Join(lobbyName);
-		}
-
-		if (NutPunch_GetPeerCount() >= playerCount && status == NP_Status_Punched) {
-			NutPunch_Release();
-
-			memset(players, 0, sizeof(players));
-			players[0].x = 200 - sqr / 2;
-			players[0].y = 150 - sqr / 2;
-			players[0].color = RED;
-			startGame();
-		}
-
-		if (NutPunch_GetPeerCount() >= playerCount) {
-			if (NutPunch_LocalSocket == INVALID_SOCKET)
-				DrawText("DISCONNECTED", 5, 5, fs, RED);
-			else {
-				sendReceiveUpdates();
-				for (int i = 0; i < NutPunch_GetPeerCount() + 1; i++)
-					DrawRectangle(players[i].x, players[i].y, sqr, sqr, players[i].color);
 			}
 		}
 
