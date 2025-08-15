@@ -20,7 +20,7 @@
 #define NUTPUNCH_MAX_PORT (30000)
 #endif
 
-#if NUTPUNCH_MIN_PORT > NUTPUNCH_MAX_PORT
+#if NUTPUNCH_MIN_PORT >= NUTPUNCH_MAX_PORT
 #error nutpunch: impossible min/max port
 #endif
 
@@ -111,7 +111,6 @@ const struct NutPunch* NutPunch_GetPeers();
 /// Returns 0 in case of an error.
 int NutPunch_GetPeerCount();
 
-// Implementation details:
 #ifdef NUTPUNCH_IMPLEMENTATION
 
 #define NutPunch_Log(...)                                                                                              \
