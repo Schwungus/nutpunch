@@ -53,10 +53,8 @@ static void sendReceiveUpdates() {
 		memset(data, 0, PAYLOAD_SIZE);
 		int io = recvfrom(NutPunch_LocalSocket, rawData, sizeof(rawData), 0, addr, &addrSize);
 
-		if (SOCKET_ERROR == io && WSAGetLastError() != WSAEWOULDBLOCK) {
+		if (io == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
 			printf("Failed to receive from socket (%d)\n", WSAGetLastError());
-			goto fail;
-		}
 		if (io != PAYLOAD_SIZE)
 			continue;
 
@@ -65,6 +63,9 @@ static void sendReceiveUpdates() {
 
 	// Process existing peers:
 	for (int i = 1; i < NutPunch_GetPeerCount(); i++) {
+		if (!NutPunch_GetPeers()[i].port)
+			continue;
+
 		struct sockaddr_in baseAddr; // NOTE: boilerplate only relevant to winsocks
 		baseAddr.sin_family = AF_INET;
 		baseAddr.sin_port = NutPunch_GetPeers()[i].port;
@@ -76,9 +77,9 @@ static void sendReceiveUpdates() {
 		memset(data, 0, PAYLOAD_SIZE);
 		int io = recvfrom(NutPunch_LocalSocket, rawData, sizeof(rawData), 0, addr, &addrSize);
 
-		if (SOCKET_ERROR == io && WSAGetLastError() != WSAEWOULDBLOCK) {
+		if (io == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
 			printf("Failed to receive from socket (%d)\n", WSAGetLastError());
-			goto fail;
+			NutPunch_GetPeers()[i].port = 0; // just nuke them...
 		}
 		if (io != PAYLOAD_SIZE)
 			continue;
@@ -86,11 +87,14 @@ static void sendReceiveUpdates() {
 		updateByAddr(*addr, data);
 	}
 
+	// Send each peer your own position:
 	data[0] = (uint8_t)(players[0].x / SCALE);
 	data[1] = (uint8_t)(players[0].y / SCALE);
 
-	// Send each peer your own position:
 	for (int i = 1; i < NutPunch_GetPeerCount(); i++) {
+		if (!NutPunch_GetPeers()[i].port)
+			continue;
+
 		struct sockaddr_in baseAddr;
 		baseAddr.sin_family = AF_INET;
 		baseAddr.sin_port = NutPunch_GetPeers()[i].port;
@@ -100,14 +104,9 @@ static void sendReceiveUpdates() {
 		int64_t io = sendto(NutPunch_LocalSocket, rawData, PAYLOAD_SIZE, 0, addr, sizeof(baseAddr));
 		if (SOCKET_ERROR == io && WSAGetLastError() != WSAEWOULDBLOCK) {
 			printf("Failed to send echo (%d)\n", WSAGetLastError());
-			goto fail;
+			NutPunch_GetPeers()[i].port = 0; // just nuke them...
 		}
 	}
-
-	return;
-
-fail:
-	NutPunch_Reset();
 }
 
 static int playerCount = 0;

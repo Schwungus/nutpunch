@@ -104,7 +104,7 @@ const char* NutPunch_GetLastError();
 ///
 /// TIP: 0th peer's port is the same as the one you would get from `NutPunch_Release()`, meaning you don't need to save
 /// the result of that call for future use.
-const struct NutPunch* NutPunch_GetPeers();
+struct NutPunch* NutPunch_GetPeers();
 
 /// Count the peers discovered in the lobby after `NutPunch_Join()`. Updated every `NutPunch_Query()` call.
 ///
@@ -378,7 +378,7 @@ uint16_t NutPunch_Release() {
 	return NutPunch_GetPeerCount() ? NutPunch_List->port : 0;
 }
 
-const struct NutPunch* NutPunch_GetPeers() {
+struct NutPunch* NutPunch_GetPeers() {
 	return NutPunch_List;
 }
 
