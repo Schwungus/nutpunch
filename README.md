@@ -1,19 +1,19 @@
 # nutpunch
 
 > [!WARNING]
-> Using this library and UDP hole-punching only makes sense if you're making a P2P networked game. If you need server-based networking, you're out of luck; go elsewhere.
+> Using this library and implementing UDP hole-punching **only** makes sense if you're **making a P2P networked game**. If you need server-based networking **(which you should use instead)**, you're out of luck -- go elsewhere. You have been warned.
 
-A UDP hole-punching library for the REAL men. Header-only. Uses just plain C and winsockets.
+A UDP hole-punching library for the REAL men. Header-only. Brutal. Uses just plain C and winsockets.
 
 ## Usage
 
-This library implies a P2P networking model where __each client communicates with all others__. And it's complex AF. So, for the sake of simplicity, we'll assume each client stores a full list of peers, including oneself always indexed at 0.
+This library implies P2P networking, where **each client communicates with all others**. It's a complex and, in the wrong hands, a counterproductive model. For the sake of simplicity and due to scarcity thereof, we'll assume each client stores a full list of peers, including oneself indexed at 0.
 
 Before you can punch any holes in your peers' NAT, you'll need an externally available hole-punching server. Connecting to it busts a port open to the global network, and the server relays the busted ports to each of its peers. The current server implementation uses a lobby-based approach, where each lobby supports up to 16 players and is identified by a unique ASCII string.
 
 In order to run your own hole-puncher server, you'll need to build the `nutpunchServer` binary using the sources provided in [this repository](https://github.com/Schwungus/nutpunch). Since it relies on winsockets, you'll have to use either a Windows-based server or a Windows emulator (*cough* [WINE](https://www.winehq.org) *cough*) to actually host it. If you're in a pinch, and your players reside on a LAN/virtual network such as [Radmin VPN](https://www.radmin-vpn.com/), you can actually run the server locally and use your LAN IP address to connect to it.
 
-Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](nutpunchTest.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. You might also find some of these[^1][^2] docs and examples useful if you're rawdogging it with winsocks. But here's the general usage guide for the nutpunch library:
+Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/nutpunchTest.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. You might also find some of these[^1][^2] docs and examples useful if you're rawdogging it with winsocks. But here's the general usage guide for the nutpunch library:
 
 1. Join a lobby:
    1. Put `NutPunch_SetServerAddr("nutpunch-ip-addr")` before each `NutPunch_Join` call to set the hole-puncher server address. You may either use an IPv4 address or the server's DNS hostname, if it has an `A` record set.

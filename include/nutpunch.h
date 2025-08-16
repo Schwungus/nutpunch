@@ -457,18 +457,22 @@ static void NutPunch_Server_UpdateLobby(struct NutPunch_Lobby* lobby) {
 			continue;
 		lobby->trailers[i].heartbeat -= 1;
 
-		struct sockaddr* clientAddr = &lobby->trailers[i].addr;
-		int addrLen = sizeof(*clientAddr);
+		struct sockaddr clientAddr = lobby->trailers[i].addr;
+		int addrLen = sizeof(clientAddr);
 
 		static char id[NUTPUNCH_ID_MAX + 1] = {0};
 		memset(id, 0, sizeof(id));
-		int64_t nRecv = recvfrom(NutPunch_LocalSocket, id, NUTPUNCH_ID_MAX, 0, clientAddr, &addrLen);
+		int64_t nRecv = recvfrom(NutPunch_LocalSocket, id, NUTPUNCH_ID_MAX, 0, &clientAddr, &addrLen);
 
 		if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
 		{
 			NutPunch_Log("Peer %d disconnect (code %d)", i + 1, WSAGetLastError());
 			lobby->trailers[i].heartbeat = 0;
 			continue;
+		}
+		if (!nRecv) {
+			NutPunch_Log("Peer %d gracefully disconnected", i + 1);
+			lobby->trailers[i].heartbeat = 0;
 		}
 		if (nRecv != NUTPUNCH_ID_MAX)
 			continue;
