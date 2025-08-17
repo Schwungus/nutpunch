@@ -18,3 +18,4 @@ AlwaysBreakAfterReturnType: None
 IndentCaseLabels: true
 AlignAfterOpenBracket: DontAlign
 SortIncludes: CaseSensitive
+# TODO: add C++ trashy styling......

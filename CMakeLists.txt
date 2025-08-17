@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
-project(nutpunch LANGUAGES C)
+project(nutpunch LANGUAGES C CXX)
 include(FetchContent)
 
 add_library(nutpunch INTERFACE)
@@ -24,6 +24,8 @@ endif()
 
 option(NUTPUNCH_BUILD_SERVER "Build nutpunch server binary?" ON)
 if(NUTPUNCH_BUILD_SERVER)
-    add_executable(nutpunchServer ${CMAKE_CURRENT_SOURCE_DIR}/src/nutpunchServer.c)
-    target_link_libraries(nutpunchServer PRIVATE nutpunch)
+    add_executable(nutpuncher ${CMAKE_CURRENT_SOURCE_DIR}/src/nutpuncher.cpp
+                              ${CMAKE_CURRENT_SOURCE_DIR}/src/nutpunchStatic.c)
+    set_target_properties(nutpuncher PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+    target_link_libraries(nutpuncher PRIVATE nutpunch)
 endif()

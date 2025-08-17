@@ -1,5 +1,9 @@
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if defined(_WIN32) || defined(_WIN64)
 #define NUTPUNCH_WINDOSE
 #else
@@ -29,7 +33,7 @@
 #define NUTPUNCH_PAYLOAD_SIZE (NUTPUNCH_MAX_PLAYERS * 6)
 
 /// The UDP port used by the punching mediator server. Not customizable, sorry.
-#define NUTPUNCH_SERVER_PORT (24869)
+#define NUTPUNCH_SERVER_PORT (30001)
 
 /// The maximum length of a lobby identifier excluding the null terminator. Not customizable.
 #define NUTPUNCH_ID_MAX (64)
@@ -386,236 +390,8 @@ int NutPunch_GetPeerCount() {
 	return NutPunch_LastStatus == NP_Status_Error ? 0 : NutPunch_Count;
 }
 
-// The integrated hole-punch server:
-#ifdef NUTPUNCH_COMPILE_SERVER
-
-#define NUTPUNCH_LOBBY_MAX (16)
-#define NUTPUNCH_HEARTBEAT_RATE (30)
-#define NUTPUNCH_HEARTBEAT_REFILL (60)
-
-struct NutPunch_Trailer {
-	int heartbeat, prevHeartbeat;
-	struct sockaddr addr;
-};
-
-struct NutPunch_Lobby {
-	char identifier[NUTPUNCH_ID_MAX + 1];
-	struct NutPunch players[NUTPUNCH_MAX_PLAYERS];
-	struct NutPunch_Trailer trailers[NUTPUNCH_MAX_PLAYERS];
-};
-
-static struct NutPunch_Lobby lobbies[NUTPUNCH_LOBBY_MAX];
-
-static void NutPunch_Server_Init() {
-	NutPunch_LazyInit();
-	NutPunch_SetServerAddr(NULL);
-
-	if (!NutPunch_BindSocket(NUTPUNCH_SERVER_PORT)) {
-		NutPunch_LastError = "Server init failed";
-		NutPunch_LastErrorCode = 0;
-		NutPunch_PrintError();
-
-		NutPunch_Cleanup();
-		exit(EXIT_FAILURE);
-	}
-}
-
-static void NutPunch_Server_KillLobby(struct NutPunch_Lobby* lobby) {
-	if (lobby->identifier[0])
-		NutPunch_Log("Destroying lobby '%s'", lobby->identifier);
-	memset(lobby->players, 0, sizeof(*lobby->players) * NUTPUNCH_MAX_PLAYERS);
-	memset(lobby->trailers, 0, sizeof(*lobby->trailers) * NUTPUNCH_MAX_PLAYERS);
-	memset(lobby->identifier, 0, sizeof(lobby->identifier));
-}
-
-static void NutPunch_Server_Reset() {
-	NutPunch_Log("Nuking lobby list");
-	for (int i = 0; i < NUTPUNCH_LOBBY_MAX; i++)
-		NutPunch_Server_KillLobby(&lobbies[i]);
-}
-
-static void NutPunch_WritePayload(const struct NutPunch_Lobby* lobby, int player, uint8_t** ptr) {
-	if (lobby->trailers[player].heartbeat) {
-		memcpy(*ptr, lobby->players[player].addr, 4);
-		*ptr += 4;
-
-		uint16_t portLE = lobby->players[player].port;
-#ifdef __BIG_ENDIAN__
-		portLE = (portLE >> 8) | (portLE << 8);
-#endif
-		*(*ptr)++ = portLE >> 8;
-		*(*ptr)++ = portLE & 0xFF;
-	} else {
-		memset(*ptr, 0, 6);
-		*ptr += 6;
-	}
-}
-
-static void NutPunch_Server_UpdateLobby(struct NutPunch_Lobby* lobby) {
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!lobby->trailers[i].heartbeat)
-			continue;
-		lobby->trailers[i].heartbeat -= 1;
-
-		struct sockaddr clientAddr = lobby->trailers[i].addr;
-		int addrLen = sizeof(clientAddr);
-
-		static char id[NUTPUNCH_ID_MAX + 1] = {0};
-		memset(id, 0, sizeof(id));
-		int64_t nRecv = recvfrom(NutPunch_LocalSocket, id, NUTPUNCH_ID_MAX, 0, &clientAddr, &addrLen);
-
-		if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
-		{
-			NutPunch_Log("Peer %d disconnect (code %d)", i + 1, WSAGetLastError());
-			lobby->trailers[i].heartbeat = 0;
-			continue;
-		}
-		if (!nRecv) {
-			NutPunch_Log("Peer %d gracefully disconnected", i + 1);
-			lobby->trailers[i].heartbeat = 0;
-		}
-		if (nRecv != NUTPUNCH_ID_MAX)
-			continue;
-		if (memcmp(lobby->identifier, id, NUTPUNCH_ID_MAX)) {
-			NutPunch_Log("Peer %d changed its lobby ID, which is currently unsupported", i + 1);
-			lobby->trailers[i].heartbeat = 0;
-			continue;
-		}
-
-		lobby->trailers[i].heartbeat = NUTPUNCH_HEARTBEAT_REFILL;
-	}
-
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		struct NutPunch_Trailer* tr = &lobby->trailers[i];
-		if (!tr->heartbeat && tr->prevHeartbeat) {
-			NutPunch_Log("Peer %d timed out", i + 1);
-			memset(&lobby->players[i], 0, sizeof(struct NutPunch));
-			memset(&lobby->trailers[i], 0, sizeof(struct NutPunch_Trailer));
-		}
-		tr->prevHeartbeat = tr->heartbeat;
-	}
-
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (lobby->trailers[i].heartbeat)
-			goto announce;
-
-	NutPunch_Server_KillLobby(lobby);
-	return;
-
-announce:
-	for (int recpt = 0; recpt < NUTPUNCH_MAX_PLAYERS; recpt++) {
-		if (!lobby->trailers[recpt].heartbeat)
-			continue;
-
-		static char payload[NUTPUNCH_PAYLOAD_SIZE] = {0};
-		memset(payload, 0, sizeof(payload));
-
-		uint8_t* ptr = (uint8_t*)payload;
-		NutPunch_WritePayload(lobby, recpt, &ptr);
-
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (i != recpt)
-				NutPunch_WritePayload(lobby, i, &ptr);
-
-		struct sockaddr addr = lobby->trailers[recpt].addr;
-		int sent = sendto(NutPunch_LocalSocket, payload, sizeof(payload), 0, &addr, sizeof(addr));
-		if (sent != SOCKET_ERROR || WSAGetLastError() == WSAEWOULDBLOCK || WSAGetLastError() == WSAECONNRESET)
-			continue;
-
-		lobby->trailers[recpt].heartbeat = 0;
-		NutPunch_LastErrorCode = WSAGetLastError();
-		NutPunch_LastError = "Peer connection lost";
-		NutPunch_PrintError();
-	}
-}
-
-static bool NutPunch_Server_LobbyEmpty(const struct NutPunch_Lobby* lobby) {
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (lobby->trailers[i].heartbeat > 0)
-			return false;
-	return true;
-}
-
-/// Update the hole-punch server. Needs to be run in a loop, preferrably at 60Hz; wastes CPU cycles otherwise.
-void NutPunch_Serve() {
-	if (NutPunch_LocalSocket == INVALID_SOCKET) {
-		NutPunch_Server_Reset();
-		NutPunch_Server_Init();
-	}
-
-	if (!NutPunch_MayAccept())
-		goto done;
-
-	static char recvBuf[NUTPUNCH_ID_MAX + 1] = {0};
-	memset(recvBuf, 0, sizeof(recvBuf));
-
-	struct sockaddr_in clientAddr = {0};
-	int addrLen = sizeof(clientAddr);
-	memset(&clientAddr, 0, addrLen);
-
-	int nRecv
-		= recvfrom(NutPunch_LocalSocket, recvBuf, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&clientAddr, &addrLen);
-	if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET) {
-		NutPunch_LastErrorCode = WSAGetLastError();
-		NutPunch_LastError = "Socket recv error";
-		NutPunch_PrintError();
-		goto done;
-	}
-	if (nRecv != NUTPUNCH_ID_MAX) // skip weirdass packets
-		goto done;
-
-	int player = NUTPUNCH_LOBBY_MAX;
-	struct NutPunch_Lobby* lobby = NULL;
-
-	// Find lobby by supplied ID.
-	for (int i = 0; i < NUTPUNCH_LOBBY_MAX; i++) {
-		lobby = &lobbies[i];
-		if (!memcmp(lobbies[i].identifier, recvBuf, NUTPUNCH_ID_MAX))
-			goto checkPlayer;
-	}
-
-	// No such lobby; create it.
-	for (int i = 0; i < NUTPUNCH_LOBBY_MAX; i++) {
-		lobby = &lobbies[i];
-		if (!NutPunch_Server_LobbyEmpty(lobby))
-			continue;
-		memcpy(lobby->identifier, recvBuf, NUTPUNCH_ID_MAX);
-		NutPunch_Log("Lobby '%s' created!", recvBuf);
-		player = 0;
-		goto addPlayer;
-	}
-
-	NutPunch_Server_Reset(); // NUKE: we ran out of lobby slots
-	goto done;
-
-checkPlayer:
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (!memcmp(&lobby->players[i].addr, &clientAddr.sin_addr, 4)
-			&& lobby->players[i].port == clientAddr.sin_port)
-		{
-			goto done; // found the mfer
-		}
-	for (player = 0; player < NUTPUNCH_MAX_PLAYERS; player++) {
-		if (!lobby->trailers[player].heartbeat)
-			goto addPlayer; // i'm replacing your bitch ass
-	}
-	goto done; // ran out of player slots........
-
-addPlayer:
-	NutPunch_Log("New peer is in...");
-
-	memcpy(&lobby->players[player].addr, &clientAddr.sin_addr, 4);
-	lobby->players[player].port = clientAddr.sin_port;
-
-	memcpy(&lobby->trailers[player].addr, &clientAddr, sizeof(struct sockaddr));
-	lobby->trailers[player].heartbeat = NUTPUNCH_HEARTBEAT_REFILL + 1;
-	lobby->trailers[player].prevHeartbeat = NUTPUNCH_HEARTBEAT_REFILL + 2;
-
-done:
-	for (int i = 0; i < NUTPUNCH_LOBBY_MAX; i++)
-		NutPunch_Server_UpdateLobby(&lobbies[i]);
-}
-
 #endif
 
+#ifdef __cplusplus
+}
 #endif

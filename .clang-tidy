@@ -5,10 +5,7 @@ Checks: |
   -bugprone-narrowing-conversions,
   -bugprone-assignment-in-if-condition,
   -bugprone-suspicious-string-compare,
-  modernize-*,
-  -modernize-avoid-c-style,
-  misc-*,
-  -misc-use-anonymous-namespace,
+  -bugprone-reserved-identifier,
   performance-*,
   -performance-no-int-to-ptr,
   portability-*
