@@ -53,8 +53,10 @@ static void sendReceiveUpdates() {
 		memset(data, 0, PAYLOAD_SIZE);
 		int io = recvfrom(NutPunch_LocalSocket, rawData, sizeof(rawData), 0, addr, &addrSize);
 
-		if (io == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
+		if (io == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
 			printf("Failed to receive from socket (%d)\n", WSAGetLastError());
+			NutPunch_NukeSocket();
+		}
 		if (io != PAYLOAD_SIZE)
 			continue;
 
