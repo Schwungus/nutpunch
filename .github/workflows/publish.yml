@@ -8,16 +8,17 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: Schwungus/nutpuncher
 
+permissions:
+  contents: write
+  packages: write
+  attestations: write
+  id-token: write
+
 jobs:
   docker:
     name: Build Docker image
     runs-on: ubuntu-latest
     needs: [binary]
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -74,5 +75,6 @@ jobs:
           cp build/nutpuncher${{ matrix.config.bin-ext }} nutpuncher-${{ matrix.config.name }}${{ matrix.config.bin-ext }}
       - name: Release binary
         uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
         with:
           files: nutpuncher-${{ matrix.config.name }}${{ matrix.config.bin-ext }}
