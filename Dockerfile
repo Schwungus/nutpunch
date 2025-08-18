@@ -5,4 +5,4 @@ RUN wget https://github.com/Schwungus/nutpunch/releases/download/stable/nutpunch
 EXPOSE 30001/udp
 
 ENTRYPOINT ["/usr/bin/entrypoint"]
-CMD ["wine", "/usr/local/bin/nutpuncher.exe"]
+CMD ["env", "DISPLAY=:95", "wine", "/usr/local/bin/nutpuncher.exe"]
