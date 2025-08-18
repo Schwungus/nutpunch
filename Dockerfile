@@ -1,8 +1,8 @@
-FROM scottyhardy/docker-wine:stable
+FROM scottyhardy/docker-wine:stable-nordp
 
-ENV USE_XVFB=yes NO_RDP=yes DUMMY_PULSEAUDIO=yes
+ENV NO_RDP=yes RDP_SERVER=no DUMMY_PULSEAUDIO=yes USER_SUDO=no WINEDLLOVERRIDES="mscoree=d;mshtml=d"
 RUN wget https://github.com/Schwungus/nutpunch/releases/download/stable/nutpuncher-stable-windows.exe -O /usr/local/bin/nutpuncher.exe
 EXPOSE 30001/udp
 
 ENTRYPOINT ["/usr/bin/entrypoint"]
-CMD ["env", "DISPLAY=:95", "wine", "/usr/local/bin/nutpuncher.exe"]
+CMD ["wine", "/usr/local/bin/nutpuncher.exe"]
