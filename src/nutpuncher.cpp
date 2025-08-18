@@ -212,8 +212,10 @@ static void bindSock() {
 }
 
 static int acceptConnections() {
-	if (sock == INVALID_SOCKET)
+	if (sock == INVALID_SOCKET) {
+		std::exit(EXIT_FAILURE);
 		return 0;
+	}
 
 	static timeval instantBitchNoodles = {0, 0};
 	fd_set s = {1, {sock}};
