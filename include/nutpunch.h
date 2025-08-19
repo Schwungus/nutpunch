@@ -148,8 +148,8 @@ static struct sockaddr NutPunch_RemoteAddr = {0};
 static char NutPunch_ServerHost[128] = {0}, NutPunch_ServerPort[32] = {0};
 
 bool NutPunch_IsBE() {
-	uint16_t number = 0xFF00;
-	return !(*(char*)&number);
+	// Hack from: https://manhnt.github.io/programming_technique/2018/08/15/oneline-macro-endian-check.html
+	return (*(uint16_t*)"\0\xff" < 0x0100);
 }
 
 static void NutPunch_NukePeersList() {
