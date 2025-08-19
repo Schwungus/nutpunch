@@ -56,12 +56,9 @@ struct Payload {
 		std::memcpy(ptr, &player.addr.sin_addr, 4);
 		ptr += 4;
 
-		std::uint16_t portLE = player.addr.sin_port;
-		if (NutPunch_IsBE())
-			portLE = (portLE >> 8) | (portLE << 8);
-
-		*ptr++ = portLE >> 8;
-		*ptr++ = portLE & 0xFF;
+		std::uint16_t port = player.addr.sin_port;
+		*ptr++ = (port >> 0) & 0xFF;
+		*ptr++ = (port >> 8) & 0xFF;
 	}
 };
 
