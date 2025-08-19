@@ -41,32 +41,28 @@ struct Player {
 };
 
 struct Payload {
-	uint8_t buf[NUTPUNCH_PAYLOAD_SIZE];
-	size_t ptr;
-
-	Payload() : ptr(0) {
-		std::memset(buf, 0, sizeof(buf));
-	}
+	uint8_t buf[NUTPUNCH_PAYLOAD_SIZE] = {0}, *ptr = buf;
 
 	operator const char*() const {
 		return reinterpret_cast<const char*>(buf);
 	}
 
 	void write(const Player& player) {
-		if (player.isDead())
+		if (player.isDead()) {
 			ptr += 6;
-		else {
-			std::memcpy(&buf[ptr], &player.addr.sin_addr, 4);
-			ptr += 4;
+			return;
+		}
 
-			std::uint16_t portLE = player.addr.sin_port;
+		std::memcpy(ptr, &player.addr.sin_addr, 4);
+		ptr += 4;
+
+		std::uint16_t portLE = player.addr.sin_port;
 #ifdef __BIG_ENDIAN__
-			portLE = (portLE >> 8) | (portLE << 8);
+		portLE = (portLE >> 8) | (portLE << 8);
 #endif
 
-			buf[ptr++] = portLE >> 8;
-			buf[ptr++] = portLE & 0xFF;
-		}
+		*ptr++ = portLE >> 8;
+		*ptr++ = portLE & 0xFF;
 	}
 };
 
@@ -139,8 +135,7 @@ struct Lobby {
 			sockaddr clientAddr = *reinterpret_cast<sockaddr*>(&players[i].addr);
 			int addrLen = sizeof(clientAddr);
 
-			static char recvId[NUTPUNCH_ID_MAX + 1] = {0};
-			std::memset(recvId, 0, sizeof(recvId));
+			char recvId[NUTPUNCH_ID_MAX + 1] = {0};
 			int64_t nRecv = recvfrom(sock, recvId, NUTPUNCH_ID_MAX, 0, &clientAddr, &addrLen);
 
 			if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK
@@ -226,12 +221,9 @@ static int acceptConnections() {
 	if (!res)
 		return 0;
 
-	static char id[NUTPUNCH_ID_MAX + 1] = {0};
-	std::memset(id, 0, sizeof(id));
-
+	char id[NUTPUNCH_ID_MAX + 1] = {0};
 	sockaddr_in addr = {0};
 	int addrLen = sizeof(addr);
-	std::memset(&addr, 0, addrLen);
 
 	int nRecv = recvfrom(sock, id, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&addr, &addrLen);
 	if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
