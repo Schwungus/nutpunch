@@ -14,20 +14,6 @@ extern "C" {
 #define WIN32_LEAN_AND_MEAN
 #endif
 
-#ifndef NUTPUNCH_MIN_PORT
-/// Minimum port number to be punched.
-#define NUTPUNCH_MIN_PORT (20000)
-#endif
-
-#ifndef NUTPUNCH_MAX_PORT
-/// Maximum port number to be punched.
-#define NUTPUNCH_MAX_PORT (30000)
-#endif
-
-#if NUTPUNCH_MIN_PORT >= NUTPUNCH_MAX_PORT
-#error nutpunch: impossible min/max port
-#endif
-
 /// Maximum amount of players in a lobby. Not intended to be customizable.
 #define NUTPUNCH_MAX_PLAYERS (16)
 #define NUTPUNCH_PAYLOAD_SIZE (NUTPUNCH_MAX_PLAYERS * 6)
@@ -65,9 +51,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 enum {
 	NP_Status_Idle,
@@ -82,9 +66,6 @@ struct NutPunch {
 };
 
 // Forward-declarations:
-
-/// Generate a random port to punch through.
-uint16_t NutPunch_GeneratePort();
 
 /// Set a custom hole-puncher server address.
 void NutPunch_SetServerAddr(const char*);
@@ -168,8 +149,6 @@ static void NutPunch_LazyInit() {
 
 	WSADATA bitch = {0};
 	WSAStartup(MAKEWORD(2, 2), &bitch);
-
-	srand(time(NULL));
 	NutPunch_LocalSocket = INVALID_SOCKET;
 
 	NutPunch_NukePeersList();
@@ -182,15 +161,10 @@ static void NutPunch_PrintError() {
 		NutPunch_Log("WARN: %s", NutPunch_LastError);
 }
 
-uint16_t NutPunch_GeneratePort() {
-	NutPunch_LazyInit();
-	return NUTPUNCH_MIN_PORT + rand() % (NUTPUNCH_MAX_PORT - NUTPUNCH_MIN_PORT + 1);
-}
-
 static struct sockaddr NutPunch_SockAddr(const char* host, uint16_t port) {
 	struct sockaddr_in addr = {0};
 	addr.sin_family = AF_INET;
-	addr.sin_port = port;
+	addr.sin_port = htons(port);
 	if (host != NULL)
 		inet_pton(addr.sin_family, host, &addr.sin_addr);
 	return *(struct sockaddr*)&addr;
@@ -285,7 +259,7 @@ bool NutPunch_Join(const char* lobby) {
 		goto fail;
 	}
 
-	if (NutPunch_BindSocket(NutPunch_GeneratePort())) {
+	if (NutPunch_BindSocket(0)) {
 		NutPunch_LastStatus = NP_Status_InProgress;
 		memset(NutPunch_LobbyId, 0, sizeof(NutPunch_LobbyId));
 		snprintf(NutPunch_LobbyId, sizeof(NutPunch_LobbyId), "%s", lobby);
@@ -338,12 +312,14 @@ static int NutPunch_QueryImpl() {
 	uint8_t* ptr = (uint8_t*)buf;
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		for (int j = 0; j < 4; j++)
-			NutPunch_List[i].addr[j] = *ptr++;
-		uint16_t portNE = ((uint16_t)(*ptr++));
-		portNE |= ((uint16_t)(*ptr++) << 8);
-		NutPunch_List[i].port = portNE;
-		NutPunch_Count += portNE != 0;
+		memcpy(NutPunch_List[i].addr, ptr, 4);
+		ptr += 4;
+
+		memcpy(&NutPunch_List[i].port, ptr, 2);
+		NutPunch_List[i].port = ntohs(NutPunch_List[i].port);
+		ptr += 2;
+
+		NutPunch_Count += NutPunch_List[i].port != 0;
 	}
 
 	return NP_Status_Punched;

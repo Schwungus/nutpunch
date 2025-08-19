@@ -1,3 +1,5 @@
+#include <stdlib.h>
+
 #ifndef NUTPUNCH_IMPLEMENTATION
 #define NUTPUNCH_IMPLEMENTATION
 #endif
@@ -26,7 +28,7 @@ static void updateByAddr(struct sockaddr addr, const uint8_t* data) {
 	for (int playerIdx = 1; playerIdx < NutPunch_GetPeerCount(); playerIdx++) {
 		const struct NutPunch* peer = &NutPunch_GetPeers()[playerIdx];
 		bool sameHost = !memcmp(&realAddr.sin_addr, peer->addr, 4);
-		bool samePort = realAddr.sin_port == peer->port;
+		bool samePort = realAddr.sin_port == htons(peer->port);
 
 		if (sameHost && samePort) {
 			players[playerIdx].x = ((int32_t)(data[0])) * SCALE;
@@ -68,10 +70,11 @@ static void sendReceiveUpdates() {
 		if (!NutPunch_GetPeers()[i].port)
 			continue;
 
-		struct sockaddr_in baseAddr; // NOTE: boilerplate only relevant to winsocks
+		struct sockaddr_in baseAddr;
 		baseAddr.sin_family = AF_INET;
-		baseAddr.sin_port = NutPunch_GetPeers()[i].port;
-		memcpy(&baseAddr.sin_addr, &NutPunch_GetPeers()[i].addr, 4);
+		// NOTE: port is converted to host format by `NutPunch_Query()`.
+		baseAddr.sin_port = htons(NutPunch_GetPeers()[i].port);
+		memcpy(&baseAddr.sin_addr, NutPunch_GetPeers()[i].addr, 4);
 
 		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
 		int addrSize = sizeof(baseAddr);
@@ -80,7 +83,7 @@ static void sendReceiveUpdates() {
 		int io = recvfrom(NutPunch_LocalSocket, rawData, sizeof(rawData), 0, addr, &addrSize);
 
 		if (io == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
-			printf("Failed to receive from socket (%d)\n", WSAGetLastError());
+			printf("Failed to receive from peer %d (%d)\n", i + 1, WSAGetLastError());
 			NutPunch_GetPeers()[i].port = 0; // just nuke them...
 		}
 		if (io != PAYLOAD_SIZE)
@@ -99,13 +102,13 @@ static void sendReceiveUpdates() {
 
 		struct sockaddr_in baseAddr;
 		baseAddr.sin_family = AF_INET;
-		baseAddr.sin_port = NutPunch_GetPeers()[i].port;
-		memcpy(&baseAddr.sin_addr, &NutPunch_GetPeers()[i].addr, 4);
+		baseAddr.sin_port = htons(NutPunch_GetPeers()[i].port); // see NOTE above
+		memcpy(&baseAddr.sin_addr, NutPunch_GetPeers()[i].addr, 4);
 		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
 
-		int64_t io = sendto(NutPunch_LocalSocket, rawData, PAYLOAD_SIZE, 0, addr, sizeof(baseAddr));
+		int io = sendto(NutPunch_LocalSocket, rawData, PAYLOAD_SIZE, 0, addr, sizeof(baseAddr));
 		if (SOCKET_ERROR == io && WSAGetLastError() != WSAEWOULDBLOCK) {
-			printf("Failed to send echo (%d)\n", WSAGetLastError());
+			printf("Failed to send to peer %d (%d)\n", i + 1, WSAGetLastError());
 			NutPunch_GetPeers()[i].port = 0; // just nuke them...
 		}
 	}

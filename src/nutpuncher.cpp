@@ -1,4 +1,6 @@
+#include <cstdint>
 #include <cstring>
+#include <ctime>
 #include <map>
 #include <string>
 
@@ -48,17 +50,14 @@ struct Payload {
 	}
 
 	void write(const Player& player) {
-		if (player.isDead()) {
+		if (player.isDead())
 			ptr += 6;
-			return;
+		else {
+			std::memcpy(ptr, &player.addr.sin_addr, 4);
+			ptr += 4;
+			std::memcpy(ptr, &player.addr.sin_port, 2);
+			ptr += 2;
 		}
-
-		std::memcpy(ptr, &player.addr.sin_addr, 4);
-		ptr += 4;
-
-		std::uint16_t port = player.addr.sin_port;
-		*ptr++ = (port >> 0) & 0xFF;
-		*ptr++ = (port >> 8) & 0xFF;
 	}
 };
 
@@ -167,9 +166,8 @@ struct Lobby {
 
 			struct sockaddr addr = *reinterpret_cast<sockaddr*>(&players[i].addr);
 			int sent = sendto(sock, buf, NUTPUNCH_PAYLOAD_SIZE, 0, &addr, sizeof(addr));
-			if (sent != SOCKET_ERROR || WSAGetLastError() == WSAEWOULDBLOCK)
-				continue;
-			players[i].countdown = 0;
+			if (sent == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
+				players[i].countdown = 0;
 		}
 	}
 
@@ -196,7 +194,7 @@ static void bindSock() {
 
 	sockaddr_in addr = {0};
 	addr.sin_family = AF_INET;
-	addr.sin_port = NUTPUNCH_SERVER_PORT;
+	addr.sin_port = htons(NUTPUNCH_SERVER_PORT);
 
 	if (SOCKET_ERROR == bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)))
 		throw "Failed to bind the UDP socket";
@@ -221,8 +219,8 @@ static int acceptConnections() {
 	sockaddr_in addr = {0};
 	int addrLen = sizeof(addr);
 
-	int nRecv = recvfrom(sock, id, NUTPUNCH_ID_MAX, 0, (struct sockaddr*)&addr, &addrLen);
-	if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
+	int nRecv = recvfrom(sock, id, NUTPUNCH_ID_MAX, 0, reinterpret_cast<sockaddr*>(&addr), &addrLen);
+	if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
 		return WSAGetLastError();
 	if (nRecv != NUTPUNCH_ID_MAX) // skip weirdass packets
 		return 0;
@@ -236,8 +234,8 @@ static int acceptConnections() {
 			lobbies.insert({id, Lobby(id)});
 		}
 	}
-	lobbies[id].beat(addr);
 
+	lobbies[id].beat(addr);
 	return 0;
 }
 
