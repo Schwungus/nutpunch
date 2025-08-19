@@ -57,9 +57,8 @@ struct Payload {
 		ptr += 4;
 
 		std::uint16_t portLE = player.addr.sin_port;
-#ifdef __BIG_ENDIAN__
-		portLE = (portLE >> 8) | (portLE << 8);
-#endif
+		if (NutPunch_IsBE())
+			portLE = (portLE >> 8) | (portLE << 8);
 
 		*ptr++ = portLE >> 8;
 		*ptr++ = portLE & 0xFF;

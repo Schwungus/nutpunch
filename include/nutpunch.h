@@ -83,6 +83,9 @@ struct NutPunch {
 
 // Forward-declarations:
 
+/// Used internally for endianness checks.
+bool NutPunch_IsBE();
+
 /// Generate a random port to punch through.
 uint16_t NutPunch_GeneratePort();
 
@@ -143,6 +146,11 @@ static int NutPunch_Count = 0;
 static SOCKET NutPunch_LocalSocket = INVALID_SOCKET;
 static struct sockaddr NutPunch_RemoteAddr = {0};
 static char NutPunch_ServerHost[128] = {0}, NutPunch_ServerPort[32] = {0};
+
+bool NutPunch_IsBE() {
+	uint16_t number = 0xFF00;
+	return !(*(char*)&number);
+}
 
 static void NutPunch_NukePeersList() {
 	NutPunch_Count = 0;
@@ -342,9 +350,8 @@ static int NutPunch_QueryImpl() {
 			NutPunch_List[i].addr[j] = *ptr++;
 		uint16_t portNE = (uint16_t)(*ptr++) << 8;
 		portNE |= (uint16_t)(*ptr++);
-#ifdef __BIG_ENDIAN__
-		portNE = (portNE >> 8) | (portNE << 8);
-#endif
+		if (NutPunch_IsBE())
+			portNE = (portNE >> 8) | (portNE << 8);
 		NutPunch_List[i].port = portNE;
 		NutPunch_Count += portNE != 0;
 	}
