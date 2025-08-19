@@ -104,14 +104,14 @@ struct NutPunch* NutPunch_GetPeers();
 /// Returns 0 in case of an error.
 int NutPunch_GetPeerCount();
 
-#ifdef NUTPUNCH_IMPLEMENTATION
-
 #define NutPunch_Log(...)                                                                                              \
 	do {                                                                                                           \
 		fprintf(stderr, __VA_ARGS__);                                                                          \
 		fprintf(stderr, "\n");                                                                                 \
 		fflush(stderr);                                                                                        \
 	} while (0)
+
+#ifdef NUTPUNCH_IMPLEMENTATION
 
 static const char* NutPunch_LastError = NULL;
 static int NutPunch_LastErrorCode = 0;

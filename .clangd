@@ -1,2 +1,7 @@
+If:
+  PathMatch: include/nutpunch\.h
 CompileFlags:
-  Add: [ -DNUTPUNCH_IMPLEMENTATION ]
+  Add: [-DNUTPUNCH_IMPLEMENTATION]
+---
+Completion:
+  HeaderInsertion: Never

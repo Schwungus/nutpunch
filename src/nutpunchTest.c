@@ -1,9 +1,6 @@
 #include <stdlib.h>
 
-#ifndef NUTPUNCH_IMPLEMENTATION
 #define NUTPUNCH_IMPLEMENTATION
-#endif
-
 #include "nutpunch.h"
 #include "raylib.h"
 

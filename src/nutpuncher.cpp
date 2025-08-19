@@ -6,13 +6,6 @@
 
 #include "nutpunch.h"
 
-#define NutPunch_Log(...)                                                                                              \
-	do {                                                                                                           \
-		fprintf(stderr, __VA_ARGS__);                                                                          \
-		fprintf(stderr, "\n");                                                                                 \
-		fflush(stderr);                                                                                        \
-	} while (0)
-
 #ifdef NUTPUNCH_WINDOSE
 #define sleepMs(ms) (Sleep((ms)))
 #else
@@ -38,7 +31,7 @@ struct Player {
 		return !countdown || !*reinterpret_cast<const char*>(&addr);
 	}
 
-      private:
+private:
 	static constexpr const char zeroAddr[sizeof(addr)] = {0};
 };
 

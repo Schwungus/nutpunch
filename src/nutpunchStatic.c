@@ -1,5 +1,2 @@
-#ifndef NUTPUNCH_IMPLEMENTATION
 #define NUTPUNCH_IMPLEMENTATION
-#endif
-
-#include "nutpunch.h"
+#include "nutpunch.h" // IWYU pragma: keep

@@ -15,7 +15,7 @@ AllowShortFunctionsOnASingleLine: Empty
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakAfterReturnType: None
+AccessModifierOffset: -8
 IndentCaseLabels: true
 AlignAfterOpenBracket: DontAlign
 SortIncludes: CaseSensitive
-# TODO: add C++ trashy styling......

@@ -1,15 +1,15 @@
 # nutpunch
 
 > [!WARNING]
-> Using this library and implementing UDP hole-punching **only** makes sense if you're **making a P2P networked game**. If you need server-based networking **(which you should use instead)**, you're out of luck -- go elsewhere. You have been warned.
+> Using this library and implementing UDP hole-punching **only** makes sense if you're **making a P2P networked game**. If you need server-based networking (**which is arguably much simpler to implement**), you're out of luck -- go elsewhere. You have been warned.
 
 A UDP hole-punching library for the REAL men. Header-only. Brutal. Uses just plain C and winsockets.
 
 ## Usage
 
-This library implies P2P networking, where **each client communicates with all others**. It's a complex and, in the wrong hands, a counterproductive model. If you don't feel like reading the immediately following blanket of words and scribbles, you may skip to [using premade integrations](#premade-integrations).
+This library implies P2P networking, where **each peer communicates with all others**. It's a complex and, in the wrong hands, a counterproductive model. If you don't feel like reading the immediately following blanket of words and scribbles, you may skip to [using premade integrations](#premade-integrations).
 
-For the sake of simplicity and due to scarcity thereof, we'll assume each client stores a full list of peers, including oneself indexed at 0.
+For the sake of simplicity and due to scarcity thereof, we'll assume each player stores a full list of peers, including oneself on index `0`.
 
 Before you can punch any holes in your peers' NAT, you'll need a hole-punching server **with a public IP address**. Connecting to it lets us bust a port open to the global network, and the server to relay the busted ports to each of its peers. For testing, you can use [our public instance](#public-instance). The current server implementation uses a lobby-based approach, where each lobby supports up to 16 players and is identified by a unique ASCII string.
 
@@ -34,7 +34,7 @@ Once you've figured out how the players are to connect to your hole-puncher serv
 
 ## Premade Integrations
 
-Not written yet. TODO: add a [GekkoNet](https://github.com/HeatXD/GekkoNet/tree/main) network adapter implementation.
+Not written yet. **TODO**: add a [GekkoNet](https://github.com/HeatXD/GekkoNet) network adapter implementation.
 
 ## Public Instance
 
@@ -45,31 +45,31 @@ NutPunch_SetServerAddr("95.163.233.200");
 NutPunch_Join("lobby-id");
 ```
 
-Or if you just want to try the test binary:
+Or if you just want to try the test binary after building it:
 
 ```bat
 @echo off
-.\build\nutpunchTest.exe 2 95.163.233.200
+start .\build\nutpunchTest.exe 2 95.163.233.200
 ```
 
 ## Hosting a Nutpuncher Server
 
-If you're dissatisfied with [the public instance](#public-instance), you can host your own. Make sure to have read [the usage pamphlet](#usage) before attempting this.
+If you're dissatisfied with [the public instance](#public-instance), you can host your own. Make sure to read [the usage pamphlet](#usage) before attempting this.
 
-On Windows, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/stable). Make sure port `30001` is open to the public net.
+On Windows, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/stable) and make sure **UDP port `30001`** is open to the public.
 
 On Linux, **if your system supports Wine**, you can use [our Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher), e.g. with docker-compose:
 
-```yml
+```yaml
 services:
   main:
     image: ghcr.io/schwungus/nutpuncher
     container_name: nutpuncher
-    network_mode: host # required: just forwarding port 30001 breaks nutpuncher connectivity for some reason
+    network_mode: host # kludge, required: just forwarding port 30001 breaks nutpuncher connectivity for unknown reasons
     restart: always
-    tty: true # required: the Windows binary doesn't run otherwise
+    tty: true # kludge, required: the Windows binary doesn't run at all without this
 ```
 
-## Mental notes
+## Mental Notes
 
 1. `WSAEMSGSIZE` (`10040`) error code is fixed by getting a message buffer of at least `NUTPUNCH_PAYLOAD_SIZE` bytes long. I don't know why the fuck the puncher server keeps sending these payloads.
