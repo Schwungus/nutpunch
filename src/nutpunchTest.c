@@ -15,11 +15,6 @@ struct Player {
 };
 static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
 
-static void startGame() {
-	int16_t punchedPort = NutPunch_GetPeers()[0].port;
-	NutPunch_BindSocket(punchedPort);
-}
-
 #define PAYLOAD_SIZE ((size_t)(2))
 #define SCALE (3)
 
@@ -149,7 +144,6 @@ int main(int argc, char* argv[]) {
 				players[0].x = 200 - sqr / 2;
 				players[0].y = 150 - sqr / 2;
 				players[0].color = RED;
-				startGame();
 			}
 
 			const int32_t spd = 5;

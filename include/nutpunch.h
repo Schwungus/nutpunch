@@ -79,8 +79,10 @@ void NutPunch_Cleanup();
 /// Query the punching status. Upon returning `NP_Status_Punched`, populates the peers array.
 int NutPunch_Query();
 
-/// Release the internal socket and return the punched port to start listening on.
-uint16_t NutPunch_Release();
+/// Release the internal socket from the nutpunching torment and return it. It must be used to have P2P connectivity.
+///
+/// WARNING: I repeat, you MUST use this exact socket for further networking; else the port we just punched will close.
+SOCKET NutPunch_Release();
 
 /// Use this to reset the underlying socket in case of an inexplicable error.
 void NutPunch_Reset();
@@ -130,16 +132,18 @@ static void NutPunch_NukePeersList() {
 	memset(NutPunch_List, 0, sizeof(NutPunch_List));
 }
 
+static void NutPunch_NukeRemote() {
+	NutPunch_LobbyId[0] = 0;
+	memset(&NutPunch_RemoteAddr, 0, sizeof(NutPunch_RemoteAddr));
+	memset(&NutPunch_ServerHost, 0, sizeof(NutPunch_ServerHost));
+	memset(&NutPunch_ServerPort, 0, sizeof(NutPunch_ServerPort));
+}
+
 static void NutPunch_NukeSocket() {
 	if (NutPunch_LocalSocket != INVALID_SOCKET) {
 		closesocket(NutPunch_LocalSocket);
 		NutPunch_LocalSocket = INVALID_SOCKET;
 	}
-
-	NutPunch_LobbyId[0] = 0;
-	memset(&NutPunch_RemoteAddr, 0, sizeof(NutPunch_RemoteAddr));
-	memset(&NutPunch_ServerHost, 0, sizeof(NutPunch_ServerHost));
-	memset(&NutPunch_ServerPort, 0, sizeof(NutPunch_ServerPort));
 }
 
 static void NutPunch_LazyInit() {
@@ -181,14 +185,12 @@ void NutPunch_SetServerAddr(const char* hostname) {
 
 void NutPunch_Reset() {
 	NutPunch_NukePeersList();
+	NutPunch_NukeRemote();
 	NutPunch_NukeSocket();
 }
 
 static bool NutPunch_BindSocket(uint16_t port) {
-	if (NutPunch_LocalSocket != INVALID_SOCKET) {
-		closesocket(NutPunch_LocalSocket);
-		NutPunch_LocalSocket = INVALID_SOCKET;
-	}
+	NutPunch_NukeSocket();
 
 	NutPunch_LocalSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (NutPunch_LocalSocket == INVALID_SOCKET) {
@@ -197,12 +199,6 @@ static bool NutPunch_BindSocket(uint16_t port) {
 	}
 
 	u_long argp = 1;
-	if (setsockopt(NutPunch_LocalSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&argp, sizeof(argp))) {
-		NutPunch_LastError = "Failed to set socket reuseaddr option";
-		goto fail;
-	}
-
-	argp = 1;
 	if (SOCKET_ERROR == ioctlsocket(NutPunch_LocalSocket, FIONBIO, &argp)) {
 		NutPunch_LastError = "Failed to set socket to non-blocking mode";
 		goto fail;
@@ -238,10 +234,7 @@ static bool NutPunch_MayAccept() {
 		NutPunch_LastErrorCode = WSAGetLastError();
 		NutPunch_LastError = "Socket poll failed";
 		NutPunch_PrintError();
-
-		closesocket(NutPunch_LocalSocket);
-		NutPunch_LocalSocket = INVALID_SOCKET;
-
+		NutPunch_NukeSocket();
 		return false;
 	}
 
@@ -344,21 +337,19 @@ int NutPunch_Query() {
 	NutPunch_LastStatus = NutPunch_QueryImpl();
 	if (NutPunch_LastStatus == NP_Status_Error) {
 		NutPunch_PrintError();
+		NutPunch_NukeRemote();
 		NutPunch_NukeSocket();
 	}
 
 	return NutPunch_LastStatus;
 }
 
-uint16_t NutPunch_Release() {
-	if (NutPunch_LastStatus == NP_Status_Error)
-		return 0;
-	else {
-		NutPunch_NukeSocket();
-		NutPunch_LastStatus = NP_Status_Idle;
-	}
-
-	return NutPunch_GetPeerCount() ? NutPunch_List->port : 0;
+SOCKET NutPunch_Release() {
+	if (NutPunch_LastStatus == NP_Status_Error || !NutPunch_GetPeerCount())
+		return INVALID_SOCKET;
+	NutPunch_NukeRemote();
+	NutPunch_LastStatus = NP_Status_Idle;
+	return NutPunch_LocalSocket;
 }
 
 struct NutPunch* NutPunch_GetPeers() {
