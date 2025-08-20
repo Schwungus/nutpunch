@@ -106,9 +106,9 @@ int NutPunch_GetPeerCount();
 
 #define NutPunch_Log(...)                                                                                              \
 	do {                                                                                                           \
-		fprintf(stderr, __VA_ARGS__);                                                                          \
-		fprintf(stderr, "\n");                                                                                 \
-		fflush(stderr);                                                                                        \
+		fprintf(stdout, __VA_ARGS__);                                                                          \
+		fprintf(stdout, "\n");                                                                                 \
+		fflush(stdout);                                                                                        \
 	} while (0)
 
 #ifdef NUTPUNCH_IMPLEMENTATION
