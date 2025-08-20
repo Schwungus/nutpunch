@@ -104,6 +104,9 @@ struct NutPunch* NutPunch_GetPeers();
 /// Returns 0 in case of an error.
 int NutPunch_GetPeerCount();
 
+/// Return the index of our peer.
+int NutPunch_LocalPeer();
+
 #define NutPunch_Log(...)                                                                                              \
 	do {                                                                                                           \
 		fprintf(stdout, __VA_ARGS__);                                                                          \
@@ -358,6 +361,13 @@ struct NutPunch* NutPunch_GetPeers() {
 
 int NutPunch_GetPeerCount() {
 	return NutPunch_LastStatus == NP_Status_Error ? 0 : NutPunch_Count;
+}
+
+int NutPunch_LocalPeer() {
+	for (int i = 0; i < NutPunch_GetPeerCount(); i++)
+		if (0xFFFFFFFF == *(uint32_t*)&NutPunch_GetPeers()[i].addr)
+			return i;
+	return 0;
 }
 
 #endif

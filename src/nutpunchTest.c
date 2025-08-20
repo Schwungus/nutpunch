@@ -17,7 +17,7 @@ static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
 
 static void updateByAddr(struct sockaddr addr, const uint8_t* data) {
 	struct sockaddr_in realAddr = *(struct sockaddr_in*)&addr;
-	for (int playerIdx = 1; playerIdx < NutPunch_GetPeerCount(); playerIdx++) {
+	for (int playerIdx = 0; playerIdx < NutPunch_GetPeerCount(); playerIdx++) {
 		const struct NutPunch* peer = &NutPunch_GetPeers()[playerIdx];
 		bool sameHost = !memcmp(&realAddr.sin_addr, peer->addr, 4);
 		bool samePort = realAddr.sin_port == htons(peer->port);
@@ -58,8 +58,8 @@ static void sendReceiveUpdates() {
 	}
 
 	// Process existing peers:
-	for (int i = 1; i < NutPunch_GetPeerCount(); i++) {
-		if (!NutPunch_GetPeers()[i].port)
+	for (int i = 0; i < NutPunch_GetPeerCount(); i++) {
+		if (!NutPunch_GetPeers()[i].port || NutPunch_LocalPeer() == i)
 			continue;
 
 		struct sockaddr_in baseAddr;
@@ -85,11 +85,11 @@ static void sendReceiveUpdates() {
 	}
 
 	// Send each peer your own position:
-	data[0] = (uint8_t)(players[0].x / SCALE);
-	data[1] = (uint8_t)(players[0].y / SCALE);
+	data[0] = (uint8_t)(players[NutPunch_LocalPeer()].x / SCALE);
+	data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y / SCALE);
 
-	for (int i = 1; i < NutPunch_GetPeerCount(); i++) {
-		if (!NutPunch_GetPeers()[i].port)
+	for (int i = 0; i < NutPunch_GetPeerCount(); i++) {
+		if (!NutPunch_GetPeers()[i].port || NutPunch_LocalPeer() == i)
 			continue;
 
 		struct sockaddr_in baseAddr;
@@ -135,23 +135,23 @@ int main(int argc, char* argv[]) {
 
 		if (NutPunch_GetPeerCount() >= playerCount) {
 			if (status == NP_Status_Punched) {
-				NutPunch_Release();
+				NutPunch_LocalSocket = NutPunch_Release();
 
 				memset(players, 0, sizeof(players));
-				players[0].x = 200 - sqr / 2;
-				players[0].y = 150 - sqr / 2;
-				players[0].color = RED;
+				players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
+				players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
+				players[NutPunch_LocalPeer()].color = RED;
 			}
 
 			const int32_t spd = 5;
 			if (IsKeyDown(KEY_A))
-				players[0].x -= spd;
+				players[NutPunch_LocalPeer()].x -= spd;
 			if (IsKeyDown(KEY_D))
-				players[0].x += spd;
+				players[NutPunch_LocalPeer()].x += spd;
 			if (IsKeyDown(KEY_W))
-				players[0].y -= spd;
+				players[NutPunch_LocalPeer()].y -= spd;
 			if (IsKeyDown(KEY_S))
-				players[0].y += spd;
+				players[NutPunch_LocalPeer()].y += spd;
 
 			sendReceiveUpdates();
 			for (int i = 0; i < NutPunch_GetPeerCount() + 1; i++)
@@ -173,7 +173,7 @@ int main(int argc, char* argv[]) {
 
 		if (NutPunch_GetPeerCount()) {
 			static char buf[64] = {0};
-			snprintf(buf, sizeof(buf), "port: %d", NutPunch_GetPeers()[0].port);
+			snprintf(buf, sizeof(buf), "port: %d", NutPunch_GetPeers()[NutPunch_LocalPeer()].port);
 			DrawText(buf, 200, 5, fs, BLACK);
 		}
 

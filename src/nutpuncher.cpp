@@ -35,25 +35,6 @@ private:
 	static constexpr const char zeroAddr[sizeof(addr)] = {0};
 };
 
-struct Payload {
-	uint8_t buf[NUTPUNCH_PAYLOAD_SIZE] = {0}, *ptr = buf;
-
-	operator const char*() const {
-		return reinterpret_cast<const char*>(buf);
-	}
-
-	void write(const Player& player) {
-		if (player.isDead())
-			ptr += 6;
-		else {
-			std::memcpy(ptr, &player.addr.sin_addr, 4);
-			ptr += 4;
-			std::memcpy(ptr, &player.addr.sin_port, 2);
-			ptr += 2;
-		}
-	}
-};
-
 static const char* fmtLobbyId(const char* id) {
 	static char buf[NUTPUNCH_ID_MAX + 1] = {0};
 
@@ -150,15 +131,27 @@ struct Lobby {
 			if (players[i].isDead())
 				continue;
 
-			Payload pl;
-			pl.write(players[i]);
-			for (int j = 0; j < NUTPUNCH_MAX_PLAYERS; j++)
-				if (i != j)
-					pl.write(players[j]);
-			const char* buf = pl;
+			static uint8_t buf[NUTPUNCH_PAYLOAD_SIZE] = {0};
+			uint8_t* ptr = buf;
+
+			for (int j = 0; j < NUTPUNCH_MAX_PLAYERS; j++) {
+				if (players[j].isDead()) {
+					std::memset(ptr, 0, 6);
+					ptr += 6;
+				} else {
+					if (i == j)
+						std::memset(ptr, 0xFF, 4);
+					else
+						std::memcpy(ptr, &players[j].addr.sin_addr, 4);
+					ptr += 4;
+
+					std::memcpy(ptr, &players[j].addr.sin_port, 2);
+					ptr += 2;
+				}
+			}
 
 			struct sockaddr addr = *reinterpret_cast<sockaddr*>(&players[i].addr);
-			int sent = sendto(sock, buf, NUTPUNCH_PAYLOAD_SIZE, 0, &addr, sizeof(addr));
+			int sent = sendto(sock, (char*)buf, NUTPUNCH_PAYLOAD_SIZE, 0, &addr, sizeof(addr));
 			if (sent == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
 				players[i].countdown = 0;
 		}

@@ -9,8 +9,6 @@ A UDP hole-punching library for the REAL men. Header-only. Brutal. Uses just pla
 
 This library implies P2P networking, where **each peer communicates with all others**. It's a complex and, in the wrong hands, a counterproductive model. If you don't feel like reading the immediately following blanket of words and scribbles, you may skip to [using premade integrations](#premade-integrations).
 
-For the sake of simplicity and due to scarcity thereof, we'll assume each player stores a full list of peers, including oneself on index `0`.
-
 Before you can punch any holes in your peers' NAT, you'll need a hole-punching server **with a public IP address**. Connecting to it lets us bust a port open to the global network, and the server to relay the busted ports to each of its peers. For testing, you can use [our public instance](#public-instance). The current server implementation uses a lobby-based approach, where each lobby supports up to 16 players and is identified by a unique ASCII string.
 
 In order to run your own hole-puncher server, you'll need to get the server binary from our [reference implementation releases](https://github.com/Schwungus/nutpunch/releases/tag/stable). Use [the provided Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher) to host nutpunch server on Linux, since winsock is a hard requirement. If you're in a pinch and don't have a public IP address, and your players reside on a LAN/virtual network such as [Radmin VPN](https://www.radmin-vpn.com/), you can actually run the server locally and use your LAN IP address to connect to it.
@@ -27,7 +25,7 @@ Once you've figured out how the players are to connect to your hole-puncher serv
    1. You need to synchronize a `NutPunch_Release()` call for all peers involved, once the lobby is full. The simplest way is to do that when the peer count reaches a hardcoded amount, by checking against `NutPunch_GetPeerCount()`.
    2. Use the result of the `NutPunch_Release()` call as the Windows socket for P2P networking. Since it's the only one with a hole punched through it, binding to another socket won't let you have P2P connectivity. I repeat, you **must use the returned socket for P2P**.
 4. Run the game logic.
-5. Keep in sync with each peer: iterate over `NutPunch_GetPeers()`, starting from index `1` and until `NutPunch_GetPeerCount()`, and use their address/port combo to send/receive datagram updates. In terms of winsock, it means calling `recvfrom()`/`sendto()` and passing the socket you got from `NutPunch_Release()`, as well as the remote peer's `sockaddr` struct. Refer to [the example code](src/nutpunchTest.c) for more info on how to construct it from a `NutPunch_GetPeers()` entry.
+5. Keep in sync with each peer: iterate over `NutPunch_GetPeers()` for `NutPunch_GetPeerCount()` entries, and use their address/port combo to send/receive datagram updates. In terms of winsock, it means calling `recvfrom()`/`sendto()` and passing the socket you got from `NutPunch_Release()`, as well as the remote peer's `sockaddr` struct. Refer to [the example code](src/nutpunchTest.c) for more info on how to construct it from a `NutPunch_GetPeers()` entry. Use `NutPunch_LocalPeer()` to get the local peer's index in the array as to avoid sending to and receiving from a bogus IP address.
 
 [^1]: <https://learn.microsoft.com/en-us/windows/win32/winsock/using-winsock>
 [^2]: <https://pastebin.com/JkGnQyPX>
