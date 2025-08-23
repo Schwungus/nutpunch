@@ -4,6 +4,7 @@
     "C_Cpp.intelliSenseEngine": "disabled",
     "clangd.enable": true,
     "clangd.enableCodeCompletion": true,
+    "clangd.arguments": ["--header-insertion=never"],
     "cmake.generator": "Ninja",
     "cmake.exportCompileCommandsFile": true,
     "files.exclude": {
