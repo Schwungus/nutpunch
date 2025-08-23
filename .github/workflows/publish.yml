@@ -18,6 +18,7 @@ jobs:
   docker:
     name: Build Docker image
     runs-on: ubuntu-latest
+    if: github.ref_name == 'stable'
     needs: [binary]
     steps:
       - name: Checkout repository
@@ -48,7 +49,6 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
       - name: Deploy with Jenkins
-        if: github.ref_name == 'stable'
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
