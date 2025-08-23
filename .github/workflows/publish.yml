@@ -47,21 +47,21 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+      - name: Deploy with Jenkins
+        if: github.ref_name == 'stable'
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git tag -f deploy && git push -f --tags
   binary:
-    name: Upload binaries for ${{ matrix.config.fancy-name }}
-    runs-on: ${{ matrix.config.os }}
+    name: Upload binaries for ${{ matrix.config.os-name }}
+    runs-on: ${{ matrix.config.runner-os }}
     strategy:
       fail-fast: false
       matrix:
         config:
-          # Requires winsock for now...
-          #- name: release-linux
-          #  fancy-name: Linux
-          #  os: ubuntu-latest
-          #  bin-ext: ""
-          - name: stable-windows
-            fancy-name: Windows
-            os: windows-latest
+          - os-name: Windows
+            runner-os: windows-latest
             bin-ext: .exe
     steps:
       - name: Checkout
@@ -72,9 +72,9 @@ jobs:
           cmake --build build —-config Release --target nutpuncher
       - name: Rename binary artifact
         run: |
-          cp build/nutpuncher${{ matrix.config.bin-ext }} nutpuncher-${{ matrix.config.name }}${{ matrix.config.bin-ext }}
+          cp build/nutpuncher${{ matrix.config.bin-ext }} nutpuncher-${{ github.ref_name }}${{ matrix.config.bin-ext }}
       - name: Release binary
         uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
         with:
-          files: nutpuncher-${{ matrix.config.name }}${{ matrix.config.bin-ext }}
+          files: nutpuncher-${{ github.ref_name }}${{ matrix.config.bin-ext }}
