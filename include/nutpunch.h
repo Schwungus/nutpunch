@@ -16,13 +16,14 @@ extern "C" {
 
 /// Maximum amount of players in a lobby. Not intended to be customizable.
 #define NUTPUNCH_MAX_PLAYERS (16)
-#define NUTPUNCH_PAYLOAD_SIZE (NUTPUNCH_MAX_PLAYERS * 6)
+#define NUTPUNCH_RESPONSE_SIZE (NUTPUNCH_MAX_PLAYERS * 6 + 1)
 
 /// The UDP port used by the punching mediator server. Not customizable, sorry.
 #define NUTPUNCH_SERVER_PORT (30001)
 
 /// The maximum length of a lobby identifier excluding the null terminator. Not customizable.
 #define NUTPUNCH_ID_MAX (64)
+#define NUTPUNCH_REQUEST_SIZE (NUTPUNCH_ID_MAX + 1)
 
 #ifdef NUTPUNCH_WINDOSE
 
@@ -54,10 +55,11 @@ extern "C" {
 #include <string.h>
 
 enum {
+	NP_Status_Error,
 	NP_Status_Idle,
 	NP_Status_InProgress,
 	NP_Status_Punched,
-	NP_Status_Error,
+	NP_Status_Started,
 };
 
 struct NutPunch {
@@ -76,13 +78,22 @@ bool NutPunch_Join(const char*);
 /// Run this at the end of your program to do semi-important cleanup.
 void NutPunch_Cleanup();
 
-/// Query the punching status. Upon returning `NP_Status_Punched`, populates the peers array.
+/// Request the lobby to start the game. Only works if you're the lobby's master, but it's safe to call either way.
+void NutPunch_Start();
+
+/// Query the punching status.
+///
+/// Status `NP_Status_Punched` populates the peers array.
+///
+/// Status `NP_Status_Started` means the master peer has requested the game to start, and you're OK to call
+/// `NutPunch_Done()`.
 int NutPunch_Query();
 
-/// Release the internal socket from the nutpunching torment and return it. It must be used to have P2P connectivity.
+/// Return the nutpunched socket for P2P networking. Will return `INVALID_SOCKET` unless `NutPunch_Query()` gave a
+/// `NP_Status_Started` response.
 ///
 /// WARNING: I repeat, you MUST use this exact socket for further networking; else the port we just punched will close.
-SOCKET NutPunch_Release();
+SOCKET NutPunch_Done();
 
 /// Use this to reset the underlying socket in case of an inexplicable error.
 void NutPunch_Reset();
@@ -90,13 +101,9 @@ void NutPunch_Reset();
 /// Get the human-readable description of the latest `NutPunch_Query()` error.
 const char* NutPunch_GetLastError();
 
-/// Get the array of peers discovered by `NutPunch_Join()`. Updated every `NutPunch_Query()` call.
+/// Get the array of peers discovered after `NutPunch_Join()`. Updated every `NutPunch_Query()` call.
 ///
-/// NOTE: Remote peers you can connect to start at index 1. The initial (index 0) element is always the remote
-/// representation of the local peer.
-///
-/// TIP: 0th peer's port is the same as the one you would get from `NutPunch_Release()`, meaning you don't need to save
-/// the result of that call for future use.
+/// Use `NutPunch_LocalPeer()` to get your index in the array.
 struct NutPunch* NutPunch_GetPeers();
 
 /// Count the peers discovered in the lobby after `NutPunch_Join()`. Updated every `NutPunch_Query()` call.
@@ -114,12 +121,18 @@ int NutPunch_LocalPeer();
 		fflush(stdout);                                                                                        \
 	} while (0)
 
+#ifdef NUTPUNCH_WINDOSE
+#define NutPunch_SleepMs(ms) (Sleep((ms)))
+#else
+#error Bad luck.
+#endif
+
 #ifdef NUTPUNCH_IMPLEMENTATION
 
 static const char* NutPunch_LastError = NULL;
 static int NutPunch_LastErrorCode = 0;
 
-static bool NutPunch_HadInit = false;
+static bool NutPunch_HadInit = false, NutPunch_Starting = false;
 static int NutPunch_LastStatus = NP_Status_Idle;
 
 static char NutPunch_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
@@ -133,6 +146,7 @@ static char NutPunch_ServerHost[128] = {0}, NutPunch_ServerPort[32] = {0};
 static void NutPunch_NukePeersList() {
 	NutPunch_Count = 0;
 	memset(NutPunch_List, 0, sizeof(NutPunch_List));
+	NutPunch_Starting = false;
 }
 
 static void NutPunch_NukeRemote() {
@@ -140,9 +154,11 @@ static void NutPunch_NukeRemote() {
 	memset(&NutPunch_RemoteAddr, 0, sizeof(NutPunch_RemoteAddr));
 	memset(&NutPunch_ServerHost, 0, sizeof(NutPunch_ServerHost));
 	memset(&NutPunch_ServerPort, 0, sizeof(NutPunch_ServerPort));
+	NutPunch_Starting = false;
 }
 
 static void NutPunch_NukeSocket() {
+	NutPunch_Starting = false;
 	if (NutPunch_LocalSocket != INVALID_SOCKET) {
 		closesocket(NutPunch_LocalSocket);
 		NutPunch_LocalSocket = INVALID_SOCKET;
@@ -280,9 +296,16 @@ const char* NutPunch_GetLastError() {
 static int NutPunch_QueryImpl() {
 	if (!NutPunch_LobbyId[0] || NutPunch_LocalSocket == INVALID_SOCKET)
 		return NP_Status_Idle;
-	if (NutPunch_LastStatus == NP_Status_InProgress
+
+	static char request[NUTPUNCH_REQUEST_SIZE] = {0};
+	memset(request, 0, sizeof(request));
+	memcpy(request, NutPunch_LobbyId, NUTPUNCH_ID_MAX);
+	request[NUTPUNCH_ID_MAX] = NutPunch_Starting;
+
+	if ((NutPunch_LastStatus == NP_Status_InProgress || NutPunch_LastStatus == NP_Status_Punched
+		    || NutPunch_LastStatus == NP_Status_Started)
 		&& SOCKET_ERROR
-			   == sendto(NutPunch_LocalSocket, NutPunch_LobbyId, NUTPUNCH_ID_MAX, 0, &NutPunch_RemoteAddr,
+			   == sendto(NutPunch_LocalSocket, request, sizeof(request), 0, &NutPunch_RemoteAddr,
 				   sizeof(NutPunch_RemoteAddr))
 		&& WSAGetLastError() != WSAEWOULDBLOCK)
 	{
@@ -290,22 +313,22 @@ static int NutPunch_QueryImpl() {
 		goto sockFail;
 	}
 
-	static char buf[NUTPUNCH_PAYLOAD_SIZE] = {0};
-	memset(buf, 0, sizeof(buf));
+	static char response[NUTPUNCH_RESPONSE_SIZE] = {0};
+	memset(response, 0, sizeof(response));
 
 	struct sockaddr addr = NutPunch_RemoteAddr;
 	int addrSize = sizeof(NutPunch_RemoteAddr);
-	int nRecv = recvfrom(NutPunch_LocalSocket, buf, sizeof(buf), 0, &addr, &addrSize);
+	int nRecv = recvfrom(NutPunch_LocalSocket, response, sizeof(response), 0, &addr, &addrSize);
 
 	if (SOCKET_ERROR == nRecv && WSAGetLastError() != WSAEWOULDBLOCK) {
 		NutPunch_LastError = "Failed to receive from holepunch server";
 		goto sockFail;
 	}
-	if (nRecv != NUTPUNCH_PAYLOAD_SIZE) // fucking skip invalid/partitioned packets
+	if (nRecv != NUTPUNCH_RESPONSE_SIZE) // fucking skip invalid/partitioned packets
 		return NP_Status_InProgress;
 
 	NutPunch_Count = 0;
-	uint8_t* ptr = (uint8_t*)buf;
+	uint8_t* ptr = (uint8_t*)response;
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		memcpy(NutPunch_List[i].addr, ptr, 4);
@@ -318,7 +341,7 @@ static int NutPunch_QueryImpl() {
 		NutPunch_Count += NutPunch_List[i].port != 0;
 	}
 
-	return NP_Status_Punched;
+	return *ptr ? NP_Status_Started : NP_Status_Punched;
 
 sockFail:
 	NutPunch_LastErrorCode = WSAGetLastError();
@@ -347,8 +370,12 @@ int NutPunch_Query() {
 	return NutPunch_LastStatus;
 }
 
-SOCKET NutPunch_Release() {
-	if (NutPunch_LastStatus == NP_Status_Error || !NutPunch_GetPeerCount())
+void NutPunch_Start() {
+	NutPunch_Starting = true;
+}
+
+SOCKET NutPunch_Done() {
+	if (NutPunch_LastStatus != NP_Status_Started || !NutPunch_GetPeerCount())
 		return INVALID_SOCKET;
 	NutPunch_NukeRemote();
 	NutPunch_LastStatus = NP_Status_Idle;

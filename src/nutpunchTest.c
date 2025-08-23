@@ -33,7 +33,7 @@ static void updateByAddr(struct sockaddr addr, const uint8_t* data) {
 
 static void sendReceiveUpdates() {
 	// Refer to mental notes for why it's this sized.
-	static char rawData[NUTPUNCH_PAYLOAD_SIZE] = {0};
+	static char rawData[NUTPUNCH_RESPONSE_SIZE] = {0};
 	static uint8_t* data = (uint8_t*)rawData;
 
 	// Accept new connections:
@@ -106,16 +106,14 @@ static void sendReceiveUpdates() {
 	}
 }
 
-static int playerCount = 0;
-
 int main(int argc, char* argv[]) {
 	if (argc != 3) {
 		printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
 		return EXIT_FAILURE;
 	}
 
-	playerCount = strtol(argv[1], NULL, 10);
-	if (!playerCount) {
+	int expectingPlayers = strtol(argv[1], NULL, 10);
+	if (!expectingPlayers) {
 		printf("The fuck do you mean?\n");
 		return EXIT_FAILURE;
 	}
@@ -126,37 +124,35 @@ int main(int argc, char* argv[]) {
 	SetExitKey(KEY_Q);
 	SetTargetFPS(60);
 
-	const int fs = 20;
+	const int fs = 20, sqr = 30;
 	while (!WindowShouldClose()) {
-		const int status = NutPunch_Query(), sqr = 30;
-
 		BeginDrawing();
 		ClearBackground(RAYWHITE);
 
-		if (NutPunch_GetPeerCount() >= playerCount) {
-			if (status == NP_Status_Punched) {
-				NutPunch_LocalSocket = NutPunch_Release();
+		if (NutPunch_Query() == NP_Status_Started) {
+			NutPunch_LocalSocket = NutPunch_Done();
 
-				memset(players, 0, sizeof(players));
-				players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
-				players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
-				players[NutPunch_LocalPeer()].color = RED;
-			}
-
-			const int32_t spd = 5;
-			if (IsKeyDown(KEY_A))
-				players[NutPunch_LocalPeer()].x -= spd;
-			if (IsKeyDown(KEY_D))
-				players[NutPunch_LocalPeer()].x += spd;
-			if (IsKeyDown(KEY_W))
-				players[NutPunch_LocalPeer()].y -= spd;
-			if (IsKeyDown(KEY_S))
-				players[NutPunch_LocalPeer()].y += spd;
-
-			sendReceiveUpdates();
-			for (int i = 0; i < NutPunch_GetPeerCount() + 1; i++)
-				DrawRectangle(players[i].x, players[i].y, sqr, sqr, players[i].color);
+			memset(players, 0, sizeof(players));
+			players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
+			players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
+			players[NutPunch_LocalPeer()].color = RED;
 		}
+		if (NutPunch_GetPeerCount() >= expectingPlayers)
+			NutPunch_Start();
+
+		const int32_t spd = 5;
+		if (IsKeyDown(KEY_A))
+			players[NutPunch_LocalPeer()].x -= spd;
+		if (IsKeyDown(KEY_D))
+			players[NutPunch_LocalPeer()].x += spd;
+		if (IsKeyDown(KEY_W))
+			players[NutPunch_LocalPeer()].y -= spd;
+		if (IsKeyDown(KEY_S))
+			players[NutPunch_LocalPeer()].y += spd;
+
+		sendReceiveUpdates();
+		for (int i = 0; i < NutPunch_GetPeerCount() + 1; i++)
+			DrawRectangle(players[i].x, players[i].y, sqr, sqr, players[i].color);
 
 		if (NutPunch_LocalSocket == INVALID_SOCKET) {
 			DrawText("DISCONNECTED", 5, 5, fs, RED);

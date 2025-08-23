@@ -20,10 +20,11 @@ Once you've figured out how the players are to connect to your hole-puncher serv
    2. Call `NutPunch_Join("lobby-id")` immediately after `NutPunch_SetServerAddr()` to initiate the joining process.
 2. Listen for hole-puncher server responses:
    1. Call `NutPunch_Query()` each frame, regardless of whether you're still joining or already playing with the boys.
-   2. Check your status by matching the returned value against `NP_Status_*` constants. `NP_Status_Error` is the only one you should handle explicitly.
+   2. Check your status by matching the returned value against `NP_Status_*` constants. `NP_Status_Started` is the only one you need handle explicitly. `NP_Status_Error` should also be handled, optionally.
 3. If all went well, start your match:
-   1. You need to synchronize a `NutPunch_Release()` call for all peers involved, once the lobby is full. The simplest way is to do that when the peer count reaches a hardcoded amount, by checking against `NutPunch_GetPeerCount()`.
-   2. Use the result of the `NutPunch_Release()` call as the Windows socket for P2P networking. Since it's the only one with a hole punched through it, binding to another socket won't let you have P2P connectivity. I repeat, you **must use the returned socket for P2P**.
+   1. Call `NutPunch_Start()` e.g. once your lobby reaches a specific player count. The function will do something only if you're the lobby's master, and it is safe to call otherwise.
+   2. Wait for `NutPunch_Query()` to return `NP_Status_Started`. Now you can call `NutPunch_Done()`.
+   3. Use the result of the `NutPunch_Done()` call as the Windows socket for P2P networking. Since it's the only one with a hole punched through it, binding to another socket won't let you have P2P connectivity. I repeat, you **must use the returned socket for P2P**.
 4. Run the game logic.
 5. Keep in sync with each peer: iterate over `NutPunch_GetPeers()` for `NutPunch_GetPeerCount()` entries, and use their address/port combo to send/receive datagram updates. In terms of winsock, it means calling `recvfrom()`/`sendto()` and passing the socket you got from `NutPunch_Release()`, as well as the remote peer's `sockaddr` struct. Refer to [the example code](src/nutpunchTest.c) for more info on how to construct it from a `NutPunch_GetPeers()` entry. Use `NutPunch_LocalPeer()` to get the local peer's index in the array as to avoid sending to and receiving from a bogus IP address.
 

@@ -6,15 +6,9 @@
 
 #include "nutpunch.h"
 
-#ifdef NUTPUNCH_WINDOSE
-#define sleepMs(ms) (Sleep((ms)))
-#else
-#error Bad luck.
-#endif
-
 struct Lobby;
 
-constexpr const int beatsPerSecond = 30, keepAliveSeconds = 3, keepAliveBeats = keepAliveSeconds * beatsPerSecond,
+constexpr const int beatsPerSecond = 60, keepAliveSeconds = 3, keepAliveBeats = keepAliveSeconds * beatsPerSecond,
 		    maxLobbies = 512;
 
 static SOCKET sock = INVALID_SOCKET;
@@ -22,10 +16,10 @@ static std::map<std::string, Lobby> lobbies;
 
 struct Player {
 	sockaddr_in addr;
-	int countdown;
+	std::uint32_t countdown : 30 = 0, master : 1 = 0, starting : 1 = 0;
 
 	Player(const sockaddr_in& addr) : addr(addr), countdown(keepAliveBeats) {}
-	Player() : addr(*reinterpret_cast<const sockaddr_in*>(&zeroAddr)), countdown(0) {}
+	Player() : addr(*reinterpret_cast<const sockaddr_in*>(&zeroAddr)) {}
 
 	bool isDead() const {
 		return !countdown || !*reinterpret_cast<const char*>(&addr);
@@ -71,67 +65,67 @@ struct Lobby {
 		return fmtLobbyId(id);
 	}
 
-	void beat(const sockaddr_in& addr) {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (players[i].isDead())
-				continue;
-			if (!std::memcmp(&players[i].addr, &addr, sizeof(addr))) {
-				players[i].countdown = keepAliveBeats;
-				return;
-			}
-		}
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (players[i].isDead()) {
-				players[i].addr = addr;
-				players[i].countdown = keepAliveBeats;
-				NutPunch_Log("Player %d joined lobby '%s'", i + 1, fmtId());
-				return;
-			}
-		}
-		NutPunch_Log("Lobby '%s' is full", fmtId());
+	int masterIdx() const {
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+			if (players[i].master)
+				return i;
+		return -1;
 	}
 
 	void update() {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (players[i].countdown > 0) {
-				players[i].countdown -= 1;
-				if (players[i].isDead())
+			auto& plr = players[i];
+			if (plr.countdown > 0) {
+				plr.countdown -= 1;
+				if (plr.isDead())
 					NutPunch_Log("Player %d timed out in lobby '%s'", i + 1, fmtId());
 			}
-			if (players[i].isDead())
+			if (plr.isDead()) {
+				plr.master = 0;
+				plr.starting = 0;
 				continue;
+			}
+			if (masterIdx() < 0)
+				plr.master = 1;
 
-			sockaddr clientAddr = *reinterpret_cast<sockaddr*>(&players[i].addr);
+			sockaddr clientAddr = *reinterpret_cast<sockaddr*>(&plr.addr);
 			int addrLen = sizeof(clientAddr);
 
-			char recvId[NUTPUNCH_ID_MAX + 1] = {0};
-			int64_t nRecv = recvfrom(sock, recvId, NUTPUNCH_ID_MAX, 0, &clientAddr, &addrLen);
+			char request[NUTPUNCH_REQUEST_SIZE] = {0};
+			int64_t nRecv = recvfrom(sock, request, sizeof(request), 0, &clientAddr, &addrLen);
 
 			if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK
 				&& WSAGetLastError() != WSAECONNRESET)
 			{
 				NutPunch_Log("Peer %d disconnect (code %d)", i + 1, WSAGetLastError());
-				players[i].countdown = 0;
+				plr.countdown = 0;
 			}
 			if (!nRecv) {
 				NutPunch_Log("Peer %d gracefully disconnected", i + 1);
-				players[i].countdown = 0;
+				plr.countdown = 0;
 			}
-			if (nRecv != NUTPUNCH_ID_MAX)
+			if (nRecv != sizeof(request))
 				continue;
-			if (std::memcmp(id, recvId, NUTPUNCH_ID_MAX)) {
+			if (std::memcmp(id, request, NUTPUNCH_ID_MAX)) {
 				NutPunch_Log("Peer %d changed its lobby ID, which is currently unsupported", i + 1);
-				players[i].countdown = 0;
+				plr.countdown = 0;
 				continue;
 			}
 
-			players[i].countdown = keepAliveBeats;
+			if (plr.master)
+				plr.starting = bool(request[NUTPUNCH_ID_MAX]);
+			plr.countdown = keepAliveBeats;
 		}
+
+		int mastIdx = masterIdx();
+		bool started = mastIdx >= 0 && players[mastIdx].starting;
+
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (players[i].isDead())
+			auto& plr = players[i];
+			if (plr.isDead())
 				continue;
 
-			static uint8_t buf[NUTPUNCH_PAYLOAD_SIZE] = {0};
+			static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {0};
 			uint8_t* ptr = buf;
 
 			for (int j = 0; j < NUTPUNCH_MAX_PLAYERS; j++) {
@@ -149,11 +143,12 @@ struct Lobby {
 					ptr += 2;
 				}
 			}
+			*ptr = started;
 
-			struct sockaddr addr = *reinterpret_cast<sockaddr*>(&players[i].addr);
-			int sent = sendto(sock, (char*)buf, NUTPUNCH_PAYLOAD_SIZE, 0, &addr, sizeof(addr));
+			struct sockaddr addr = *reinterpret_cast<sockaddr*>(&plr.addr);
+			int sent = sendto(sock, (char*)buf, sizeof(buf), 0, &addr, sizeof(addr));
 			if (sent == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
-				players[i].countdown = 0;
+				plr.countdown = 0;
 		}
 	}
 
@@ -201,15 +196,18 @@ static int acceptConnections() {
 	if (!res)
 		return 0;
 
-	char id[NUTPUNCH_ID_MAX + 1] = {0};
+	char request[NUTPUNCH_REQUEST_SIZE] = {0};
 	sockaddr_in addr = {0};
 	int addrLen = sizeof(addr);
 
-	int nRecv = recvfrom(sock, id, NUTPUNCH_ID_MAX, 0, reinterpret_cast<sockaddr*>(&addr), &addrLen);
+	int nRecv = recvfrom(sock, request, sizeof(request), 0, reinterpret_cast<sockaddr*>(&addr), &addrLen);
 	if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
 		return WSAGetLastError();
-	if (nRecv != NUTPUNCH_ID_MAX) // skip weirdass packets
+	if (nRecv != sizeof(request)) // skip weirdass packets
 		return 0;
+
+	char id[NUTPUNCH_ID_MAX + 1] = {0};
+	std::memcpy(id, request, NUTPUNCH_ID_MAX);
 
 	if (!lobbies.count(id)) {
 		if (lobbies.size() > maxLobbies) {
@@ -221,7 +219,27 @@ static int acceptConnections() {
 		}
 	}
 
-	lobbies[id].beat(addr);
+	auto& lobby = lobbies[id];
+	auto& players = lobby.players;
+
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+		if (players[i].isDead())
+			continue;
+		if (!std::memcmp(&players[i].addr, &addr, sizeof(addr))) {
+			players[i].countdown = keepAliveBeats;
+			return 0;
+		}
+	}
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+		if (players[i].isDead()) {
+			players[i].addr = addr;
+			players[i].countdown = keepAliveBeats;
+			NutPunch_Log("Player %d joined lobby '%s'", i + 1, lobby.fmtId());
+			return 0;
+		}
+	}
+
+	NutPunch_Log("Lobby '%s' is full!", lobby.fmtId());
 	return 0;
 }
 
@@ -274,7 +292,7 @@ int main(int, char**) {
 		start = end;
 
 		if (delta < minDelta)
-			sleepMs(minDelta - delta);
+			NutPunch_SleepMs(minDelta - delta);
 	}
 
 	return EXIT_SUCCESS;
