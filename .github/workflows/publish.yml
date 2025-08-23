@@ -69,7 +69,7 @@ jobs:
       - name: Build
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DNUTPUNCH_BUILD_TESTS=OFF
-          cmake --build build —-config Release --target nutpuncher
+          cmake --build build --config Release --target nutpuncher
       - name: Rename binary artifact
         run: |
           cp build/nutpuncher${{ matrix.config.bin-ext }} nutpuncher-${{ github.ref_name }}${{ matrix.config.bin-ext }}
