@@ -52,7 +52,7 @@ jobs:
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git tag -af deploy -m "Jenkins deployment" && git push -f --tags
+          git tag -f deploy && git push -f --tags
   binary:
     name: Upload binaries for ${{ matrix.config.os-name }}
     runs-on: ${{ matrix.config.runner-os }}
