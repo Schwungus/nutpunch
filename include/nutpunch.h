@@ -261,7 +261,7 @@ void NutPunch_Set(const char* name, int dataSize, const char* data) {
 	static struct NutPunch_Field nullfield = {0};
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		struct NutPunch_Field* ptr = &NutPunch_PendingMetadata[i];
-		if (!memcmp(ptr, &nullfield, sizeof(nullfield))) {
+		if (!memcmp(ptr->name, name, nameSize) || !memcmp(ptr, &nullfield, sizeof(nullfield))) {
 			memcpy(ptr->name, name, nameSize);
 			memcpy(ptr->data, data, dataSize);
 			ptr->size = dataSize;
