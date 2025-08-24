@@ -2,6 +2,7 @@
 #include <cstring>
 #include <ctime>
 #include <map>
+#include <memory>
 #include <string>
 
 #include "nutpunch.h"
@@ -12,17 +13,22 @@ constexpr const int beatsPerSecond = 60, keepAliveSeconds = 5, keepAliveBeats = 
 		    maxLobbies = 512;
 
 static SOCKET sock = INVALID_SOCKET;
-static std::map<std::string, Lobby> lobbies;
+static std::map<std::string, std::unique_ptr<Lobby>> lobbies;
 
 struct Player {
 	sockaddr_in addr;
-	std::uint32_t countdown : 31 = 0, master : 1 = 0;
+	std::uint32_t countdown;
 
 	Player(const sockaddr_in& addr) : addr(addr), countdown(keepAliveBeats) {}
-	Player() : addr(*reinterpret_cast<const sockaddr_in*>(&zeroAddr)) {}
+	Player() : addr(*reinterpret_cast<const sockaddr_in*>(&zeroAddr)), countdown(0) {}
 
 	bool isDead() const {
-		return !countdown || !*reinterpret_cast<const char*>(&addr);
+		return !countdown || !std::memcmp(&addr, zeroAddr, sizeof(addr));
+	}
+
+	void reset() {
+		std::memset(&addr, 0, sizeof(addr));
+		countdown = 0;
 	}
 
 private:
@@ -48,10 +54,42 @@ static const char* fmtLobbyId(const char* id) {
 	return buf;
 }
 
+struct Field : NutPunch_Field {
+	Field() {
+		reset();
+	}
+
+	bool isDead() const {
+		if (!size)
+			return true;
+		static const Field nully;
+		if (!memcmp(name, nully.name, sizeof(name)))
+			return true;
+		return false;
+	}
+
+	bool nameMatches(const char* name) const {
+		if (isDead())
+			return false;
+		int nameLen = std::strlen(name);
+		if (nameLen > NUTPUNCH_FIELD_NAME_MAX)
+			nameLen = NUTPUNCH_FIELD_NAME_MAX;
+		if (std::strlen(this->name) > nameLen)
+			return false;
+		return !memcmp(this->name, name, nameLen);
+	}
+
+	void reset() {
+		memset(name, 0, sizeof(name));
+		memset(data, 0, sizeof(data));
+		size = 0;
+	}
+};
+
 struct Lobby {
 	char id[NUTPUNCH_ID_MAX];
 	Player players[NUTPUNCH_MAX_PLAYERS];
-	NutPunch_Field metadata[NUTPUNCH_MAX_FIELDS];
+	Field metadata[NUTPUNCH_MAX_FIELDS];
 
 	Lobby() : Lobby(nullptr) {}
 	Lobby(const char* id) {
@@ -67,98 +105,11 @@ struct Lobby {
 		return fmtLobbyId(id);
 	}
 
-	int masterIdx() const {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (players[i].master)
-				return i;
-		return -1;
-	}
-
 	void update() {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			auto& plr = players[i];
-			if (plr.countdown > 0) {
-				plr.countdown -= 1;
-				if (plr.isDead())
-					NutPunch_Log("Player %d timed out in lobby '%s'", i + 1, fmtId());
-			}
-			if (plr.isDead()) {
-				plr.master = 0;
-				continue;
-			}
-			if (masterIdx() < 0)
-				plr.master = 1;
-
-			sockaddr clientAddr = *reinterpret_cast<sockaddr*>(&plr.addr);
-			int addrLen = sizeof(clientAddr);
-
-			char request[NUTPUNCH_REQUEST_SIZE] = {0};
-			int64_t nRecv = recvfrom(sock, request, sizeof(request), 0, &clientAddr, &addrLen);
-
-			if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK
-				&& WSAGetLastError() != WSAECONNRESET)
-			{
-				NutPunch_Log("Peer %d disconnect (code %d)", i + 1, WSAGetLastError());
-				plr.countdown = 0;
-			}
-			if (!nRecv) {
-				NutPunch_Log("Peer %d gracefully disconnected", i + 1);
-				plr.countdown = 0;
-			}
-			if (nRecv != sizeof(request))
-				continue;
-			if (std::memcmp(id, request, NUTPUNCH_ID_MAX)) {
-				NutPunch_Log("Peer %d changed its lobby ID, which is currently unsupported", i + 1);
-				plr.countdown = 0;
-				continue;
-			}
-
-			if (plr.master) {
-				static NutPunch_Field nullfield = {0};
-				char* ptr = &request[NUTPUNCH_ID_MAX];
-				for (int j = 0; j < NUTPUNCH_MAX_FIELDS; j++) {
-					if (std::memcmp(ptr, &nullfield, sizeof(nullfield)))
-						std::memcpy(&metadata[j], ptr, sizeof(*metadata));
-					ptr += sizeof(*metadata);
-				}
-			}
-			plr.countdown = keepAliveBeats;
-		}
-
-		int mastIdx = masterIdx();
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			auto& plr = players[i];
-			if (plr.isDead())
-				continue;
-
-			static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {0};
-			uint8_t* ptr = buf;
-
-			for (int j = 0; j < NUTPUNCH_MAX_PLAYERS; j++) {
-				if (players[j].isDead()) {
-					std::memset(ptr, 0, 6);
-					ptr += 6;
-				} else {
-					if (i == j)
-						std::memset(ptr, 0xFF, 4);
-					else
-						std::memcpy(ptr, &players[j].addr.sin_addr, 4);
-					ptr += 4;
-
-					std::memcpy(ptr, &players[j].addr.sin_port, 2);
-					ptr += 2;
-				}
-			}
-			for (int j = 0; j < NUTPUNCH_MAX_FIELDS; j++) {
-				std::memcpy(ptr, &metadata[j], sizeof(*metadata));
-				ptr += sizeof(*metadata);
-			}
-
-			struct sockaddr addr = *reinterpret_cast<sockaddr*>(&plr.addr);
-			int sent = sendto(sock, (char*)buf, sizeof(buf), 0, &addr, sizeof(addr));
-			if (sent == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
-				plr.countdown = 0;
-		}
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+			receiveFrom(i);
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+			sendTo(i);
 	}
 
 	bool isDead() const {
@@ -166,6 +117,116 @@ struct Lobby {
 			if (!players[i].isDead())
 				return false;
 		return true;
+	}
+
+private:
+	void receiveFrom(const int playerIdx) {
+		auto& plr = players[playerIdx];
+		if (plr.countdown > 0) {
+			plr.countdown -= 1;
+			if (plr.isDead())
+				NutPunch_Log("Peer %d timed out in lobby '%s'", playerIdx + 1, fmtId());
+		}
+		for (;;) {
+			if (plr.isDead()) {
+				plr.reset();
+				return;
+			}
+
+			char request[NUTPUNCH_REQUEST_SIZE] = {0};
+			sockaddr clientAddr = *reinterpret_cast<sockaddr*>(&plr.addr);
+			int addrLen = sizeof(clientAddr);
+
+			std::int64_t nRecv = recvfrom(sock, request, sizeof(request), 0, &clientAddr, &addrLen);
+			if (nRecv == SOCKET_ERROR) {
+				if (WSAGetLastError() == WSAEWOULDBLOCK)
+					return;
+				NutPunch_Log("Peer %d disconnect (code %d)", playerIdx + 1, WSAGetLastError());
+				plr.reset();
+				return;
+			}
+			if (!nRecv) {
+				NutPunch_Log("Peer %d gracefully disconnected", playerIdx + 1);
+				plr.reset();
+				return;
+			}
+			if (nRecv != sizeof(request))
+				continue;
+			if (std::memcmp(id, request, NUTPUNCH_ID_MAX)) {
+				NutPunch_Log(
+					"Peer %d changed its lobby ID, which is currently unsupported", playerIdx + 1);
+				plr.reset();
+				return;
+			}
+
+			plr.countdown = keepAliveBeats;
+			if (playerIdx != getMasterIdx())
+				return;
+
+			const auto* fields = (Field*)&request[NUTPUNCH_ID_MAX];
+			for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+				if (fields[i].isDead())
+					continue;
+				int idx = nextFieldIdx(fields[i].name);
+				if (NUTPUNCH_MAX_FIELDS != idx)
+					std::memcpy(&metadata[idx], &fields[i], sizeof(*fields));
+			}
+		}
+	}
+
+	void sendTo(const int playerIdx) {
+		auto& plr = players[playerIdx];
+		if (plr.isDead())
+			return;
+
+		uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {0};
+		uint8_t* ptr = buf;
+
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+			if (players[i].isDead()) {
+				std::memset(ptr, 0, 6);
+				ptr += 6;
+			} else {
+				if (playerIdx == i)
+					std::memset(ptr, 0xFF, 4);
+				else
+					std::memcpy(ptr, &players[i].addr.sin_addr, 4);
+				ptr += 4;
+
+				std::memcpy(ptr, &players[i].addr.sin_port, 2);
+				ptr += 2;
+			}
+		}
+		std::memcpy(ptr, metadata, sizeof(metadata));
+
+		auto addr = *reinterpret_cast<sockaddr*>(&plr.addr);
+		int sent = sendto(sock, (char*)buf, sizeof(buf), 0, &addr, sizeof(addr));
+		if (sent == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
+			plr.reset();
+	}
+
+	int masterIdx = NUTPUNCH_MAX_PLAYERS;
+
+	int getMasterIdx() {
+		if (NUTPUNCH_MAX_PLAYERS == masterIdx || players[masterIdx].isDead()) {
+			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+				if (!players[i].isDead()) {
+					masterIdx = i;
+					return masterIdx;
+				}
+			masterIdx = NUTPUNCH_MAX_PLAYERS;
+		}
+		return masterIdx;
+	}
+
+	int nextFieldIdx(const char* name) {
+		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // first matching
+			if (metadata[i].nameMatches(name))
+				return i;
+		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // or first empty
+			if (metadata[i].isDead())
+				return i;
+		return NUTPUNCH_MAX_FIELDS; // or bust
 	}
 };
 
@@ -210,7 +271,7 @@ static int acceptConnections() {
 	int addrLen = sizeof(addr);
 
 	int nRecv = recvfrom(sock, request, sizeof(request), 0, reinterpret_cast<sockaddr*>(&addr), &addrLen);
-	if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
+	if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
 		return WSAGetLastError();
 	if (nRecv != sizeof(request)) // skip weirdass packets
 		return 0;
@@ -224,13 +285,11 @@ static int acceptConnections() {
 			return 0;
 		} else {
 			NutPunch_Log("Created lobby '%s'", fmtLobbyId(id));
-			lobbies.insert({id, Lobby(id)});
+			lobbies.insert({id, std::make_unique<Lobby>(id)});
 		}
 	}
 
-	auto& lobby = lobbies[id];
-	auto& players = lobby.players;
-
+	auto& players = lobbies[id]->players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (players[i].isDead())
 			continue;
@@ -243,12 +302,12 @@ static int acceptConnections() {
 		if (players[i].isDead()) {
 			players[i].addr = addr;
 			players[i].countdown = keepAliveBeats;
-			NutPunch_Log("Player %d joined lobby '%s'", i + 1, lobby.fmtId());
+			NutPunch_Log("Peer %d joined lobby '%s'", i + 1, fmtLobbyId(id));
 			return 0;
 		}
 	}
 
-	NutPunch_Log("Lobby '%s' is full!", lobby.fmtId());
+	NutPunch_Log("Lobby '%s' is full!", fmtLobbyId(id));
 	return 0;
 }
 
@@ -286,13 +345,13 @@ int main(int, char**) {
 			NutPunch_Log("Failed to accept connection (code %d)", acpt);
 
 		for (auto& [id, lobby] : lobbies)
-			if (!lobby.isDead())
-				lobby.update();
+			if (!lobby->isDead())
+				lobby->update();
 		std::erase_if(lobbies, [](const auto& kv) {
 			const auto& lobby = kv.second;
-			bool dead = lobby.isDead();
+			bool dead = lobby->isDead();
 			if (dead)
-				NutPunch_Log("Deleted lobby '%s'", lobby.fmtId());
+				NutPunch_Log("Deleted lobby '%s'", lobby->fmtId());
 			return dead;
 		});
 

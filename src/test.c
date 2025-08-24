@@ -31,13 +31,23 @@ static void updateByAddr(struct sockaddr addr, const uint8_t* data) {
 	}
 }
 
+static bool hasNext() {
+	static struct timeval instantBitchNoodles = {0, 0};
+	fd_set s = {1, {NutPunch_Socket}};
+
+	int res = select(0, &s, NULL, NULL, &instantBitchNoodles);
+	if (res == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
+		printf("Failed to poll socket (%d)\n", WSAGetLastError());
+	return res > 0;
+}
+
 static void sendReceiveUpdates() {
 	// Refer to mental notes for why it's this sized.
 	static char rawData[NUTPUNCH_RESPONSE_SIZE] = {0};
 	static uint8_t* data = (uint8_t*)rawData;
 
 	// Accept new connections:
-	while (NutPunch_MayAccept()) {
+	while (hasNext()) {
 		struct sockaddr_in baseAddr;
 		int addrSize = sizeof(baseAddr);
 
@@ -45,11 +55,14 @@ static void sendReceiveUpdates() {
 		memset(addr, 0, sizeof(*addr));
 
 		memset(data, 0, PAYLOAD_SIZE);
-		int io = recvfrom(NutPunch_LocalSocket, rawData, sizeof(rawData), 0, addr, &addrSize);
+		int io = recvfrom(NutPunch_Socket, rawData, sizeof(rawData), 0, addr, &addrSize);
 
-		if (io == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
+		if (io == SOCKET_ERROR) {
+			if (WSAGetLastError() == WSAEWOULDBLOCK)
+				break;
 			printf("Failed to receive from socket (%d)\n", WSAGetLastError());
 			NutPunch_NukeSocket();
+			return;
 		}
 		if (io != PAYLOAD_SIZE)
 			continue;
@@ -58,7 +71,7 @@ static void sendReceiveUpdates() {
 	}
 
 	// Process existing peers:
-	for (int i = 0; i < NutPunch_GetPeerCount(); i++) {
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (!NutPunch_GetPeers()[i].port || NutPunch_LocalPeer() == i)
 			continue;
 
@@ -72,7 +85,7 @@ static void sendReceiveUpdates() {
 		int addrSize = sizeof(baseAddr);
 
 		memset(data, 0, PAYLOAD_SIZE);
-		int io = recvfrom(NutPunch_LocalSocket, rawData, sizeof(rawData), 0, addr, &addrSize);
+		int io = recvfrom(NutPunch_Socket, rawData, sizeof(rawData), 0, addr, &addrSize);
 
 		if (io == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
 			printf("Failed to receive from peer %d (%d)\n", i + 1, WSAGetLastError());
@@ -88,7 +101,7 @@ static void sendReceiveUpdates() {
 	data[0] = (uint8_t)(players[NutPunch_LocalPeer()].x / SCALE);
 	data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y / SCALE);
 
-	for (int i = 0; i < NutPunch_GetPeerCount(); i++) {
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (!NutPunch_GetPeers()[i].port || NutPunch_LocalPeer() == i)
 			continue;
 
@@ -98,7 +111,7 @@ static void sendReceiveUpdates() {
 		memcpy(&baseAddr.sin_addr, NutPunch_GetPeers()[i].addr, 4);
 		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
 
-		int io = sendto(NutPunch_LocalSocket, rawData, PAYLOAD_SIZE, 0, addr, sizeof(baseAddr));
+		int io = sendto(NutPunch_Socket, rawData, PAYLOAD_SIZE, 0, addr, sizeof(baseAddr));
 		if (SOCKET_ERROR == io && WSAGetLastError() != WSAEWOULDBLOCK) {
 			printf("Failed to send to peer %d (%d)\n", i + 1, WSAGetLastError());
 			NutPunch_GetPeers()[i].port = 0; // just nuke them...
@@ -119,46 +132,51 @@ int main(int argc, char* argv[]) {
 	}
 
 	InitWindow(400, 300, "nutpunch test");
-	InitAudioDevice();
-
 	SetExitKey(KEY_Q);
 	SetTargetFPS(60);
 
 	const int fs = 20, sqr = 30;
+	bool gaming = false;
+
 	while (!WindowShouldClose()) {
 		BeginDrawing();
 		ClearBackground(RAYWHITE);
 
-		NutPunch_Set("PLAYERS", sizeof(expectingPlayers), (char*)&expectingPlayers);
+		NutPunch_Set("PLAYERS", sizeof(expectingPlayers), &expectingPlayers);
 		if (NutPunch_Query() == NP_Status_Punched) {
-			memset(players, 0, sizeof(players));
-			players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
-			players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
-			players[NutPunch_LocalPeer()].color = RED;
+			int size = 0, *ptr = NutPunch_Get("PLAYERS", &size);
+			if (size && *ptr && NutPunch_GetPeerCount() >= *ptr) {
+				memset(players, 0, sizeof(players));
+				players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
+				players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
+				players[NutPunch_LocalPeer()].color = RED;
 
-			int size = 0, *ptr = (int*)NutPunch_Get("PLAYERS", &size);
-			if (size && *ptr && NutPunch_GetPeerCount() >= *ptr)
-				NutPunch_LocalSocket = NutPunch_Done();
+				NutPunch_Socket = NutPunch_Done();
+				gaming = true;
+			}
 		}
 
 		const int32_t spd = 5;
-		if (IsKeyDown(KEY_A))
-			players[NutPunch_LocalPeer()].x -= spd;
-		if (IsKeyDown(KEY_D))
-			players[NutPunch_LocalPeer()].x += spd;
-		if (IsKeyDown(KEY_W))
-			players[NutPunch_LocalPeer()].y -= spd;
-		if (IsKeyDown(KEY_S))
-			players[NutPunch_LocalPeer()].y += spd;
+		if (gaming && NutPunch_Socket != INVALID_SOCKET) {
+			if (IsKeyDown(KEY_A))
+				players[NutPunch_LocalPeer()].x -= spd;
+			if (IsKeyDown(KEY_D))
+				players[NutPunch_LocalPeer()].x += spd;
+			if (IsKeyDown(KEY_W))
+				players[NutPunch_LocalPeer()].y -= spd;
+			if (IsKeyDown(KEY_S))
+				players[NutPunch_LocalPeer()].y += spd;
+			sendReceiveUpdates();
+		}
 
-		sendReceiveUpdates();
 		for (int i = 0; i < NutPunch_GetPeerCount() + 1; i++)
 			DrawRectangle(players[i].x, players[i].y, sqr, sqr, players[i].color);
 
-		if (NutPunch_LocalSocket == INVALID_SOCKET) {
+		if (NutPunch_Socket == INVALID_SOCKET) {
 			DrawText("DISCONNECTED", 5, 5, fs, RED);
 			DrawText("Press J to join", 5, 5 + fs, fs, BLACK);
 			DrawText("Press K to reset", 5, 5 + fs + fs, fs, BLACK);
+			gaming = false;
 
 			if (IsKeyPressed(KEY_K))
 				NutPunch_Reset();
@@ -178,9 +196,7 @@ int main(int argc, char* argv[]) {
 	}
 
 cleanup:
-	CloseAudioDevice();
 	CloseWindow();
-
 	NutPunch_Cleanup();
 	return EXIT_SUCCESS;
 }
