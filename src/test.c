@@ -129,16 +129,17 @@ int main(int argc, char* argv[]) {
 		BeginDrawing();
 		ClearBackground(RAYWHITE);
 
-		if (NutPunch_Query() == NP_Status_Started) {
-			NutPunch_LocalSocket = NutPunch_Done();
-
+		NutPunch_Set("PLAYERS", sizeof(expectingPlayers), (char*)&expectingPlayers);
+		if (NutPunch_Query() == NP_Status_Punched) {
 			memset(players, 0, sizeof(players));
 			players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
 			players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
 			players[NutPunch_LocalPeer()].color = RED;
+
+			int size = 0, *ptr = (int*)NutPunch_Get("PLAYERS", &size);
+			if (size && *ptr && NutPunch_GetPeerCount() >= *ptr)
+				NutPunch_LocalSocket = NutPunch_Done();
 		}
-		if (NutPunch_GetPeerCount() >= expectingPlayers)
-			NutPunch_Start();
 
 		const int32_t spd = 5;
 		if (IsKeyDown(KEY_A))

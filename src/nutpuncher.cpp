@@ -16,7 +16,7 @@ static std::map<std::string, Lobby> lobbies;
 
 struct Player {
 	sockaddr_in addr;
-	std::uint32_t countdown : 30 = 0, master : 1 = 0, starting : 1 = 0;
+	std::uint32_t countdown : 31 = 0, master : 1 = 0;
 
 	Player(const sockaddr_in& addr) : addr(addr), countdown(keepAliveBeats) {}
 	Player() : addr(*reinterpret_cast<const sockaddr_in*>(&zeroAddr)) {}
@@ -51,14 +51,16 @@ static const char* fmtLobbyId(const char* id) {
 struct Lobby {
 	char id[NUTPUNCH_ID_MAX];
 	Player players[NUTPUNCH_MAX_PLAYERS];
+	NutPunch_Field metadata[NUTPUNCH_MAX_FIELDS];
 
-	Lobby() {
-		std::memset(id, 0, sizeof(id));
+	Lobby() : Lobby(nullptr) {}
+	Lobby(const char* id) {
+		if (id == nullptr)
+			std::memset(this->id, 0, sizeof(this->id));
+		else
+			std::memcpy(this->id, id, sizeof(this->id));
 		std::memset(players, 0, sizeof(players));
-	}
-
-	Lobby(const char* id) : Lobby() {
-		std::memcpy(this->id, id, sizeof(this->id));
+		std::memset(metadata, 0, sizeof(metadata));
 	}
 
 	const char* fmtId() const {
@@ -82,7 +84,6 @@ struct Lobby {
 			}
 			if (plr.isDead()) {
 				plr.master = 0;
-				plr.starting = 0;
 				continue;
 			}
 			if (masterIdx() < 0)
@@ -112,14 +113,19 @@ struct Lobby {
 				continue;
 			}
 
-			if (plr.master)
-				plr.starting = bool(request[NUTPUNCH_ID_MAX]);
+			if (plr.master) {
+				static NutPunch_Field nullfield = {0};
+				char* ptr = &request[NUTPUNCH_ID_MAX];
+				for (int j = 0; j < NUTPUNCH_MAX_FIELDS; j++) {
+					if (std::memcmp(ptr, &nullfield, sizeof(nullfield)))
+						std::memcpy(&metadata[j], ptr, sizeof(*metadata));
+					ptr += sizeof(*metadata);
+				}
+			}
 			plr.countdown = keepAliveBeats;
 		}
 
 		int mastIdx = masterIdx();
-		bool started = mastIdx >= 0 && players[mastIdx].starting;
-
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& plr = players[i];
 			if (plr.isDead())
@@ -143,7 +149,10 @@ struct Lobby {
 					ptr += 2;
 				}
 			}
-			*ptr = started;
+			for (int j = 0; j < NUTPUNCH_MAX_FIELDS; j++) {
+				std::memcpy(ptr, &metadata[j], sizeof(*metadata));
+				ptr += sizeof(*metadata);
+			}
 
 			struct sockaddr addr = *reinterpret_cast<sockaddr*>(&plr.addr);
 			int sent = sendto(sock, (char*)buf, sizeof(buf), 0, &addr, sizeof(addr));

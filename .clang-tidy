@@ -8,4 +8,5 @@ Checks: |
   -bugprone-reserved-identifier,
   performance-*,
   -performance-no-int-to-ptr,
+  -performance-enum-size,
   portability-*
