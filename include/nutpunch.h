@@ -249,9 +249,13 @@ const char* NutPunch_Get(const char* name, int* size) {
 }
 
 void NutPunch_Set(const char* name, int dataSize, const char* data) {
-	if (dataSize < 0 || dataSize >= NUTPUNCH_FIELD_DATA_MAX) {
+	if (dataSize <= 0) {
 		NutPunch_Log("Invalid metadata field size!");
 		return;
+	}
+	if (dataSize > NUTPUNCH_FIELD_DATA_MAX) {
+		NutPunch_Log("WARN: trimming metadata field from %d to %d bytes", dataSize, NUTPUNCH_FIELD_DATA_MAX);
+		dataSize = NUTPUNCH_FIELD_DATA_MAX;
 	}
 
 	int nameLen = strlen(name), nameSize = NUTPUNCH_FIELD_NAME_MAX;
