@@ -8,7 +8,7 @@
 
 struct Lobby;
 
-constexpr const int beatsPerSecond = 60, keepAliveSeconds = 3, keepAliveBeats = keepAliveSeconds * beatsPerSecond,
+constexpr const int beatsPerSecond = 60, keepAliveSeconds = 5, keepAliveBeats = keepAliveSeconds * beatsPerSecond,
 		    maxLobbies = 512;
 
 static SOCKET sock = INVALID_SOCKET;
