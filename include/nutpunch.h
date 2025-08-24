@@ -58,7 +58,6 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 
 enum {
 	NP_Status_Error,
@@ -148,6 +147,21 @@ int NutPunch_LocalPeer();
 
 #ifdef NUTPUNCH_IMPLEMENTATION
 
+#ifndef NutPunch_Memcpy
+#include <string.h>
+#define NutPunch_Memcpy memcpy
+#endif
+
+#ifndef NutPunch_Memset
+#include <string.h>
+#define NutPunch_Memset memset
+#endif
+
+#ifndef NutPunch_Memcmp
+#include <string.h>
+#define NutPunch_Memcmp memcmp
+#endif
+
 static struct NutPunch_Field NutPunch_ReceivedMetadata[NUTPUNCH_MAX_FIELDS] = {0},
 			     NutPunch_PendingMetadata[NUTPUNCH_MAX_FIELDS] = {0};
 
@@ -167,16 +181,16 @@ static char NutPunch_ServerHost[128] = {0}, NutPunch_ServerPort[32] = {0};
 
 static void NutPunch_NukeLobbyData() {
 	NutPunch_Count = 0;
-	memset(NutPunch_Peers, 0, sizeof(NutPunch_Peers));
-	memset(NutPunch_ReceivedMetadata, 0, sizeof(NutPunch_ReceivedMetadata));
-	memset(NutPunch_PendingMetadata, 0, sizeof(NutPunch_PendingMetadata));
+	NutPunch_Memset(NutPunch_Peers, 0, sizeof(NutPunch_Peers));
+	NutPunch_Memset(NutPunch_ReceivedMetadata, 0, sizeof(NutPunch_ReceivedMetadata));
+	NutPunch_Memset(NutPunch_PendingMetadata, 0, sizeof(NutPunch_PendingMetadata));
 }
 
 static void NutPunch_NukeRemote() {
 	NutPunch_LobbyId[0] = 0;
-	memset(&NutPunch_RemoteAddr, 0, sizeof(NutPunch_RemoteAddr));
-	memset(&NutPunch_ServerHost, 0, sizeof(NutPunch_ServerHost));
-	memset(&NutPunch_ServerPort, 0, sizeof(NutPunch_ServerPort));
+	NutPunch_Memset(&NutPunch_RemoteAddr, 0, sizeof(NutPunch_RemoteAddr));
+	NutPunch_Memset(&NutPunch_ServerHost, 0, sizeof(NutPunch_ServerHost));
+	NutPunch_Memset(&NutPunch_ServerPort, 0, sizeof(NutPunch_ServerPort));
 }
 
 static void NutPunch_NukeSocket() {
@@ -231,16 +245,16 @@ void NutPunch_Reset() {
 
 const char* NutPunch_Get(const char* name, int* size) {
 	static char copy[NUTPUNCH_FIELD_DATA_MAX] = {0};
-	memset(copy, 0, NUTPUNCH_FIELD_DATA_MAX);
+	NutPunch_Memset(copy, 0, NUTPUNCH_FIELD_DATA_MAX);
 
 	int nameLen = strlen(name), nameSize = NUTPUNCH_FIELD_NAME_MAX;
 	if (nameLen < nameSize)
 		nameSize = nameLen;
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
-		if (!memcmp(NutPunch_ReceivedMetadata[i].name, name, nameSize)) {
+		if (!NutPunch_Memcmp(NutPunch_ReceivedMetadata[i].name, name, nameSize)) {
 			*size = NutPunch_ReceivedMetadata[i].size;
-			memcpy(copy, NutPunch_ReceivedMetadata[i].data, *size);
+			NutPunch_Memcpy(copy, NutPunch_ReceivedMetadata[i].data, *size);
 			return copy;
 		}
 
@@ -265,9 +279,10 @@ void NutPunch_Set(const char* name, int dataSize, const char* data) {
 	static struct NutPunch_Field nullfield = {0};
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		struct NutPunch_Field* ptr = &NutPunch_PendingMetadata[i];
-		if (!memcmp(ptr->name, name, nameSize) || !memcmp(ptr, &nullfield, sizeof(nullfield))) {
-			memcpy(ptr->name, name, nameSize);
-			memcpy(ptr->data, data, dataSize);
+		if (!NutPunch_Memcmp(ptr->name, name, nameSize) || !NutPunch_Memcmp(ptr, &nullfield, sizeof(nullfield)))
+		{
+			NutPunch_Memcpy(ptr->name, name, nameSize);
+			NutPunch_Memcpy(ptr->data, data, dataSize);
 			ptr->size = dataSize;
 			break;
 		}
@@ -341,7 +356,7 @@ bool NutPunch_Join(const char* lobby) {
 
 	if (NutPunch_BindSocket(0)) {
 		NutPunch_LastStatus = NP_Status_InProgress;
-		memset(NutPunch_LobbyId, 0, sizeof(NutPunch_LobbyId));
+		NutPunch_Memset(NutPunch_LobbyId, 0, sizeof(NutPunch_LobbyId));
 		snprintf(NutPunch_LobbyId, sizeof(NutPunch_LobbyId), "%s", lobby);
 		return true;
 	}
@@ -370,9 +385,9 @@ static int NutPunch_QueryImpl() {
 	int addrSize, nRecv;
 	uint8_t* ptr;
 
-	memset(request, 0, sizeof(request));
-	memcpy(request, NutPunch_LobbyId, NUTPUNCH_ID_MAX);
-	memcpy(request + NUTPUNCH_ID_MAX, &NutPunch_PendingMetadata, sizeof(NutPunch_PendingMetadata));
+	NutPunch_Memset(request, 0, sizeof(request));
+	NutPunch_Memcpy(request, NutPunch_LobbyId, NUTPUNCH_ID_MAX);
+	NutPunch_Memcpy(request + NUTPUNCH_ID_MAX, &NutPunch_PendingMetadata, sizeof(NutPunch_PendingMetadata));
 
 	if ((NutPunch_LastStatus == NP_Status_InProgress || NutPunch_LastStatus == NP_Status_Punched)
 		&& SOCKET_ERROR
@@ -384,7 +399,7 @@ static int NutPunch_QueryImpl() {
 		goto sockFail;
 	}
 
-	memset(response, 0, sizeof(response));
+	NutPunch_Memset(response, 0, sizeof(response));
 	addr = NutPunch_RemoteAddr;
 	addrSize = sizeof(NutPunch_RemoteAddr);
 	nRecv = recvfrom(NutPunch_LocalSocket, response, sizeof(response), 0, &addr, &addrSize);
@@ -400,10 +415,10 @@ static int NutPunch_QueryImpl() {
 	ptr = (uint8_t*)response;
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		memcpy(NutPunch_Peers[i].addr, ptr, 4);
+		NutPunch_Memcpy(NutPunch_Peers[i].addr, ptr, 4);
 		ptr += 4;
 
-		memcpy(&NutPunch_Peers[i].port, ptr, 2);
+		NutPunch_Memcpy(&NutPunch_Peers[i].port, ptr, 2);
 		NutPunch_Peers[i].port = ntohs(NutPunch_Peers[i].port);
 		ptr += 2;
 
@@ -412,8 +427,8 @@ static int NutPunch_QueryImpl() {
 
 	static struct NutPunch_Field nullfield = {0};
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		if (memcmp(ptr, &nullfield, sizeof(nullfield)))
-			memcpy(&NutPunch_ReceivedMetadata[i], ptr, sizeof(nullfield));
+		if (NutPunch_Memcmp(ptr, &nullfield, sizeof(nullfield)))
+			NutPunch_Memcpy(&NutPunch_ReceivedMetadata[i], ptr, sizeof(nullfield));
 		ptr += sizeof(nullfield);
 	}
 

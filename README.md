@@ -5,7 +5,7 @@
 
 A UDP hole-punching library for the REAL men. Header-only. Brutal. Uses just plain C and winsockets.
 
-## Usage
+## Introductory Lecture
 
 This library implies P2P networking, where **each peer communicates with all others**. It's a complex and, in the wrong hands, a counterproductive model. If you don't feel like reading the immediately following blanket of words and scribbles, you may skip to [using premade integrations](#premade-integrations).
 
@@ -51,9 +51,25 @@ Or if you just want to try the test binary after building it:
 start .\build\nutpunchTest.exe 2 95.163.233.200
 ```
 
+## Advanced Usage
+
+Now let's discuss some niche features of this library.
+
+You can change the `memcmp`, `memset`, and `memcpy` functions used in the implementation by redefining `NutPunch_Memcmp`, `NutPunch_Memset`, and `Nutpunch_Memcpy` respectively. For SDL3:
+
+```c
+#include <SDL3/SDL_stdinc.h>
+#define NutPunch_Memcmp SDL_memcmp
+#define NutPunch_Memset SDL_memset
+#define NutPunch_Memcpy SDL_memcpy
+
+#define NUTPUNCH_IMPLEMENTATION
+#include "nutpunch.h" // IWYU pragma: keep
+```
+
 ## Hosting a Nutpuncher Server
 
-If you're dissatisfied with [the public instance](#public-instance), you can host your own. Make sure to read [the usage pamphlet](#usage) before attempting this.
+If you're dissatisfied with [the public instance](#public-instance), you can host your own. Make sure to read [the introductory pamphlet](#introductory-lecture) before attempting this.
 
 On Windows, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/stable) and make sure **UDP port `30001`** is open to the public.
 
