@@ -19,14 +19,13 @@ if(NUTPUNCH_BUILD_TESTS)
         GIT_PROGRESS true)
     FetchContent_MakeAvailable(raylib)
 
-    add_executable(nutpunchTest ${CMAKE_CURRENT_SOURCE_DIR}/src/nutpunchTest.c)
+    add_executable(nutpunchTest ${CMAKE_CURRENT_SOURCE_DIR}/src/test.c)
     target_link_libraries(nutpunchTest PRIVATE nutpunch raylib)
 endif()
 
 option(NUTPUNCH_BUILD_SERVER "Build nutpunch server binary?" ON)
 if(NUTPUNCH_BUILD_SERVER)
-    add_executable(nutpuncher ${CMAKE_CURRENT_SOURCE_DIR}/src/nutpuncher.cpp
-                              ${CMAKE_CURRENT_SOURCE_DIR}/src/nutpunchStatic.c)
+    add_executable(nutpuncher ${CMAKE_CURRENT_SOURCE_DIR}/src/nutpuncher.cpp ${CMAKE_CURRENT_SOURCE_DIR}/src/static.c)
     set_target_properties(nutpuncher PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
     target_link_libraries(nutpuncher PRIVATE nutpunch)
     target_link_options(nutpuncher PRIVATE -static)
