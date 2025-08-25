@@ -251,7 +251,6 @@ void NutPunch_Reset() {
 
 void* NutPunch_Get(const char* name, int* size) {
 	static char copy[NUTPUNCH_FIELD_DATA_MAX] = {0};
-	NutPunch_Memset(copy, 0, NUTPUNCH_FIELD_DATA_MAX);
 
 	int nameSize = strlen(name);
 	if (!nameSize)
@@ -262,6 +261,7 @@ void* NutPunch_Get(const char* name, int* size) {
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		struct NutPunch_Field* ptr = &NutPunch_ReceivedMetadata[i];
 		if (!NutPunch_Memcmp(ptr->name, name, nameSize)) {
+			NutPunch_Memset(copy, 0, NUTPUNCH_FIELD_DATA_MAX);
 			*size = ptr->size;
 			NutPunch_Memcpy(copy, ptr->data, *size);
 			return copy;
@@ -269,6 +269,7 @@ void* NutPunch_Get(const char* name, int* size) {
 	}
 
 skip:
+	NutPunch_Memset(copy, 0, NUTPUNCH_FIELD_DATA_MAX);
 	*size = 0;
 	return copy;
 }
@@ -289,7 +290,7 @@ void NutPunch_Set(const char* name, int dataSize, const void* data) {
 		dataSize = NUTPUNCH_FIELD_DATA_MAX;
 	}
 
-	static struct NutPunch_Field nullfield = {0};
+	static const struct NutPunch_Field nullfield = {0};
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		struct NutPunch_Field* ptr = &NutPunch_PendingMetadata[i];
 		if (!NutPunch_Memcmp(ptr->name, name, nameSize) || !NutPunch_Memcmp(ptr, &nullfield, sizeof(nullfield)))
@@ -376,7 +377,7 @@ static int NutPunch_QueryImpl() {
 		return NP_Status_Idle;
 
 	struct sockaddr addr = NutPunch_RemoteAddr;
-	int addrSize = sizeof(addr), nRecv = 0, status = NP_Status_InProgress;
+	int addrSize = sizeof(addr), nRecv = 0;
 	uint8_t* ptr = (uint8_t*)response;
 
 	if ((NutPunch_LastStatus == NP_Status_InProgress || NutPunch_LastStatus == NP_Status_Punched)) {
@@ -401,27 +402,27 @@ static int NutPunch_QueryImpl() {
 			NutPunch_LastError = "Failed to receive from holepunch server";
 			goto sockFail;
 		}
-		if (nRecv != NUTPUNCH_RESPONSE_SIZE) // fucking skip invalid/partitioned packets
+		if (sizeof(response) != nRecv) // fucking skip invalid/partitioned packets
 			continue;
 
 		NutPunch_Count = 0;
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			NutPunch_Memcpy(NutPunch_Peers[i].addr, ptr, 4);
+			NutPunch_Count += (0xFFFFFFFF == *(uint32_t*)ptr);
 			ptr += 4;
 
 			NutPunch_Memcpy(&NutPunch_Peers[i].port, ptr, 2);
+			NutPunch_Count += (0x0000 != *(uint16_t*)ptr);
 			NutPunch_Peers[i].port = ntohs(NutPunch_Peers[i].port);
 			ptr += 2;
-
-			NutPunch_Count += NutPunch_Peers[i].port != 0;
 		}
 		NutPunch_Memcpy(NutPunch_ReceivedMetadata, ptr, sizeof(NutPunch_ReceivedMetadata));
-		status = NP_Status_Punched;
+		NutPunch_LastStatus = NP_Status_Punched;
 	}
 
 	if (NutPunch_LastStatus == NP_Status_Punched)
 		return NP_Status_Punched;
-	return status;
+	return NP_Status_InProgress;
 
 sockFail:
 	NutPunch_LastErrorCode = WSAGetLastError();
@@ -451,9 +452,11 @@ int NutPunch_Query() {
 }
 
 SOCKET NutPunch_Done() {
-	if (NutPunch_LastStatus != NP_Status_Punched || !NutPunch_GetPeerCount())
-		return INVALID_SOCKET;
 	NutPunch_NukeRemote();
+	if (NutPunch_LastStatus != NP_Status_Punched || !NutPunch_GetPeerCount()) {
+		NutPunch_LastStatus = NP_Status_Error;
+		return INVALID_SOCKET;
+	}
 	NutPunch_LastStatus = NP_Status_Idle;
 	return NutPunch_Socket;
 }
@@ -467,7 +470,7 @@ int NutPunch_GetPeerCount() {
 }
 
 int NutPunch_LocalPeer() {
-	for (int i = 0; i < NutPunch_GetPeerCount(); i++)
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 		if (0xFFFFFFFF == *(uint32_t*)&NutPunch_GetPeers()[i].addr)
 			return i;
 	return 0;

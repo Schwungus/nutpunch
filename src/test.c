@@ -17,7 +17,7 @@ static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
 
 static void updateByAddr(struct sockaddr addr, const uint8_t* data) {
 	struct sockaddr_in realAddr = *(struct sockaddr_in*)&addr;
-	for (int playerIdx = 0; playerIdx < NutPunch_GetPeerCount(); playerIdx++) {
+	for (int playerIdx = 0; playerIdx < NUTPUNCH_MAX_PLAYERS; playerIdx++) {
 		const struct NutPunch* peer = &NutPunch_GetPeers()[playerIdx];
 		bool sameHost = !memcmp(&realAddr.sin_addr, peer->addr, 4);
 		bool samePort = realAddr.sin_port == htons(peer->port);
@@ -54,7 +54,7 @@ static void sendReceiveUpdates() {
 		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
 		memset(addr, 0, sizeof(*addr));
 
-		memset(data, 0, PAYLOAD_SIZE);
+		memset(data, 0, sizeof(rawData));
 		int io = recvfrom(NutPunch_Socket, rawData, sizeof(rawData), 0, addr, &addrSize);
 
 		if (io == SOCKET_ERROR) {
@@ -72,7 +72,7 @@ static void sendReceiveUpdates() {
 
 	// Process existing peers:
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!NutPunch_GetPeers()[i].port || NutPunch_LocalPeer() == i)
+		if (!NutPunch_GetPeers()[i].port)
 			continue;
 
 		struct sockaddr_in baseAddr;
@@ -102,7 +102,7 @@ static void sendReceiveUpdates() {
 	data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y / SCALE);
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!NutPunch_GetPeers()[i].port || NutPunch_LocalPeer() == i)
+		if (!NutPunch_GetPeers()[i].port)
 			continue;
 
 		struct sockaddr_in baseAddr;
@@ -136,28 +136,22 @@ int main(int argc, char* argv[]) {
 	SetTargetFPS(60);
 
 	const int fs = 20, sqr = 30;
-	bool gaming = false;
-
 	while (!WindowShouldClose()) {
 		BeginDrawing();
 		ClearBackground(RAYWHITE);
 
 		NutPunch_Set("PLAYERS", sizeof(expectingPlayers), &expectingPlayers);
-		if (NutPunch_Query() == NP_Status_Punched) {
-			int size = 0, *ptr = NutPunch_Get("PLAYERS", &size);
-			if (size && *ptr && NutPunch_GetPeerCount() >= *ptr) {
-				memset(players, 0, sizeof(players));
-				players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
-				players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
-				players[NutPunch_LocalPeer()].color = RED;
-
-				NutPunch_Socket = NutPunch_Done();
-				gaming = true;
-			}
+		int size = 0, *ptr = NutPunch_Get("PLAYERS", &size);
+		if (size && *ptr && NutPunch_GetPeerCount() >= *ptr) {
+			memset(players, 0, sizeof(players));
+			players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
+			players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
+			players[NutPunch_LocalPeer()].color = RED;
+			NutPunch_Socket = NutPunch_Done();
 		}
 
 		const int32_t spd = 5;
-		if (gaming && NutPunch_Socket != INVALID_SOCKET) {
+		if (NutPunch_Socket != INVALID_SOCKET) {
 			if (IsKeyDown(KEY_A))
 				players[NutPunch_LocalPeer()].x -= spd;
 			if (IsKeyDown(KEY_D))
@@ -166,31 +160,28 @@ int main(int argc, char* argv[]) {
 				players[NutPunch_LocalPeer()].y -= spd;
 			if (IsKeyDown(KEY_S))
 				players[NutPunch_LocalPeer()].y += spd;
-			sendReceiveUpdates();
+			if (NutPunch_Query() == NP_Status_Idle)
+				sendReceiveUpdates();
 		}
 
-		for (int i = 0; i < NutPunch_GetPeerCount() + 1; i++)
-			DrawRectangle(players[i].x, players[i].y, sqr, sqr, players[i].color);
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+			if (*(uint32_t*)&players[i].color)
+				DrawRectangle(players[i].x, players[i].y, sqr, sqr, players[i].color);
 
 		if (NutPunch_Socket == INVALID_SOCKET) {
 			DrawText("DISCONNECTED", 5, 5, fs, RED);
 			DrawText("Press J to join", 5, 5 + fs, fs, BLACK);
 			DrawText("Press K to reset", 5, 5 + fs + fs, fs, BLACK);
-			gaming = false;
 
 			if (IsKeyPressed(KEY_K))
 				NutPunch_Reset();
-			else if (IsKeyPressed(KEY_J)) {
+			if (IsKeyPressed(KEY_J)) {
 				NutPunch_SetServerAddr(argv[2]);
 				NutPunch_Join(lobbyName);
 			}
 		}
-
-		if (NutPunch_GetPeerCount()) {
-			static char buf[64] = {0};
-			snprintf(buf, sizeof(buf), "port: %d", NutPunch_GetPeers()[NutPunch_LocalPeer()].port);
-			DrawText(buf, 200, 5, fs, BLACK);
-		}
+		if (NutPunch_GetPeerCount())
+			DrawText("GAMING!!!", 240, 5, fs, GREEN);
 
 		EndDrawing();
 	}

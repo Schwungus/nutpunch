@@ -13,7 +13,7 @@ constexpr const int beatsPerSecond = 60, keepAliveSeconds = 5, keepAliveBeats = 
 		    maxLobbies = 512;
 
 static SOCKET sock = INVALID_SOCKET;
-static std::map<std::string, std::unique_ptr<Lobby>> lobbies;
+static std::map<std::string, Lobby> lobbies;
 
 struct Player {
 	sockaddr_in addr;
@@ -63,7 +63,7 @@ struct Field : NutPunch_Field {
 		if (!size)
 			return true;
 		static const Field nully;
-		if (!memcmp(name, nully.name, sizeof(name)))
+		if (!std::memcmp(name, nully.name, sizeof(name)))
 			return true;
 		return false;
 	}
@@ -76,12 +76,12 @@ struct Field : NutPunch_Field {
 			nameLen = NUTPUNCH_FIELD_NAME_MAX;
 		if (std::strlen(this->name) > nameLen)
 			return false;
-		return !memcmp(this->name, name, nameLen);
+		return !std::memcmp(this->name, name, nameLen);
 	}
 
 	void reset() {
-		memset(name, 0, sizeof(name));
-		memset(data, 0, sizeof(data));
+		std::memset(name, 0, sizeof(name));
+		std::memset(data, 0, sizeof(data));
 		size = 0;
 	}
 };
@@ -158,11 +158,10 @@ private:
 				plr.reset();
 				return;
 			}
-
 			plr.countdown = keepAliveBeats;
-			if (playerIdx != getMasterIdx())
-				return;
 
+			if (playerIdx != getMasterIdx())
+				continue;
 			const auto* fields = (Field*)&request[NUTPUNCH_ID_MAX];
 			for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 				if (fields[i].isDead())
@@ -179,7 +178,7 @@ private:
 		if (plr.isDead())
 			return;
 
-		uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {0};
+		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {0};
 		uint8_t* ptr = buf;
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
@@ -193,7 +192,10 @@ private:
 					std::memcpy(ptr, &players[i].addr.sin_addr, 4);
 				ptr += 4;
 
-				std::memcpy(ptr, &players[i].addr.sin_port, 2);
+				if (playerIdx == i)
+					std::memset(ptr, 0, 2);
+				else
+					std::memcpy(ptr, &players[i].addr.sin_port, 2);
 				ptr += 2;
 			}
 		}
@@ -252,31 +254,29 @@ static void bindSock() {
 }
 
 static int acceptConnections() {
-	if (sock == INVALID_SOCKET) {
+	if (sock == INVALID_SOCKET)
 		std::exit(EXIT_FAILURE);
-		return 0;
-	}
 
 	static timeval instantBitchNoodles = {0, 0};
 	fd_set s = {1, {sock}};
 
 	int res = select(0, &s, nullptr, nullptr, &instantBitchNoodles);
-	if (res == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
-		return WSAGetLastError();
+	if (res == SOCKET_ERROR)
+		return WSAGetLastError() == WSAEWOULDBLOCK ? -1 : WSAGetLastError();
 	if (!res)
-		return 0;
+		return -1;
 
 	char request[NUTPUNCH_REQUEST_SIZE] = {0};
 	sockaddr_in addr = {0};
 	int addrLen = sizeof(addr);
 
 	int nRecv = recvfrom(sock, request, sizeof(request), 0, reinterpret_cast<sockaddr*>(&addr), &addrLen);
-	if (nRecv == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
-		return WSAGetLastError();
-	if (nRecv != sizeof(request)) // skip weirdass packets
+	if (SOCKET_ERROR == nRecv && WSAGetLastError() != WSAECONNRESET)
+		return WSAGetLastError() == WSAEWOULDBLOCK ? -1 : WSAGetLastError();
+	if (sizeof(request) != nRecv) // skip weirdass packets
 		return 0;
 
-	char id[NUTPUNCH_ID_MAX + 1] = {0};
+	static char id[NUTPUNCH_ID_MAX + 1] = {0};
 	std::memcpy(id, request, NUTPUNCH_ID_MAX);
 
 	if (!lobbies.count(id)) {
@@ -285,11 +285,11 @@ static int acceptConnections() {
 			return 0;
 		} else {
 			NutPunch_Log("Created lobby '%s'", fmtLobbyId(id));
-			lobbies.insert({id, std::make_unique<Lobby>(id)});
+			lobbies.insert({id, Lobby(id)});
 		}
 	}
 
-	auto& players = lobbies[id]->players;
+	auto& players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (players[i].isDead())
 			continue;
@@ -335,23 +335,24 @@ int main(int, char**) {
 		return EXIT_FAILURE;
 	}
 
+	std::int64_t start = clock(), end, delta;
+	const std::int64_t minDelta = 1000 / beatsPerSecond;
+
 	NutPunch_Log("Running!");
-
-	std::int64_t start = clock(), end, delta, minDelta = 1000 / beatsPerSecond;
-	int acpt;
-
 	for (;;) {
-		if ((acpt = acceptConnections()))
+		int acpt;
+		while (!(acpt = acceptConnections())) {
+		}
+		if (acpt > 0)
 			NutPunch_Log("Failed to accept connection (code %d)", acpt);
 
 		for (auto& [id, lobby] : lobbies)
-			if (!lobby->isDead())
-				lobby->update();
+			lobby.update();
 		std::erase_if(lobbies, [](const auto& kv) {
 			const auto& lobby = kv.second;
-			bool dead = lobby->isDead();
+			bool dead = lobby.isDead();
 			if (dead)
-				NutPunch_Log("Deleted lobby '%s'", lobby->fmtId());
+				NutPunch_Log("Deleted lobby '%s'", lobby.fmtId());
 			return dead;
 		});
 
