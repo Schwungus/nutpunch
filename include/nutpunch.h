@@ -129,8 +129,8 @@ struct NutPunch* NutPunch_GetPeers();
 /// Count the peers discovered in the lobby after `NutPunch_Join()`. Updated every `NutPunch_Query()` call.
 ///
 /// WARNING: DO NOT use the result of this call as an upper bound for iterating through peers. Peers can come in any
-/// order, with "gaps" in between. Iterate through all peers (from `0` to `NUTPUNCH_PLAYERS_MAX`) and check if their
-/// port value is `0` or they're the local peer (by checking their index against `NutPunch_LocalPeer`).
+/// order, with "gaps" in between. Iterate through all peers (from `0` to `NUTPUNCH_PLAYERS_MAX`) skipping if their
+/// port value is `0`.
 ///
 /// Returns 0 in case of an error.
 int NutPunch_GetPeerCount();
@@ -179,14 +179,12 @@ static int NutPunch_LastStatus = NP_Status_Idle;
 
 static char NutPunch_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
 static struct NutPunch NutPunch_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
-static int NutPunch_Count = 0;
 
 static SOCKET NutPunch_Socket = INVALID_SOCKET;
 static struct sockaddr NutPunch_RemoteAddr = {0};
-static char NutPunch_ServerHost[128] = {0}, NutPunch_ServerPort[32] = {0};
+static char NutPunch_ServerHost[128] = {0};
 
 static void NutPunch_NukeLobbyData() {
-	NutPunch_Count = 0;
 	NutPunch_Memset(NutPunch_Peers, 0, sizeof(NutPunch_Peers));
 	NutPunch_Memset(NutPunch_ReceivedMetadata, 0, sizeof(NutPunch_ReceivedMetadata));
 	NutPunch_Memset(NutPunch_PendingMetadata, 0, sizeof(NutPunch_PendingMetadata));
@@ -196,7 +194,6 @@ static void NutPunch_NukeRemote() {
 	NutPunch_LobbyId[0] = 0;
 	NutPunch_Memset(&NutPunch_RemoteAddr, 0, sizeof(NutPunch_RemoteAddr));
 	NutPunch_Memset(&NutPunch_ServerHost, 0, sizeof(NutPunch_ServerHost));
-	NutPunch_Memset(&NutPunch_ServerPort, 0, sizeof(NutPunch_ServerPort));
 }
 
 static void NutPunch_NukeSocket() {
@@ -241,7 +238,6 @@ void NutPunch_SetServerAddr(const char* hostname) {
 		NutPunch_ServerHost[0] = 0;
 	else
 		snprintf(NutPunch_ServerHost, sizeof(NutPunch_ServerHost), "%s", hostname);
-	snprintf(NutPunch_ServerPort, sizeof(NutPunch_ServerPort), "%d", NUTPUNCH_SERVER_PORT);
 }
 
 void NutPunch_Reset() {
@@ -405,14 +401,11 @@ static int NutPunch_QueryImpl() {
 		if (sizeof(response) != nRecv) // fucking skip invalid/partitioned packets
 			continue;
 
-		NutPunch_Count = 0;
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			NutPunch_Memcpy(NutPunch_Peers[i].addr, ptr, 4);
-			NutPunch_Count += (0xFFFFFFFF == *(uint32_t*)ptr);
 			ptr += 4;
 
 			NutPunch_Memcpy(&NutPunch_Peers[i].port, ptr, 2);
-			NutPunch_Count += (0x0000 != *(uint16_t*)ptr);
 			NutPunch_Peers[i].port = ntohs(NutPunch_Peers[i].port);
 			ptr += 2;
 		}
@@ -466,7 +459,13 @@ struct NutPunch* NutPunch_GetPeers() {
 }
 
 int NutPunch_GetPeerCount() {
-	return NutPunch_LastStatus == NP_Status_Error ? 0 : NutPunch_Count;
+	if (NutPunch_LastStatus == NP_Status_Error)
+		return 0;
+
+	int count = 0;
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+		count += (0 != NutPunch_Peers[i].port);
+	return count;
 }
 
 int NutPunch_LocalPeer() {

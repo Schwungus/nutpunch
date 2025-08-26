@@ -2,7 +2,6 @@
 #include <cstring>
 #include <ctime>
 #include <map>
-#include <memory>
 #include <string>
 
 #include "nutpunch.h"
@@ -60,12 +59,10 @@ struct Field : NutPunch_Field {
 	}
 
 	bool isDead() const {
+		static const Field nully;
 		if (!size)
 			return true;
-		static const Field nully;
-		if (!std::memcmp(name, nully.name, sizeof(name)))
-			return true;
-		return false;
+		return !std::memcmp(name, nully.name, sizeof(name));
 	}
 
 	bool nameMatches(const char* name) const {
@@ -119,7 +116,21 @@ struct Lobby {
 		return true;
 	}
 
-private:
+	void processRequest(const int playerIdx, const char* request) {
+		players[playerIdx].countdown = keepAliveBeats;
+
+		if (playerIdx != getMasterIdx())
+			return;
+		const auto* fields = (Field*)&request[NUTPUNCH_ID_MAX];
+		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+			if (fields[i].isDead())
+				continue;
+			int idx = nextFieldIdx(fields[i].name);
+			if (NUTPUNCH_MAX_FIELDS != idx)
+				std::memcpy(&metadata[idx], &fields[i], sizeof(*fields));
+		}
+	}
+
 	void receiveFrom(const int playerIdx) {
 		auto& plr = players[playerIdx];
 		if (plr.countdown > 0) {
@@ -158,18 +169,7 @@ private:
 				plr.reset();
 				return;
 			}
-			plr.countdown = keepAliveBeats;
-
-			if (playerIdx != getMasterIdx())
-				continue;
-			const auto* fields = (Field*)&request[NUTPUNCH_ID_MAX];
-			for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-				if (fields[i].isDead())
-					continue;
-				int idx = nextFieldIdx(fields[i].name);
-				if (NUTPUNCH_MAX_FIELDS != idx)
-					std::memcpy(&metadata[idx], &fields[i], sizeof(*fields));
-			}
+			processRequest(playerIdx, request);
 		}
 	}
 
@@ -192,10 +192,7 @@ private:
 					std::memcpy(ptr, &players[i].addr.sin_addr, 4);
 				ptr += 4;
 
-				if (playerIdx == i)
-					std::memset(ptr, 0, 2);
-				else
-					std::memcpy(ptr, &players[i].addr.sin_port, 2);
+				std::memcpy(ptr, &players[i].addr.sin_port, 2);
 				ptr += 2;
 			}
 		}
@@ -206,8 +203,6 @@ private:
 		if (sent == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
 			plr.reset();
 	}
-
-	int masterIdx = NUTPUNCH_MAX_PLAYERS;
 
 	int getMasterIdx() {
 		if (NUTPUNCH_MAX_PLAYERS == masterIdx || players[masterIdx].isDead()) {
@@ -230,6 +225,9 @@ private:
 				return i;
 		return NUTPUNCH_MAX_FIELDS; // or bust
 	}
+
+private:
+	int masterIdx = NUTPUNCH_MAX_PLAYERS;
 };
 
 static void bindSock() {
@@ -294,7 +292,7 @@ static int acceptConnections() {
 		if (players[i].isDead())
 			continue;
 		if (!std::memcmp(&players[i].addr, &addr, sizeof(addr))) {
-			players[i].countdown = keepAliveBeats;
+			lobbies[id].processRequest(i, request);
 			return 0;
 		}
 	}
@@ -358,10 +356,10 @@ int main(int, char**) {
 
 		end = clock();
 		delta = ((end - start) * 1000) / CLOCKS_PER_SEC;
-		start = end;
 
 		if (delta < minDelta)
 			NutPunch_SleepMs(minDelta - delta);
+		start = clock();
 	}
 
 	return EXIT_SUCCESS;
