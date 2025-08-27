@@ -245,14 +245,19 @@ void NutPunch_Reset() {
 	NutPunch_NukeSocket();
 }
 
+static int NutPunch_FieldNameSize(const char* name) {
+	for (int i = 0; i < NUTPUNCH_FIELD_NAME_MAX; i++)
+		if (!name[i])
+			return i;
+	return NUTPUNCH_FIELD_NAME_MAX;
+}
+
 void* NutPunch_Get(const char* name, int* size) {
 	static char copy[NUTPUNCH_FIELD_DATA_MAX] = {0};
 
-	int nameSize = strlen(name);
+	int nameSize = NutPunch_FieldNameSize(name);
 	if (!nameSize)
 		goto skip;
-	if (nameSize > NUTPUNCH_FIELD_NAME_MAX)
-		nameSize = NUTPUNCH_FIELD_NAME_MAX;
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		struct NutPunch_Field* ptr = &NutPunch_ReceivedMetadata[i];
@@ -271,7 +276,7 @@ skip:
 }
 
 void NutPunch_Set(const char* name, int dataSize, const void* data) {
-	int nameSize = strlen(name);
+	int nameSize = NutPunch_FieldNameSize(name);
 	if (!nameSize)
 		return;
 	if (nameSize > NUTPUNCH_FIELD_NAME_MAX)
@@ -291,8 +296,12 @@ void NutPunch_Set(const char* name, int dataSize, const void* data) {
 		struct NutPunch_Field* ptr = &NutPunch_PendingMetadata[i];
 		if (!NutPunch_Memcmp(ptr->name, name, nameSize) || !NutPunch_Memcmp(ptr, &nullfield, sizeof(nullfield)))
 		{
+			NutPunch_Memset(ptr->name, 0, sizeof(ptr->name));
 			NutPunch_Memcpy(ptr->name, name, nameSize);
+
+			NutPunch_Memset(ptr->data, 0, sizeof(ptr->data));
 			NutPunch_Memcpy(ptr->data, data, dataSize);
+
 			ptr->size = dataSize;
 			return;
 		}

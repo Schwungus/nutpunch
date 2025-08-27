@@ -68,12 +68,22 @@ struct Field : NutPunch_Field {
 	bool nameMatches(const char* name) const {
 		if (isDead())
 			return false;
-		int nameLen = std::strlen(name);
-		if (nameLen > NUTPUNCH_FIELD_NAME_MAX)
-			nameLen = NUTPUNCH_FIELD_NAME_MAX;
-		if (std::strlen(this->name) > nameLen)
+		int nameSize = NUTPUNCH_FIELD_NAME_MAX;
+		for (int i = 0; i < NUTPUNCH_FIELD_NAME_MAX; i++)
+			if (!name[i]) {
+				nameSize = i;
+				break;
+			}
+		if (!nameSize)
 			return false;
-		return !std::memcmp(this->name, name, nameLen);
+		for (int i = 0; i < NUTPUNCH_FIELD_NAME_MAX; i++)
+			if (!this->name[i]) {
+				if (i > nameSize)
+					return false;
+				else
+					break;
+			}
+		return !std::memcmp(this->name, name, nameSize);
 	}
 
 	void reset() {
