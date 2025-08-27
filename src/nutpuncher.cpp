@@ -6,6 +6,27 @@
 
 #include "nutpunch.h"
 
+#ifdef NUTPUNCH_WINDOSE
+
+#define _AMD64_
+#define _INC_WINDOWS
+
+#include <windef.h>
+
+#include <minwinbase.h>
+#include <winbase.h>
+
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
+#include <synchapi.h>
+
+#define SleepMs(ms) (Sleep((ms)))
+
+#else
+#error shit....
+#endif
+
 struct Lobby;
 
 constexpr const int beatsPerSecond = 60, keepAliveSeconds = 5, keepAliveBeats = keepAliveSeconds * beatsPerSecond,
@@ -368,7 +389,7 @@ int main(int, char**) {
 		delta = ((end - start) * 1000) / CLOCKS_PER_SEC;
 
 		if (delta < minDelta)
-			NutPunch_SleepMs(minDelta - delta);
+			SleepMs(minDelta - delta);
 		start = clock();
 	}
 

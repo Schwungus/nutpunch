@@ -5,6 +5,7 @@ include(FetchContent)
 
 add_library(nutpunch INTERFACE)
 target_include_directories(nutpunch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_definitions(nutpunch INTERFACE _WINSOCK_DEPRECATED_NO_WARNINGS)
 target_link_options(nutpunch INTERFACE -static)
 if(WIN32)
     target_link_libraries(nutpunch INTERFACE Ws2_32)
@@ -19,7 +20,7 @@ if(NUTPUNCH_BUILD_TESTS)
         GIT_PROGRESS true)
     FetchContent_MakeAvailable(raylib)
 
-    add_executable(nutpunchTest ${CMAKE_CURRENT_SOURCE_DIR}/src/test.c)
+    add_executable(nutpunchTest ${CMAKE_CURRENT_SOURCE_DIR}/src/test.c ${CMAKE_CURRENT_SOURCE_DIR}/src/static.c)
     target_link_libraries(nutpunchTest PRIVATE nutpunch raylib)
 endif()
 

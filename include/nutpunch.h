@@ -14,6 +14,14 @@ extern "C" {
 #define WIN32_LEAN_AND_MEAN
 #endif
 
+#ifndef WINVER
+#define WINVER 0x0501
+#endif
+
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0501
+#endif
+
 /// Maximum amount of players in a lobby. Not intended to be customizable.
 #define NUTPUNCH_MAX_PLAYERS (16)
 
@@ -30,30 +38,6 @@ extern "C" {
 #define NUTPUNCH_RESPONSE_SIZE                                                                                         \
 	(NUTPUNCH_MAX_PLAYERS * sizeof(struct NutPunch) + NUTPUNCH_MAX_FIELDS * sizeof(struct NutPunch_Field))
 #define NUTPUNCH_REQUEST_SIZE (NUTPUNCH_ID_MAX + NUTPUNCH_MAX_FIELDS * sizeof(struct NutPunch_Field))
-
-#ifdef NUTPUNCH_WINDOSE
-
-#ifndef WINVER
-#define WINVER 0x0601
-#endif
-
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0601
-#endif
-
-#define _AMD64_
-#define _INC_WINDOWS
-
-#include <windef.h>
-
-#include <minwinbase.h>
-#include <winbase.h>
-
-#include <winsock2.h>
-
-#include <ws2tcpip.h>
-
-#endif
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -99,7 +83,7 @@ int NutPunch_Query();
 /// `NP_Status_Punched` response.
 ///
 /// WARNING: I repeat, you MUST use this exact socket for further networking; else the port we just punched will close.
-SOCKET NutPunch_Done();
+uint64_t NutPunch_Done();
 
 /// Request lobby metadata to be set. Can be called multiple times in a row. Will send out metadata changes on
 /// `NutPunch_Query()`, and won't do anything unless you're the lobby's master.
@@ -145,13 +129,15 @@ int NutPunch_LocalPeer();
 		fflush(stdout);                                                                                        \
 	} while (0)
 
+#ifdef NUTPUNCH_IMPLEMENTATION
+
 #ifdef NUTPUNCH_WINDOSE
-#define NutPunch_SleepMs(ms) (Sleep((ms)))
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #else
 #error Bad luck.
 #endif
-
-#ifdef NUTPUNCH_IMPLEMENTATION
 
 #ifndef NutPunch_Memcpy
 #include <string.h>
@@ -227,8 +213,10 @@ static struct sockaddr NutPunch_SockAddr(const char* host, uint16_t port) {
 	struct sockaddr_in addr = {0};
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(port);
-	if (host != NULL)
-		inet_pton(addr.sin_family, host, &addr.sin_addr);
+	if (host != NULL) {
+		uint32_t conv = inet_addr(host);
+		NutPunch_Memcpy(&addr.sin_addr, &conv, 4);
+	}
 	return *(struct sockaddr*)&addr;
 }
 
@@ -453,7 +441,8 @@ int NutPunch_Query() {
 	return NutPunch_LastStatus;
 }
 
-SOCKET NutPunch_Done() {
+#ifdef NUTPUNCH_WINDOSE
+static SOCKET NutPunch_DoneWindose() {
 	NutPunch_NukeRemote();
 	if (NutPunch_LastStatus != NP_Status_Punched || !NutPunch_GetPeerCount()) {
 		NutPunch_LastStatus = NP_Status_Error;
@@ -461,6 +450,16 @@ SOCKET NutPunch_Done() {
 	}
 	NutPunch_LastStatus = NP_Status_Idle;
 	return NutPunch_Socket;
+	;
+}
+#endif
+
+uint64_t NutPunch_Done() {
+#ifdef NUTPUNCH_WINDOSE
+	SOCKET tmp = NutPunch_DoneWindose();
+	return *(uint64_t*)&tmp;
+#endif
+	return 0;
 }
 
 struct NutPunch* NutPunch_GetPeers() {
