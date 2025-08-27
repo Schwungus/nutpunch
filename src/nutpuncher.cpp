@@ -275,11 +275,11 @@ static int acceptConnections() {
 		return -1;
 
 	char request[NUTPUNCH_REQUEST_SIZE] = {0};
-	sockaddr_in addr = {0};
+	sockaddr addr = {0};
 	int addrLen = sizeof(addr);
 
-	int nRecv = recvfrom(sock, request, sizeof(request), 0, reinterpret_cast<sockaddr*>(&addr), &addrLen);
-	if (SOCKET_ERROR == nRecv && WSAGetLastError() != WSAECONNRESET)
+	int nRecv = recvfrom(sock, request, sizeof(request), 0, &addr, &addrLen);
+	if (SOCKET_ERROR == nRecv)
 		return WSAGetLastError() == WSAEWOULDBLOCK ? -1 : WSAGetLastError();
 	if (sizeof(request) != nRecv) // skip weirdass packets
 		return 0;
@@ -308,7 +308,7 @@ static int acceptConnections() {
 	}
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (players[i].isDead()) {
-			players[i].addr = addr;
+			std::memcpy(&players[i].addr, &addr, sizeof(addr));
 			players[i].countdown = keepAliveBeats;
 			NutPunch_Log("Peer %d joined lobby '%s'", i + 1, fmtLobbyId(id));
 			return 0;
