@@ -144,7 +144,7 @@ int main(int argc, char* argv[]) {
 
 		NutPunch_Set("PLAYERS", sizeof(expectingPlayers), &expectingPlayers);
 		int size = 0, *ptr = NutPunch_Get("PLAYERS", &size);
-		if (size && *ptr && NutPunch_GetPeerCount() >= *ptr) {
+		if (sizeof(expectingPlayers) == size && NutPunch_GetPeerCount() >= *ptr) {
 			memset(players, 0, sizeof(players));
 			players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
 			players[NutPunch_LocalPeer()].y = 150 - sqr / 2;

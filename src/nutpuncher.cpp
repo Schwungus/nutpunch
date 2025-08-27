@@ -37,14 +37,14 @@ private:
 static const char* fmtLobbyId(const char* id) {
 	static char buf[NUTPUNCH_ID_MAX + 1] = {0};
 
-	for (int i = 0; i < sizeof(id); i++) {
+	for (int i = 0; i < NUTPUNCH_ID_MAX; i++) {
 		char c = id[i];
 		if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_')
 			buf[i] = c;
 		else
 			buf[i] = ' ';
 	}
-	for (int i = sizeof(id) - 1; i >= 0; i--)
+	for (int i = NUTPUNCH_ID_MAX; i >= 0; i--)
 		if (buf[i] != ' ' && buf[i] != '\0') {
 			buf[i + 1] = '\0';
 			break;
@@ -269,7 +269,7 @@ static int acceptConnections() {
 	fd_set s = {1, {sock}};
 
 	int res = select(0, &s, nullptr, nullptr, &instantBitchNoodles);
-	if (res == SOCKET_ERROR)
+	if (res == SOCKET_ERROR && WSAGetLastError() != WSAECONNRESET)
 		return WSAGetLastError() == WSAEWOULDBLOCK ? -1 : WSAGetLastError();
 	if (!res)
 		return -1;
@@ -279,7 +279,7 @@ static int acceptConnections() {
 	int addrLen = sizeof(addr);
 
 	int nRecv = recvfrom(sock, request, sizeof(request), 0, &addr, &addrLen);
-	if (SOCKET_ERROR == nRecv)
+	if (SOCKET_ERROR == nRecv && WSAGetLastError() != WSAECONNRESET)
 		return WSAGetLastError() == WSAEWOULDBLOCK ? -1 : WSAGetLastError();
 	if (sizeof(request) != nRecv) // skip weirdass packets
 		return 0;
