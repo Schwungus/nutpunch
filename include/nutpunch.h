@@ -479,7 +479,7 @@ int NutPunch_GetPeerCount() {
 
 int NutPunch_LocalPeer() {
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (0xFFFFFFFF == *(uint32_t*)&NutPunch_GetPeers()[i].addr)
+		if (0xFFFFFFFF == *(uint32_t*)NutPunch_GetPeers()[i].addr)
 			return i;
 	return 0;
 }
