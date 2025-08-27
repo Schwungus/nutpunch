@@ -262,7 +262,7 @@ void* NutPunch_Get(const char* name, int* size) {
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		struct NutPunch_Field* ptr = &NutPunch_ReceivedMetadata[i];
 		if (!NutPunch_Memcmp(ptr->name, name, nameSize)) {
-			NutPunch_Memset(copy, 0, NUTPUNCH_FIELD_DATA_MAX);
+			NutPunch_Memset(copy, 0, sizeof(copy));
 			*size = ptr->size;
 			NutPunch_Memcpy(copy, ptr->data, *size);
 			return copy;
@@ -270,7 +270,7 @@ void* NutPunch_Get(const char* name, int* size) {
 	}
 
 skip:
-	NutPunch_Memset(copy, 0, NUTPUNCH_FIELD_DATA_MAX);
+	NutPunch_Memset(copy, 0, sizeof(copy));
 	*size = 0;
 	return copy;
 }

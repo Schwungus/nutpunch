@@ -41,6 +41,18 @@ static bool hasNext() {
 	return res > 0;
 }
 
+static struct sockaddr peer2addr(int idx) {
+	struct sockaddr result = {0};
+
+	// NOTE: port is converted to host format by `NutPunch_Query()`.
+	struct sockaddr_in* inet = (struct sockaddr_in*)&result;
+	inet->sin_family = AF_INET;
+	inet->sin_port = htons(NutPunch_GetPeers()[idx].port);
+	memcpy(&inet->sin_addr, NutPunch_GetPeers()[idx].addr, 4);
+
+	return result;
+}
+
 static void sendReceiveUpdates() {
 	// Refer to mental notes for why it's this sized.
 	static char rawData[NUTPUNCH_RESPONSE_SIZE] = {0};
@@ -75,17 +87,11 @@ static void sendReceiveUpdates() {
 		if (!NutPunch_GetPeers()[i].port)
 			continue;
 
-		struct sockaddr_in baseAddr;
-		baseAddr.sin_family = AF_INET;
-		// NOTE: port is converted to host format by `NutPunch_Query()`.
-		baseAddr.sin_port = htons(NutPunch_GetPeers()[i].port);
-		memcpy(&baseAddr.sin_addr, NutPunch_GetPeers()[i].addr, 4);
-
-		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
-		int addrSize = sizeof(baseAddr);
+		struct sockaddr addr = peer2addr(i);
+		int addrSize = sizeof(addr);
 
 		memset(data, 0, PAYLOAD_SIZE);
-		int io = recvfrom(NutPunch_Socket, rawData, sizeof(rawData), 0, addr, &addrSize);
+		int io = recvfrom(NutPunch_Socket, rawData, sizeof(rawData), 0, &addr, &addrSize);
 
 		if (io == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
 			printf("Failed to receive from peer %d (%d)\n", i + 1, WSAGetLastError());
@@ -94,7 +100,7 @@ static void sendReceiveUpdates() {
 		if (io != PAYLOAD_SIZE)
 			continue;
 
-		updateByAddr(*addr, data);
+		updateByAddr(addr, data);
 	}
 
 	// Send each peer your own position:
@@ -105,13 +111,9 @@ static void sendReceiveUpdates() {
 		if (!NutPunch_GetPeers()[i].port)
 			continue;
 
-		struct sockaddr_in baseAddr;
-		baseAddr.sin_family = AF_INET;
-		baseAddr.sin_port = htons(NutPunch_GetPeers()[i].port); // see NOTE above
-		memcpy(&baseAddr.sin_addr, NutPunch_GetPeers()[i].addr, 4);
-		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
+		struct sockaddr addr = peer2addr(i);
+		int io = sendto(NutPunch_Socket, rawData, PAYLOAD_SIZE, 0, &addr, sizeof(addr));
 
-		int io = sendto(NutPunch_Socket, rawData, PAYLOAD_SIZE, 0, addr, sizeof(baseAddr));
 		if (SOCKET_ERROR == io && WSAGetLastError() != WSAEWOULDBLOCK) {
 			printf("Failed to send to peer %d (%d)\n", i + 1, WSAGetLastError());
 			NutPunch_GetPeers()[i].port = 0; // just nuke them...

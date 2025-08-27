@@ -78,7 +78,7 @@ struct Field : NutPunch_Field {
 			return false;
 		for (int i = 0; i < NUTPUNCH_FIELD_NAME_MAX; i++)
 			if (!this->name[i]) {
-				if (i > nameSize)
+				if (i != nameSize)
 					return false;
 				else
 					break;
@@ -137,14 +137,14 @@ struct Lobby {
 				continue;
 			int idx = nextFieldIdx(fields[i].name);
 			if (NUTPUNCH_MAX_FIELDS != idx)
-				std::memcpy(&metadata[idx], &fields[i], sizeof(*fields));
+				std::memcpy(&metadata[idx], &fields[i], sizeof(Field));
 		}
 	}
 
 	void receiveFrom(const int playerIdx) {
 		auto& plr = players[playerIdx];
 		if (plr.countdown > 0) {
-			plr.countdown -= 1;
+			plr.countdown--;
 			if (plr.isDead())
 				NutPunch_Log("Peer %d timed out in lobby '%s'", playerIdx + 1, fmtId());
 		}
@@ -161,7 +161,7 @@ struct Lobby {
 			std::int64_t nRecv = recvfrom(sock, request, sizeof(request), 0, &clientAddr, &addrLen);
 			if (nRecv == SOCKET_ERROR) {
 				if (WSAGetLastError() == WSAEWOULDBLOCK)
-					return;
+					break;
 				NutPunch_Log("Peer %d disconnect (code %d)", playerIdx + 1, WSAGetLastError());
 				plr.reset();
 				return;
@@ -288,7 +288,7 @@ static int acceptConnections() {
 	std::memcpy(id, request, NUTPUNCH_ID_MAX);
 
 	if (!lobbies.count(id)) {
-		if (lobbies.size() > maxLobbies) {
+		if (lobbies.size() >= maxLobbies) {
 			NutPunch_Log("WARN: Reached lobby limit...");
 			return 0;
 		} else {
@@ -297,7 +297,7 @@ static int acceptConnections() {
 		}
 	}
 
-	auto& players = lobbies[id].players;
+	auto* players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (players[i].isDead())
 			continue;
