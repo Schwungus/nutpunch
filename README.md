@@ -1,5 +1,7 @@
 # nutpunch
 
+(README out of date since the latest commit.........)
+
 > [!WARNING]
 > Using this library and implementing UDP hole-punching **only** makes sense if you're **making a P2P networked game**. If you need server-based networking (**which is arguably much simpler to implement**), you're out of luck -- go elsewhere. You have been warned.
 

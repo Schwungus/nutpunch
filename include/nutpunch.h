@@ -31,6 +31,9 @@ extern "C" {
 /// The maximum length of a lobby identifier excluding the null terminator. Not customizable.
 #define NUTPUNCH_ID_MAX (64)
 
+/// How many bytes to reserve for every network packet.
+#define NUTPUNCH_BUFFER_SIZE (512000)
+
 #define NUTPUNCH_FIELD_NAME_MAX (8)
 #define NUTPUNCH_FIELD_DATA_MAX (32)
 #define NUTPUNCH_MAX_FIELDS (16)
@@ -46,8 +49,7 @@ extern "C" {
 enum {
 	NP_Status_Error,
 	NP_Status_Idle,
-	NP_Status_Working,
-	NP_Status_Punched,
+	NP_Status_Online,
 };
 
 struct NutPunch {
@@ -63,67 +65,46 @@ struct NutPunch_Field {
 // Forward-declarations:
 
 /// Set a custom hole-puncher server address.
-void NutPunch_SetServerAddr(const char*);
+void NutPunch_SetServerAddr(const char* hostname);
 
 /// Initiate a nut-punch to the specified lobby. Query status by calling `NutPunch_Query()` every frame.
-bool NutPunch_Join(const char*);
+bool NutPunch_Join(const char* lobbyId);
 
 /// Run this at the end of your program to do semi-important cleanup.
 void NutPunch_Cleanup();
 
-/// Request the lobby to start the game. Only works if you're the lobby's master, but it's safe to call either way.
-void NutPunch_Start();
-
-/// Query the punching status.
-///
-/// Status `NP_Status_Punched` populates the peers array, and it means you're OK to call `NutPunch_Done()`.
-int NutPunch_Query();
-
-/// Return the nutpunched socket for P2P networking. To get a usable socket handle, you must cast the returned pointer,
-/// to a pointer to your operating system's socket type, and dereference it. For example, cast this to `(SOCKET*)` on
-/// Windows.
-///
-/// On windows, this will return `INVALID_SOCKET` unless `NutPunch_Query()` signalled a `NP_Status_Punched` response.
-///
-/// WARNING: I repeat, you MUST use this exact socket for further networking; else the port we just punched will close.
-void* NutPunch_Done();
+/// Call this every frame to update nutpunch. Returns one of the `NP_Status_*` constants.
+int NutPunch_Update();
 
 /// Request lobby metadata to be set. Can be called multiple times in a row. Will send out metadata changes on
-/// `NutPunch_Query()`, and won't do anything unless you're the lobby's master.
+/// `NutPunch_Update()`, and won't do anything unless you're the lobby's master.
 ///
 /// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for limitations on the amount of data you can squeeze.
-void NutPunch_Set(const char*, int, const void*);
+void NutPunch_Set(const char* key, int size, const void* data);
 
-/// Request lobby metadata. Set `size` to the field's actual size if the pointer isn't `NULL`.
+/// Request lobby metadata. Sets `size` to the field's actual size if the pointer isn't `NULL`.
 ///
 /// The resulting pointer is actually a static allocation, so don't rely too much on it; its data will change after the
 /// next `NutPunch_Get` call.
-void* NutPunch_Get(const char*, int* size);
+void* NutPunch_Get(const char* key, int* size);
+
+/// Return true if there is a packet in the receiving queue. Retrieve it with `NutPunch_NextPacket()`.
+bool NutPunch_HasNext();
+
+/// Retrieve the next packet in the receiving queue. Return the index of the peer who sent it.
+int NutPunch_NextPacket(void* out, int* size);
+
+/// Send data to specified peer.
+void NutPunch_Send(int peer, const void* data, int size);
+
+/// Count how many "live" peers we're expected to have, excluding our local peer.
+int NutPunch_PeerCount();
 
 /// Use this to reset the underlying socket in case of an inexplicable error.
 void NutPunch_Reset();
 
-/// Get the human-readable description of the latest `NutPunch_Query()` error.
+/// Get the human-readable description of the latest error in `NutPunch_Update()`.
 const char* NutPunch_GetLastError();
-
-/// Return the list of peers discovered after `NutPunch_Join()`. Updated every `NutPunch_Query()` call.
-///
-/// Use `NutPunch_LocalPeer()` to get your index in the array.
-///
-/// Please heed the warning in `NutPunch_GetPeerCount()`.
-struct NutPunch* NutPunch_Peers();
-
-/// Count the peers discovered in the lobby after `NutPunch_Join()`. Updated every `NutPunch_Query()` call.
-///
-/// WARNING: DO NOT use the result of this call as an upper bound for iterating through peers. Peers can come in any
-/// order, with "gaps" in between. Iterate through all peers (from `0` to `NUTPUNCH_PLAYERS_MAX`) skipping if their
-/// port value is `0`.
-///
-/// Returns 0 in case of an error.
-int NutPunch_PeerCount();
-
-/// Return the index of our peer.
-int NutPunch_LocalPeer();
 
 #define NutPunch_Log(...)                                                                                              \
 	do {                                                                                                           \
@@ -142,6 +123,16 @@ int NutPunch_LocalPeer();
 #error Bad luck.
 #endif
 
+#ifndef NutPunch_Malloc
+#include <stdlib.h>
+#define NutPunch_Malloc malloc
+#endif
+
+#ifndef NutPunch_Free
+#include <stdlib.h>
+#define NutPunch_Free free
+#endif
+
 #ifndef NutPunch_Memcpy
 #include <string.h>
 #define NutPunch_Memcpy memcpy
@@ -157,59 +148,68 @@ int NutPunch_LocalPeer();
 #define NutPunch_Memcmp memcmp
 #endif
 
-static struct NutPunch_Field NutPunch_ReceivedMetadata[NUTPUNCH_MAX_FIELDS] = {0},
-			     NutPunch_PendingMetadata[NUTPUNCH_MAX_FIELDS] = {0};
+struct NP_Packet {
+	char* data;
+	int size, peer;
+	struct NP_Packet* next;
+};
 
-static const char* NutPunch_LastError = NULL;
-static int NutPunch_LastErrorCode = 0;
+static const char* NP_LastError = NULL;
+static int NP_LastErrorCode = 0;
 
-static bool NutPunch_HadInit = false;
-static int NutPunch_LastStatus = NP_Status_Idle;
+static bool NP_InitDone = false;
+static int NP_LastStatus = NP_Status_Idle;
 
-static char NutPunch_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
-static struct NutPunch NutPunch_PeerList[NUTPUNCH_MAX_PLAYERS] = {0};
+static char NP_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
+static struct NutPunch NP_AvailPeers[NUTPUNCH_MAX_PLAYERS] = {0};
+static struct sockaddr NP_Connections[NUTPUNCH_MAX_PLAYERS] = {0};
 
-static SOCKET NutPunch_Socket = INVALID_SOCKET;
-static struct sockaddr NutPunch_RemoteAddr = {0};
-static char NutPunch_ServerHost[128] = {0};
+static SOCKET NP_Socket = INVALID_SOCKET;
+static struct sockaddr NP_RemoteAddr = {0};
+static char NP_ServerHost[128] = {0};
+
+static struct NP_Packet *NP_QueueIn = NULL, *NP_QueueOut = NULL;
+static struct NutPunch_Field NP_MetadataIn[NUTPUNCH_MAX_FIELDS] = {0}, NP_MetadataOut[NUTPUNCH_MAX_FIELDS] = {0};
 
 static void NutPunch_NukeLobbyData() {
-	NutPunch_Memset(NutPunch_PeerList, 0, sizeof(NutPunch_PeerList));
-	NutPunch_Memset(NutPunch_ReceivedMetadata, 0, sizeof(NutPunch_ReceivedMetadata));
-	NutPunch_Memset(NutPunch_PendingMetadata, 0, sizeof(NutPunch_PendingMetadata));
+	NutPunch_Memset(NP_AvailPeers, 0, sizeof(NP_AvailPeers));
+	NutPunch_Memset(NP_MetadataIn, 0, sizeof(NP_MetadataIn));
+	NutPunch_Memset(NP_MetadataOut, 0, sizeof(NP_MetadataOut));
+	NutPunch_Memset(NP_Connections, 0, sizeof(NP_Connections));
 }
 
 static void NutPunch_NukeRemote() {
-	NutPunch_LobbyId[0] = 0;
-	NutPunch_Memset(&NutPunch_RemoteAddr, 0, sizeof(NutPunch_RemoteAddr));
-	NutPunch_Memset(&NutPunch_ServerHost, 0, sizeof(NutPunch_ServerHost));
+	NP_LobbyId[0] = 0;
+	NutPunch_Memset(&NP_RemoteAddr, 0, sizeof(NP_RemoteAddr));
+	NutPunch_Memset(NP_ServerHost, 0, sizeof(NP_ServerHost));
+	NutPunch_Memset(NP_Connections, 0, sizeof(NP_Connections));
 }
 
 static void NutPunch_NukeSocket() {
 	NutPunch_NukeLobbyData();
-	if (NutPunch_Socket != INVALID_SOCKET) {
-		closesocket(NutPunch_Socket);
-		NutPunch_Socket = INVALID_SOCKET;
+	if (NP_Socket != INVALID_SOCKET) {
+		closesocket(NP_Socket);
+		NP_Socket = INVALID_SOCKET;
 	}
 }
 
-static void NutPunch_LazyInit() {
-	if (NutPunch_HadInit)
+static void NP_LazyInit() {
+	if (NP_InitDone)
 		return;
-	NutPunch_HadInit = true;
+	NP_InitDone = true;
 
 	WSADATA bitch = {0};
 	WSAStartup(MAKEWORD(2, 2), &bitch);
-	NutPunch_Socket = INVALID_SOCKET;
+	NP_Socket = INVALID_SOCKET;
 
 	NutPunch_NukeLobbyData();
 }
 
 static void NutPunch_PrintError() {
-	if (NutPunch_LastErrorCode)
-		NutPunch_Log("WARN: %s (error code: %d)", NutPunch_LastError, NutPunch_LastErrorCode);
+	if (NP_LastErrorCode)
+		NutPunch_Log("WARN: %s (error code: %d)", NP_LastError, NP_LastErrorCode);
 	else
-		NutPunch_Log("WARN: %s", NutPunch_LastError);
+		NutPunch_Log("WARN: %s", NP_LastError);
 }
 
 static struct sockaddr NutPunch_SockAddr(const char* host, uint16_t port) {
@@ -224,11 +224,11 @@ static struct sockaddr NutPunch_SockAddr(const char* host, uint16_t port) {
 }
 
 void NutPunch_SetServerAddr(const char* hostname) {
-	NutPunch_LazyInit();
+	NP_LazyInit();
 	if (hostname == NULL)
-		NutPunch_ServerHost[0] = 0;
+		NP_ServerHost[0] = 0;
 	else
-		snprintf(NutPunch_ServerHost, sizeof(NutPunch_ServerHost), "%s", hostname);
+		snprintf(NP_ServerHost, sizeof(NP_ServerHost), "%s", hostname);
 }
 
 void NutPunch_Reset() {
@@ -251,7 +251,7 @@ void* NutPunch_Get(const char* name, int* size) {
 		goto skip;
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		struct NutPunch_Field* ptr = &NutPunch_ReceivedMetadata[i];
+		struct NutPunch_Field* ptr = &NP_MetadataIn[i];
 		if (!NutPunch_Memcmp(ptr->name, name, nameSize)) {
 			NutPunch_Memset(copy, 0, sizeof(copy));
 			*size = ptr->size;
@@ -284,7 +284,7 @@ void NutPunch_Set(const char* name, int dataSize, const void* data) {
 
 	static const struct NutPunch_Field nullfield = {0};
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		struct NutPunch_Field* ptr = &NutPunch_PendingMetadata[i];
+		struct NutPunch_Field* ptr = &NP_MetadataOut[i];
 		if (!NutPunch_Memcmp(ptr->name, name, nameSize) || !NutPunch_Memcmp(ptr, &nullfield, sizeof(nullfield)))
 		{
 			NutPunch_Memset(ptr->name, 0, sizeof(ptr->name));
@@ -305,192 +305,261 @@ static bool NutPunch_BindSocket() {
 
 	NutPunch_NukeSocket();
 
-	NutPunch_Socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (NutPunch_Socket == INVALID_SOCKET) {
-		NutPunch_LastError = "Failed to create the underlying UDP socket";
+	NP_Socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (NP_Socket == INVALID_SOCKET) {
+		NP_LastError = "Failed to create the underlying UDP socket";
 		goto fail;
 	}
 
-	if (SOCKET_ERROR == ioctlsocket(NutPunch_Socket, FIONBIO, &argp)) {
-		NutPunch_LastError = "Failed to set socket to non-blocking mode";
+	if (SOCKET_ERROR == ioctlsocket(NP_Socket, FIONBIO, &argp)) {
+		NP_LastError = "Failed to set socket to non-blocking mode";
 		goto fail;
 	}
 
 	addr = NutPunch_SockAddr(NULL, 0);
-	if (SOCKET_ERROR == bind(NutPunch_Socket, &addr, sizeof(addr))) {
-		NutPunch_LastError = "Failed to bind the UDP socket";
+	if (SOCKET_ERROR == bind(NP_Socket, &addr, sizeof(addr))) {
+		NP_LastError = "Failed to bind the UDP socket";
 		goto fail;
 	}
 
-	NutPunch_LastStatus = NP_Status_Working;
-	NutPunch_RemoteAddr = NutPunch_SockAddr(NutPunch_ServerHost, NUTPUNCH_SERVER_PORT);
+	NP_LastStatus = NP_Status_Online;
+	NP_RemoteAddr = NutPunch_SockAddr(NP_ServerHost, NUTPUNCH_SERVER_PORT);
 	return true;
 
 fail:
-	NutPunch_LastStatus = NP_Status_Error;
-	NutPunch_LastErrorCode = WSAGetLastError();
+	NP_LastStatus = NP_Status_Error;
+	NP_LastErrorCode = WSAGetLastError();
 	NutPunch_PrintError();
 	NutPunch_Reset();
 	return false;
 }
 
-bool NutPunch_Join(const char* lobby) {
-	NutPunch_LazyInit();
+bool NutPunch_Join(const char* lobbyId) {
+	NP_LazyInit();
 	NutPunch_NukeLobbyData();
 
-	if (!NutPunch_ServerHost[0]) {
-		NutPunch_LastError = "Holepuncher server address unset";
-		NutPunch_LastErrorCode = 0;
+	if (!NP_ServerHost[0]) {
+		NP_LastError = "Holepuncher server address unset";
+		NP_LastErrorCode = 0;
 		NutPunch_PrintError();
 		goto fail;
 	}
 
 	if (NutPunch_BindSocket()) {
-		NutPunch_LastStatus = NP_Status_Working;
-		NutPunch_Memset(NutPunch_LobbyId, 0, sizeof(NutPunch_LobbyId));
-		snprintf(NutPunch_LobbyId, sizeof(NutPunch_LobbyId), "%s", lobby);
+		NP_LastStatus = NP_Status_Online;
+		NutPunch_Memset(NP_LobbyId, 0, sizeof(NP_LobbyId));
+		snprintf(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobbyId);
 		return true;
 	}
 
 fail:
 	NutPunch_Reset();
-	NutPunch_LastStatus = NP_Status_Error;
+	NP_LastStatus = NP_Status_Error;
 	return false;
 }
 
+static void NP_CleanupPackets(struct NP_Packet** queue) {
+	while (*queue != NULL) {
+		struct NP_Packet* ptr = *queue;
+		*queue = ptr->next;
+		NutPunch_Free(ptr->data);
+		NutPunch_Free(ptr);
+	}
+}
+
 void NutPunch_Cleanup() {
+	NP_CleanupPackets(&NP_QueueIn);
+	NP_CleanupPackets(&NP_QueueOut);
 	NutPunch_Reset();
 	WSACleanup();
 }
 
 const char* NutPunch_GetLastError() {
-	return NutPunch_LastError;
+	return NP_LastError;
 }
 
-static int NutPunch_QueryImpl() {
-	static char request[NUTPUNCH_REQUEST_SIZE] = {0}, response[NUTPUNCH_RESPONSE_SIZE] = {0};
-	if (!NutPunch_LobbyId[0] || NutPunch_Socket == INVALID_SOCKET)
+static bool NP_ConnDead(int idx) {
+	static const struct sockaddr nully = {0};
+	return !NutPunch_Memcmp(&nully, NP_Connections + idx, sizeof(nully));
+}
+
+static int NutPunch_RealUpdate() {
+	if (!NP_LobbyId[0] || NP_Socket == INVALID_SOCKET)
 		return NP_Status_Idle;
 
-	struct sockaddr addr = NutPunch_RemoteAddr;
-	int addrSize = sizeof(addr);
+	static const char intro[4] = "hii";
 
-	if ((NutPunch_LastStatus == NP_Status_Working || NutPunch_LastStatus == NP_Status_Punched)) {
-		NutPunch_Memcpy(request, NutPunch_LobbyId, NUTPUNCH_ID_MAX);
-		NutPunch_Memcpy(request + NUTPUNCH_ID_MAX, NutPunch_PendingMetadata, sizeof(NutPunch_PendingMetadata));
-		if (sendto(NutPunch_Socket, request, sizeof(request), 0, &addr, addrSize) == SOCKET_ERROR
-			&& WSAGetLastError() != WSAEWOULDBLOCK)
-		{
-			NutPunch_LastError = "Failed to send heartbeat";
-			goto sockFail;
-		}
+	struct sockaddr addr = NP_RemoteAddr;
+	static char request[NUTPUNCH_REQUEST_SIZE] = {0};
+	NutPunch_Memcpy(request, NP_LobbyId, NUTPUNCH_ID_MAX);
+	NutPunch_Memcpy(request + NUTPUNCH_ID_MAX, NP_MetadataOut, sizeof(NP_MetadataOut));
+	if (SOCKET_ERROR == sendto(NP_Socket, request, sizeof(request), 0, &addr, sizeof(addr))
+		&& WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
+	{
+		NP_LastError = "Failed to send heartbeat to nutpuncher server";
+		goto sockFail;
 	}
 
 	for (;;) {
-		addrSize = sizeof(addr);
-		NutPunch_Memset(response, 0, sizeof(response));
-		int io = recvfrom(NutPunch_Socket, response, sizeof(response), 0, &addr, &addrSize);
-		if (SOCKET_ERROR == io) {
+		struct sockaddr addr = {0};
+		int addrSize = sizeof(addr);
+
+		static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
+		int size = recvfrom(NP_Socket, buf, sizeof(buf), 0, &addr, &addrSize);
+		if (SOCKET_ERROR == size) {
 			if (WSAGetLastError() == WSAEWOULDBLOCK)
 				break;
-			NutPunch_LastError = "Failed to receive from holepunch server";
+			if (WSAGetLastError() == WSAECONNRESET)
+				continue;
+			NP_LastError = "Failed to receive from holepunch server";
 			goto sockFail;
 		}
-		if (sizeof(response) != io) // fucking skip invalid/partitioned packets
-			continue;
-		if (NutPunch_Memcmp(&addr, &NutPunch_RemoteAddr, sizeof(addr)))
-			continue;
 
-		uint8_t* ptr = (uint8_t*)response;
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			NutPunch_Memcpy(NutPunch_PeerList[i].addr, ptr, 4);
-			ptr += 4;
+		if (!NutPunch_Memcmp(&addr, &NP_RemoteAddr, sizeof(addr))) {
+			if (size != NUTPUNCH_RESPONSE_SIZE)
+				continue;
+			uint8_t* ptr = (uint8_t*)buf;
+			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+				NutPunch_Memcpy(NP_AvailPeers[i].addr, ptr, 4);
+				ptr += 4;
+				NutPunch_Memcpy(&NP_AvailPeers[i].port, ptr, 2);
+				ptr += 2;
+			}
+			NutPunch_Memcpy(NP_MetadataIn, ptr, sizeof(NP_MetadataIn));
+		} else {
+			int connIdx = NUTPUNCH_MAX_PLAYERS;
+			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+				if (!NutPunch_Memcmp(&addr, NP_Connections + i, sizeof(addr))) {
+					connIdx = i;
+					goto push;
+				}
+			}
+			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+				if (NP_ConnDead(i)) {
+					connIdx = i;
+					goto push;
+				}
+			}
 
-			NutPunch_Memcpy(&NutPunch_PeerList[i].port, ptr, 2);
-			NutPunch_PeerList[i].port = ntohs(NutPunch_PeerList[i].port);
-			ptr += 2;
+		push:
+			if (connIdx == NUTPUNCH_MAX_PLAYERS)
+				continue;
+			NP_Connections[connIdx] = addr;
+			if (size == sizeof(intro) && !NutPunch_Memcmp(buf, intro, size))
+				continue; // ignore introduction packets
+
+			struct NP_Packet* next = NP_QueueIn;
+			NP_QueueIn = (struct NP_Packet*)NutPunch_Malloc(sizeof(*next));
+			NP_QueueIn->data = (char*)NutPunch_Malloc(size);
+			NutPunch_Memcpy(NP_QueueIn->data, buf, size);
+			NP_QueueIn->peer = connIdx;
+			NP_QueueIn->size = size;
+			NP_QueueIn->next = next;
 		}
-		NutPunch_Memcpy(NutPunch_ReceivedMetadata, ptr, sizeof(NutPunch_ReceivedMetadata));
-		NutPunch_LastStatus = NP_Status_Punched;
 	}
 
-	if (NutPunch_LastStatus == NP_Status_Punched)
-		return NP_Status_Punched;
-	return NP_Status_Working;
+	while (NP_QueueOut != NULL) {
+		struct NP_Packet* packet = NP_QueueOut;
+		if (NP_ConnDead(packet->peer))
+			break; // TODO: skip and retry on the next update
+		NP_QueueOut = NP_QueueOut->next;
+
+		struct sockaddr addr = NP_Connections[packet->peer];
+		int result = sendto(NP_Socket, packet->data, packet->size, 0, &addr, sizeof(addr));
+		NutPunch_Free(packet->data);
+		NutPunch_Free(packet);
+
+		if (SOCKET_ERROR == result && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
+		{
+			NP_LastError = "Failed to send heartbeat";
+			goto sockFail;
+		}
+	}
+
+	// Send introduction packets to everyone:
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+		if (0 != NP_AvailPeers[i].port) {
+			struct sockaddr addr = {0};
+			((struct sockaddr_in*)&addr)->sin_family = AF_INET;
+			((struct sockaddr_in*)&addr)->sin_port = NP_AvailPeers[i].port;
+			NutPunch_Memcpy(&((struct sockaddr_in*)&addr)->sin_addr, NP_AvailPeers[i].addr, 4);
+			sendto(NP_Socket, intro, sizeof(intro), 0, &addr, sizeof(addr));
+		}
+
+	return NP_Status_Online;
 
 sockFail:
-	NutPunch_LastErrorCode = WSAGetLastError();
+	NP_LastErrorCode = WSAGetLastError();
 	NutPunch_NukeLobbyData();
 	return NP_Status_Error;
 }
 
-int NutPunch_Query() {
-	NutPunch_LazyInit();
+int NutPunch_Update() {
+	NP_LazyInit();
 
-	if (NutPunch_LastStatus == NP_Status_Idle)
-		return NP_Status_Idle;
-
-	NutPunch_LastStatus = NutPunch_QueryImpl();
-	if (NutPunch_LastStatus == NP_Status_Error) {
-		NutPunch_LastStatus = NP_Status_Idle;
+	if (NP_LastStatus != NP_Status_Idle)
+		NP_LastStatus = NutPunch_RealUpdate();
+	if (NP_LastStatus == NP_Status_Error) {
+		NP_LastStatus = NP_Status_Idle;
 		NutPunch_PrintError();
 		NutPunch_NukeRemote();
 		NutPunch_NukeSocket();
 	}
 
-	return NutPunch_LastStatus;
+	return NP_LastStatus;
 }
 
-#ifdef NUTPUNCH_WINDOSE
-static SOCKET NutPunch_DoneWindose() {
-	NutPunch_NukeRemote();
-	if (NutPunch_LastStatus != NP_Status_Punched || !NutPunch_PeerCount()) {
-		NutPunch_LastStatus = NP_Status_Error;
-		return INVALID_SOCKET;
-	}
-	NutPunch_LastStatus = NP_Status_Idle;
-	return NutPunch_Socket;
+bool NutPunch_HasNext() {
+	return NP_QueueIn != NULL;
 }
-#endif
 
-void* NutPunch_Done() {
-	// Just send some junk to facilitate nutpunching...
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		struct sockaddr_in addr = {0};
-		addr.sin_family = AF_INET;
-		addr.sin_port = NutPunch_PeerList[i].port;
-		NutPunch_Memcpy(&addr.sin_addr, NutPunch_PeerList[i].addr, 4);
-
-		for (int j = 0; j < 20; j++)
-			sendto(NutPunch_Socket, "hi", 3, 0, (struct sockaddr*)&addr, sizeof(addr));
+int NutPunch_NextPacket(void* out, int* size) {
+	if (*size < NP_QueueIn->size) {
+		NutPunch_Log("WARN: not enough memory allocated to copy the next packet");
+		return NUTPUNCH_MAX_PLAYERS;
 	}
 
-	static char buf[16] = {0};
-	NutPunch_Memset(buf, 0, sizeof(buf));
-#ifdef NUTPUNCH_WINDOSE
-	SOCKET tmp = NutPunch_DoneWindose();
-	NutPunch_Memcpy(buf, &tmp, sizeof(tmp));
-#endif
+	*size = NP_QueueIn->size;
+	NutPunch_Memcpy(out, NP_QueueIn->data, *size);
+	NutPunch_Free(NP_QueueIn->data);
 
-	return buf;
+	int sourcePeer = NP_QueueIn->peer;
+	struct NP_Packet* next = NP_QueueIn->next;
+	NutPunch_Free(NP_QueueIn);
+
+	NP_QueueIn = next;
+	return sourcePeer;
 }
 
-struct NutPunch* NutPunch_Peers() {
-	return NutPunch_PeerList;
+void NutPunch_Send(int peer, const void* data, int size) {
+	if (NP_LastStatus != NP_Status_Online)
+		return;
+	if (NP_ConnDead(peer))
+		return;
+	struct NP_Packet* next = NP_QueueOut;
+	NP_QueueOut = (struct NP_Packet*)NutPunch_Malloc(sizeof(*next));
+	NP_QueueOut->next = next;
+	NP_QueueOut->peer = peer;
+	NP_QueueOut->size = size;
+	NP_QueueOut->data = (char*)NutPunch_Malloc(size);
+	NutPunch_Memcpy(NP_QueueOut->data, data, size);
 }
 
 int NutPunch_PeerCount() {
-	int count = 0;
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		count += (0 != NutPunch_PeerList[i].port);
-	return count;
+	switch (NP_LastStatus) {
+		case NP_Status_Idle:
+		case NP_Status_Error:
+			return 0;
+		default:
+			int count = 0;
+			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+				count += !NP_ConnDead(i);
+			return count;
+	}
 }
 
-int NutPunch_LocalPeer() {
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (0xFFFFFFFF == *(uint32_t*)NutPunch_PeerList[i].addr)
-			return i;
-	return 0;
+const void* NutPunch_ServerAddr() {
+	return &NP_RemoteAddr;
 }
 
 #endif

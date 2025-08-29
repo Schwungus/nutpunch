@@ -179,14 +179,11 @@ struct Lobby {
 		uint8_t* ptr = buf;
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (players[i].isDead()) {
+			if (playerIdx == i || players[i].isDead()) {
 				std::memset(ptr, 0, 6);
 				ptr += 6;
 			} else {
-				if (playerIdx == i)
-					std::memset(ptr, 0xFF, 4);
-				else
-					std::memcpy(ptr, &players[i].addr.sin_addr, 4);
+				std::memcpy(ptr, &players[i].addr.sin_addr, 4);
 				ptr += 4;
 
 				std::memcpy(ptr, &players[i].addr.sin_port, 2);
@@ -252,15 +249,6 @@ static int receiveShit() {
 	if (sock == INVALID_SOCKET)
 		std::exit(EXIT_FAILURE);
 
-	static timeval instantBitchNoodles = {0, 0};
-	fd_set s = {1, {sock}};
-
-	int res = select(0, &s, nullptr, nullptr, &instantBitchNoodles);
-	if (res == SOCKET_ERROR && WSAGetLastError() != WSAECONNRESET)
-		return WSAGetLastError() == WSAEWOULDBLOCK ? -1 : WSAGetLastError();
-	if (!res)
-		return -1;
-
 	char request[NUTPUNCH_REQUEST_SIZE] = {0};
 	sockaddr addr = {0};
 	int addrLen = sizeof(addr);
@@ -286,9 +274,7 @@ static int receiveShit() {
 
 	auto* players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (players[i].isDead())
-			continue;
-		if (!std::memcmp(&players[i].addr, &addr, sizeof(addr))) {
+		if (!players[i].isDead() && !std::memcmp(&players[i].addr, &addr, sizeof(addr))) {
 			lobbies[id].processRequest(i, request);
 			return 0;
 		}
@@ -296,7 +282,7 @@ static int receiveShit() {
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (players[i].isDead()) {
 			std::memcpy(&players[i].addr, &addr, sizeof(addr));
-			players[i].countdown = keepAliveBeats;
+			lobbies[id].processRequest(i, request);
 			NutPunch_Log("Peer %d joined lobby '%s'", i + 1, fmtLobbyId(id));
 			return 0;
 		}
