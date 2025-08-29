@@ -299,7 +299,7 @@ void NutPunch_Set(const char* name, int dataSize, const void* data) {
 	}
 }
 
-static bool NutPunch_BindSocket(uint16_t port) {
+static bool NutPunch_BindSocket() {
 	struct sockaddr addr;
 	u_long argp = 1;
 
@@ -316,7 +316,7 @@ static bool NutPunch_BindSocket(uint16_t port) {
 		goto fail;
 	}
 
-	addr = NutPunch_SockAddr(NULL, port);
+	addr = NutPunch_SockAddr(NULL, 0);
 	if (SOCKET_ERROR == bind(NutPunch_Socket, &addr, sizeof(addr))) {
 		NutPunch_LastError = "Failed to bind the UDP socket";
 		goto fail;
@@ -345,7 +345,7 @@ bool NutPunch_Join(const char* lobby) {
 		goto fail;
 	}
 
-	if (NutPunch_BindSocket(0)) {
+	if (NutPunch_BindSocket()) {
 		NutPunch_LastStatus = NP_Status_Working;
 		NutPunch_Memset(NutPunch_LobbyId, 0, sizeof(NutPunch_LobbyId));
 		snprintf(NutPunch_LobbyId, sizeof(NutPunch_LobbyId), "%s", lobby);

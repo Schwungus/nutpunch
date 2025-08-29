@@ -53,16 +53,6 @@ static void updateByAddr(struct sockaddr addr, const uint8_t* data) {
 	}
 }
 
-static bool hasNext() {
-	static struct timeval instantBitchNoodles = {0, 0};
-	fd_set s = {1, {sock}};
-
-	int res = select(0, &s, NULL, NULL, &instantBitchNoodles);
-	if (res == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
-		printf("Failed to poll socket (%d)\n", WSAGetLastError());
-	return res > 0;
-}
-
 static struct sockaddr peer2addr(int idx) {
 	struct sockaddr result = {0};
 
@@ -81,7 +71,7 @@ static void sendReceiveUpdates() {
 	static uint8_t* data = (uint8_t*)rawData;
 
 	// Accept new connections:
-	while (hasNext()) {
+	for (;;) {
 		struct sockaddr_in baseAddr;
 		int addrSize = sizeof(baseAddr);
 
