@@ -100,6 +100,9 @@ void NutPunch_Send(int peer, const void* data, int size);
 /// Count how many "live" peers we're expected to have, excluding our local peer.
 int NutPunch_PeerCount();
 
+/// Return true if you are connected to peer with the specified index.
+bool NutPunch_PeerAlive(int peer);
+
 /// Use this to reset the underlying socket in case of an inexplicable error.
 void NutPunch_Reset();
 
@@ -378,11 +381,6 @@ const char* NutPunch_GetLastError() {
 	return NP_LastError;
 }
 
-static bool NP_ConnDead(int idx) {
-	static const struct sockaddr nully = {0};
-	return !NutPunch_Memcmp(&nully, NP_Connections + idx, sizeof(nully));
-}
-
 static int NutPunch_RealUpdate() {
 	if (!NP_LobbyId[0] || NP_Socket == INVALID_SOCKET)
 		return NP_Status_Idle;
@@ -435,7 +433,7 @@ static int NutPunch_RealUpdate() {
 				}
 			}
 			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-				if (NP_ConnDead(i)) {
+				if (!NutPunch_PeerAlive(i)) {
 					connIdx = i;
 					goto push;
 				}
@@ -460,7 +458,7 @@ static int NutPunch_RealUpdate() {
 
 	while (NP_QueueOut != NULL) {
 		struct NP_Packet* packet = NP_QueueOut;
-		if (NP_ConnDead(packet->peer))
+		if (!NutPunch_PeerAlive(packet->peer))
 			break; // TODO: skip and retry on the next update
 		NP_QueueOut = NP_QueueOut->next;
 
@@ -534,7 +532,7 @@ int NutPunch_NextPacket(void* out, int* size) {
 void NutPunch_Send(int peer, const void* data, int size) {
 	if (NP_LastStatus != NP_Status_Online)
 		return;
-	if (NP_ConnDead(peer))
+	if (!NutPunch_PeerAlive(peer))
 		return;
 	struct NP_Packet* next = NP_QueueOut;
 	NP_QueueOut = (struct NP_Packet*)NutPunch_Malloc(sizeof(*next));
@@ -553,13 +551,18 @@ int NutPunch_PeerCount() {
 		default:
 			int count = 0;
 			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-				count += !NP_ConnDead(i);
+				count += NutPunch_PeerAlive(i);
 			return count;
 	}
 }
 
 const void* NutPunch_ServerAddr() {
 	return &NP_RemoteAddr;
+}
+
+bool NutPunch_PeerAlive(int peer) {
+	static const struct sockaddr nully = {0};
+	return 0 != NutPunch_Memcmp(&nully, NP_Connections + peer, sizeof(nully));
 }
 
 #endif
