@@ -38,16 +38,16 @@ static void killSock() {
 	}
 }
 
-static void updateByAddr(struct sockaddr addr, const uint8_t* data) {
-	struct sockaddr_in realAddr = *(struct sockaddr_in*)&addr;
-	for (int playerIdx = 0; playerIdx < NUTPUNCH_MAX_PLAYERS; playerIdx++) {
-		const struct NutPunch* peer = &NutPunch_Peers()[playerIdx];
-		bool sameHost = !memcmp(&realAddr.sin_addr, peer->addr, 4);
-		bool samePort = realAddr.sin_port == htons(peer->port);
+static void updateByAddr(struct sockaddr inAddr, const uint8_t data[PAYLOAD_SIZE]) {
+	struct sockaddr_in addr = *(struct sockaddr_in*)&inAddr;
+	for (int idx = 0; idx < NUTPUNCH_MAX_PLAYERS; idx++) {
+		const struct NutPunch* peer = NutPunch_Peers() + idx;
+		bool sameHost = !memcmp(&addr.sin_addr, peer->addr, 4);
+		bool samePort = addr.sin_port == htons(peer->port);
 
 		if (sameHost && samePort) {
-			players[playerIdx].x = ((int32_t)(data[0])) * SCALE;
-			players[playerIdx].y = ((int32_t)(data[1])) * SCALE;
+			players[idx].x = ((int32_t)(data[0])) * SCALE;
+			players[idx].y = ((int32_t)(data[1])) * SCALE;
 			break;
 		}
 	}
@@ -70,51 +70,6 @@ static void sendReceiveUpdates() {
 	static char rawData[NUTPUNCH_RESPONSE_SIZE] = {0};
 	static uint8_t* data = (uint8_t*)rawData;
 
-	// Accept new connections:
-	for (;;) {
-		struct sockaddr_in baseAddr;
-		int addrSize = sizeof(baseAddr);
-
-		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
-		memset(addr, 0, sizeof(*addr));
-
-		memset(data, 0, sizeof(rawData));
-		int io = recvfrom(sock, rawData, sizeof(rawData), 0, addr, &addrSize);
-
-		if (io == SOCKET_ERROR) {
-			if (WSAGetLastError() == WSAEWOULDBLOCK)
-				break;
-			printf("Failed to receive from socket (%d)\n", WSAGetLastError());
-			killSock();
-			return;
-		}
-		if (io != PAYLOAD_SIZE)
-			continue;
-
-		updateByAddr(*addr, data);
-	}
-
-	// Process existing peers:
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (NutPunch_LocalPeer() == i || !NutPunch_Peers()[i].port)
-			continue;
-
-		struct sockaddr addr = peer2addr(i);
-		int addrSize = sizeof(addr);
-
-		memset(data, 0, PAYLOAD_SIZE);
-		int io = recvfrom(sock, rawData, sizeof(rawData), 0, &addr, &addrSize);
-
-		if (io == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK) {
-			printf("Failed to receive from peer %d (%d)\n", i + 1, WSAGetLastError());
-			NutPunch_Peers()[i].port = 0; // just nuke them...
-		}
-		if (io != PAYLOAD_SIZE)
-			continue;
-
-		updateByAddr(addr, data);
-	}
-
 	// Send each peer your own position:
 	data[0] = (uint8_t)(players[NutPunch_LocalPeer()].x / SCALE);
 	data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y / SCALE);
@@ -130,6 +85,30 @@ static void sendReceiveUpdates() {
 			printf("Failed to send to peer %d (%d)\n", i + 1, WSAGetLastError());
 			NutPunch_Peers()[i].port = 0; // just nuke them...
 		}
+	}
+
+	// Receive data from peers:
+	for (;;) {
+		struct sockaddr_in baseAddr;
+		int addrSize = sizeof(baseAddr);
+
+		struct sockaddr* addr = (struct sockaddr*)&baseAddr;
+		memset(addr, 0, sizeof(*addr));
+
+		memset(data, 0, sizeof(rawData));
+		int io = recvfrom(sock, rawData, sizeof(rawData), 0, addr, &addrSize);
+
+		if (io == SOCKET_ERROR && WSAGetLastError() != WSAECONNRESET) {
+			if (WSAGetLastError() == WSAEWOULDBLOCK)
+				break;
+			printf("Failed to receive from socket (%d)\n", WSAGetLastError());
+			killSock();
+			return;
+		}
+		if (io != PAYLOAD_SIZE)
+			continue;
+
+		updateByAddr(*addr, data);
 	}
 }
 
@@ -165,6 +144,7 @@ int main(int argc, char* argv[]) {
 				players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
 				players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
 				sock = *(SOCKET*)NutPunch_Done();
+				goto skip;
 			}
 		}
 
@@ -204,6 +184,7 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
+	skip:
 		EndDrawing();
 	}
 

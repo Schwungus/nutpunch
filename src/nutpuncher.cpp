@@ -134,8 +134,16 @@ struct Lobby {
 	}
 
 	void update() {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			receiveFrom(i);
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+			auto& plr = players[i];
+			if (plr.countdown > 0) {
+				plr.countdown--;
+				if (plr.isDead()) {
+					NutPunch_Log("Peer %d timed out in lobby '%s'", i + 1, fmtId());
+					plr.reset();
+				}
+			}
+		}
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			sendTo(i);
 	}
@@ -159,48 +167,6 @@ struct Lobby {
 			int idx = nextFieldIdx(fields[i].name);
 			if (NUTPUNCH_MAX_FIELDS != idx)
 				std::memcpy(&metadata[idx], &fields[i], sizeof(Field));
-		}
-	}
-
-	void receiveFrom(const int playerIdx) {
-		auto& plr = players[playerIdx];
-		if (plr.countdown > 0) {
-			plr.countdown--;
-			if (plr.isDead())
-				NutPunch_Log("Peer %d timed out in lobby '%s'", playerIdx + 1, fmtId());
-		}
-		for (;;) {
-			if (plr.isDead()) {
-				plr.reset();
-				return;
-			}
-
-			char request[NUTPUNCH_REQUEST_SIZE] = {0};
-			sockaddr clientAddr = *reinterpret_cast<sockaddr*>(&plr.addr);
-			int addrLen = sizeof(clientAddr);
-
-			std::int64_t nRecv = recvfrom(sock, request, sizeof(request), 0, &clientAddr, &addrLen);
-			if (nRecv == SOCKET_ERROR) {
-				if (WSAGetLastError() == WSAEWOULDBLOCK)
-					break;
-				NutPunch_Log("Peer %d disconnect (code %d)", playerIdx + 1, WSAGetLastError());
-				plr.reset();
-				return;
-			}
-			if (!nRecv) {
-				NutPunch_Log("Peer %d gracefully disconnected", playerIdx + 1);
-				plr.reset();
-				return;
-			}
-			if (nRecv != sizeof(request))
-				continue;
-			if (std::memcmp(id, request, NUTPUNCH_ID_MAX)) {
-				NutPunch_Log(
-					"Peer %d changed its lobby ID, which is currently unsupported", playerIdx + 1);
-				plr.reset();
-				return;
-			}
-			processRequest(playerIdx, request);
 		}
 	}
 
@@ -282,7 +248,7 @@ static void bindSock() {
 		throw "Failed to bind the UDP socket";
 }
 
-static int acceptConnections() {
+static int receiveShit() {
 	if (sock == INVALID_SOCKET)
 		std::exit(EXIT_FAILURE);
 
@@ -369,11 +335,11 @@ int main(int, char**) {
 
 	NutPunch_Log("Running!");
 	for (;;) {
-		int acpt;
-		while (!(acpt = acceptConnections())) {
+		int result;
+		while (!(result = receiveShit())) {
 		}
-		if (acpt > 0)
-			NutPunch_Log("Failed to accept connection (code %d)", acpt);
+		if (result > 0)
+			NutPunch_Log("Failed to receive data (code %d)", result);
 
 		for (auto& [id, lobby] : lobbies)
 			lobby.update();

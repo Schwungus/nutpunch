@@ -387,9 +387,7 @@ static int NutPunch_QueryImpl() {
 	}
 
 	for (;;) {
-		addr = NutPunch_RemoteAddr;
 		addrSize = sizeof(addr);
-
 		NutPunch_Memset(response, 0, sizeof(response));
 		int io = recvfrom(NutPunch_Socket, response, sizeof(response), 0, &addr, &addrSize);
 		if (SOCKET_ERROR == io) {
@@ -399,6 +397,8 @@ static int NutPunch_QueryImpl() {
 			goto sockFail;
 		}
 		if (sizeof(response) != io) // fucking skip invalid/partitioned packets
+			continue;
+		if (NutPunch_Memcmp(&addr, &NutPunch_RemoteAddr, sizeof(addr)))
 			continue;
 
 		uint8_t* ptr = (uint8_t*)response;
@@ -454,12 +454,24 @@ static SOCKET NutPunch_DoneWindose() {
 #endif
 
 void* NutPunch_Done() {
+	// Just send some junk to facilitate nutpunching...
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+		struct sockaddr_in addr = {0};
+		addr.sin_family = AF_INET;
+		addr.sin_port = NutPunch_PeerList[i].port;
+		NutPunch_Memcpy(&addr.sin_addr, NutPunch_PeerList[i].addr, 4);
+
+		for (int j = 0; j < 20; j++)
+			sendto(NutPunch_Socket, "hi", 3, 0, (struct sockaddr*)&addr, sizeof(addr));
+	}
+
 	static char buf[16] = {0};
 	NutPunch_Memset(buf, 0, sizeof(buf));
 #ifdef NUTPUNCH_WINDOSE
 	SOCKET tmp = NutPunch_DoneWindose();
 	NutPunch_Memcpy(buf, &tmp, sizeof(tmp));
 #endif
+
 	return buf;
 }
 
