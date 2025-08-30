@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
 project(nutpunch LANGUAGES C CXX)
+set(BUILD_SHARED_LIBS OFF)
 
 include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)
@@ -8,8 +9,8 @@ set(FETCHCONTENT_QUIET FALSE)
 add_library(nutpunch INTERFACE)
 target_include_directories(nutpunch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_definitions(nutpunch INTERFACE _WINSOCK_DEPRECATED_NO_WARNINGS)
-target_link_options(nutpunch INTERFACE -static)
 if(WIN32)
+    target_link_options(nutpunch INTERFACE -static)
     target_link_libraries(nutpunch INTERFACE Ws2_32)
 endif()
 

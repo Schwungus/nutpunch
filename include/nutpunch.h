@@ -6,8 +6,6 @@ extern "C" {
 
 #if defined(_WIN32) || defined(_WIN64)
 #define NUTPUNCH_WINDOSE
-#else
-#error OS not supported by nutpunch (yet)
 #endif
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -122,11 +120,34 @@ const char* NutPunch_GetLastError();
 #ifdef NUTPUNCH_IMPLEMENTATION
 
 #ifdef NUTPUNCH_WINDOSE
+
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-#else
-#error Bad luck.
+
+typedef SOCKET NP_SocketType;
+#define NUTPUNCH_INVALID_SOCKET INVALID_SOCKET
+
+#define NP_SockError() WSAGetLastError()
+#define NP_WouldBlock WSAEWOULDBLOCK
+#define NP_ConnReset WSAECONNRESET
+
+#else // everything non-winsoque comes from: <https://stackoverflow.com/a/28031039>
+
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <errno.h>
+#include <fcntl.h>
+
+typedef int64_t NP_SocketType;
+#define NUTPUNCH_INVALID_SOCKET (-1)
+
+#define NP_SockError() errno
+#define NP_WouldBlock EWOULDBLOCK
+#define NP_ConnReset ECONNRESET
+
 #endif
 
 #ifndef NutPunch_Malloc
@@ -170,7 +191,7 @@ static char NP_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
 static struct NutPunch NP_AvailPeers[NUTPUNCH_MAX_PLAYERS] = {0};
 static struct sockaddr NP_Connections[NUTPUNCH_MAX_PLAYERS] = {0};
 
-static SOCKET NP_Socket = INVALID_SOCKET;
+static NP_SocketType NP_Socket = NUTPUNCH_INVALID_SOCKET;
 static struct sockaddr NP_RemoteAddr = {0};
 static char NP_ServerHost[128] = {0};
 
@@ -193,9 +214,13 @@ static void NutPunch_NukeRemote() {
 
 static void NutPunch_NukeSocket() {
 	NutPunch_NukeLobbyData();
-	if (NP_Socket != INVALID_SOCKET) {
+	if (NP_Socket != NUTPUNCH_INVALID_SOCKET) {
+#ifdef NUTPUNCH_WINDOSE
 		closesocket(NP_Socket);
-		NP_Socket = INVALID_SOCKET;
+#else
+		close(NP_Socket);
+#endif
+		NP_Socket = NUTPUNCH_INVALID_SOCKET;
 	}
 }
 
@@ -204,9 +229,11 @@ static void NP_LazyInit() {
 		return;
 	NP_InitDone = true;
 
+#ifdef NUTPUNCH_WINDOSE
 	WSADATA bitch = {0};
 	WSAStartup(MAKEWORD(2, 2), &bitch);
-	NP_Socket = INVALID_SOCKET;
+#endif
+	NP_Socket = NUTPUNCH_INVALID_SOCKET;
 
 	NutPunch_NukeLobbyData();
 }
@@ -312,18 +339,25 @@ static bool NutPunch_BindSocket() {
 	NutPunch_NukeSocket();
 
 	NP_Socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (NP_Socket == INVALID_SOCKET) {
+	if (NP_Socket == NUTPUNCH_INVALID_SOCKET) {
 		NP_LastError = "Failed to create the underlying UDP socket";
 		goto fail;
 	}
 
-	if (SOCKET_ERROR == ioctlsocket(NP_Socket, FIONBIO, &argp)) {
+	if (
+#ifdef NUTPUNCH_WINDOSE
+		ioctlsocket(NP_Socket, FIONBIO, &argp)
+#else
+		fcntl(NP_Socket, F_SETFL, fcntl(NP_Socket, F_GETFL, 0) | O_NONBLOCK)
+#endif
+		< 0)
+	{
 		NP_LastError = "Failed to set socket to non-blocking mode";
 		goto fail;
 	}
 
 	addr = NutPunch_SockAddr(NULL, 0);
-	if (SOCKET_ERROR == bind(NP_Socket, &addr, sizeof(addr))) {
+	if (bind(NP_Socket, &addr, sizeof(addr)) < 0) {
 		NP_LastError = "Failed to bind the UDP socket";
 		goto fail;
 	}
@@ -334,7 +368,7 @@ static bool NutPunch_BindSocket() {
 
 fail:
 	NP_LastStatus = NP_Status_Error;
-	NP_LastErrorCode = WSAGetLastError();
+	NP_LastErrorCode = NP_SockError();
 	NutPunch_PrintError();
 	NutPunch_Reset();
 	return false;
@@ -377,7 +411,9 @@ void NutPunch_Cleanup() {
 	NP_CleanupPackets(&NP_QueueIn);
 	NP_CleanupPackets(&NP_QueueOut);
 	NutPunch_Reset();
+#ifdef NUTPUNCH_WINDOSE
 	WSACleanup();
+#endif
 }
 
 const char* NutPunch_GetLastError() {
@@ -385,7 +421,7 @@ const char* NutPunch_GetLastError() {
 }
 
 static int NutPunch_RealUpdate() {
-	if (!NP_LobbyId[0] || NP_Socket == INVALID_SOCKET)
+	if (!NP_LobbyId[0] || NP_Socket == NUTPUNCH_INVALID_SOCKET)
 		return NP_Status_Idle;
 
 	static char introMagic[5] = "INTR", intro[6] = {0};
@@ -395,8 +431,8 @@ static int NutPunch_RealUpdate() {
 	static char request[NUTPUNCH_REQUEST_SIZE] = {0};
 	NutPunch_Memcpy(request, NP_LobbyId, NUTPUNCH_ID_MAX);
 	NutPunch_Memcpy(request + NUTPUNCH_ID_MAX, NP_MetadataOut, sizeof(NP_MetadataOut));
-	if (SOCKET_ERROR == sendto(NP_Socket, request, sizeof(request), 0, &addr, sizeof(addr))
-		&& WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
+	if (sendto(NP_Socket, request, sizeof(request), 0, &addr, sizeof(addr)) < 0 && NP_SockError() != NP_WouldBlock
+		&& NP_SockError() != NP_ConnReset)
 	{
 		NP_LastError = "Failed to send heartbeat to nutpuncher server";
 		goto sockFail;
@@ -408,10 +444,10 @@ static int NutPunch_RealUpdate() {
 
 		static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
 		int size = recvfrom(NP_Socket, buf, sizeof(buf), 0, &addr, &addrSize);
-		if (SOCKET_ERROR == size) {
-			if (WSAGetLastError() == WSAEWOULDBLOCK)
+		if (size < 0) {
+			if (NP_SockError() == NP_WouldBlock)
 				break;
-			if (WSAGetLastError() == WSAECONNRESET)
+			if (NP_SockError() == NP_ConnReset)
 				continue;
 			NP_LastError = "Failed to receive from holepunch server";
 			goto sockFail;
@@ -463,8 +499,7 @@ static int NutPunch_RealUpdate() {
 		NutPunch_Free(packet->data);
 		NutPunch_Free(packet);
 
-		if (SOCKET_ERROR == result && WSAGetLastError() != WSAEWOULDBLOCK && WSAGetLastError() != WSAECONNRESET)
-		{
+		if (result < 0 && NP_SockError() != NP_WouldBlock && NP_SockError() != NP_ConnReset) {
 			NP_LastError = "Failed to send heartbeat";
 			goto sockFail;
 		}
@@ -488,7 +523,7 @@ end:
 	return NP_Status_Online;
 
 sockFail:
-	NP_LastErrorCode = WSAGetLastError();
+	NP_LastErrorCode = NP_SockError();
 	NutPunch_NukeLobbyData();
 	return NP_Status_Error;
 }

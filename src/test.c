@@ -1,22 +1,18 @@
 #include <stdlib.h>
+#include <string.h>
 
-#include "nutpunch.h"
-#include "raylib.h"
+#include <nutpunch.h>
+#include <raylib.h>
 
 #ifdef NUTPUNCH_WINDOSE
-
 #define _AMD64_
 #define _INC_WINDOWS
-
 #include <windef.h>
-
-#include <minwinbase.h>
-#include <winbase.h>
-
 #include <winsock2.h>
-#include <ws2tcpip.h>
 #else
-#error shit....
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #endif
 
 static const char* const lobbyName = "Ligma";
