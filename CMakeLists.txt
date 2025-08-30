@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
 project(nutpunch LANGUAGES C CXX)
+
 include(FetchContent)
+set(FETCHCONTENT_QUIET FALSE)
 
 add_library(nutpunch INTERFACE)
 target_include_directories(nutpunch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -16,8 +18,7 @@ if(NUTPUNCH_BUILD_TESTS)
     FetchContent_Declare(
         raylib
         GIT_REPOSITORY https://github.com/raysan5/raylib.git
-        GIT_TAG 5.5
-        GIT_PROGRESS true)
+        GIT_TAG 5.5)
     FetchContent_MakeAvailable(raylib)
 
     add_executable(nutpunchTest ${CMAKE_CURRENT_SOURCE_DIR}/src/test.c ${CMAKE_CURRENT_SOURCE_DIR}/src/static.c)
