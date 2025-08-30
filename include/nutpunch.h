@@ -548,7 +548,7 @@ int NutPunch_PeerCount() {
 		case NP_Status_Error:
 			return 0;
 		default:
-			int count = 1;
+			int count = 0;
 			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 				count += NutPunch_PeerAlive(i);
 			return count;
