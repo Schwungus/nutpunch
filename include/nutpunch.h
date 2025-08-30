@@ -548,7 +548,7 @@ int NutPunch_PeerCount() {
 		case NP_Status_Error:
 			return 0;
 		default:
-			int count = 0;
+			int count = 1;
 			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 				count += NutPunch_PeerAlive(i);
 			return count;
@@ -560,8 +560,7 @@ const void* NutPunch_ServerAddr() {
 }
 
 bool NutPunch_PeerAlive(int peer) {
-	static const struct sockaddr nully = {0};
-	return 0 != NutPunch_Memcmp(&nully, NP_Connections + peer, sizeof(nully));
+	return 0 != ((struct sockaddr_in*)(NP_Connections + peer))->sin_port;
 }
 
 int NutPunch_LocalPeer() {
