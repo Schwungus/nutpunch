@@ -2,7 +2,7 @@
 
 # NutPunch
 
-<img align="right" src=".github/assets/nutpunch128.png">
+<img align="right" src=".github/assets/nutpunch256.png">
 
 > [!WARNING]
 > Using NutPunch and UDP hole-punching makes sense **only if you're making a P2P networked game**. If you need server-based networking (**which is arguably much simpler to implement**), you're out of luck -- go elsewhere. You have been warned.
