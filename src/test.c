@@ -56,7 +56,7 @@ int main(int argc, char* argv[]) {
 
 		static uint8_t data[PAYLOAD_SIZE] = {0};
 		while (NutPunch_HasNext()) {
-			int size = sizeof(data), peer = 1 + NutPunch_NextPacket(data, &size);
+			int size = sizeof(data), peer = NutPunch_NextPacket(data, &size);
 			if (peer >= NUTPUNCH_MAX_PLAYERS || size != sizeof(data))
 				continue;
 			players[peer].x = ((int32_t)(data[0])) * SCALE;
@@ -67,37 +67,40 @@ int main(int argc, char* argv[]) {
 		BeginDrawing();
 		ClearBackground(RAYWHITE);
 
-		if (expectingPlayers) {
+		if (expectingPlayers && NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS) {
 			int size = 0, *ptr = NutPunch_Get("PLAYERS", &size);
-			if (sizeof(int) == size && *ptr && NutPunch_PeerCount() + 1 >= *ptr) {
+			if (sizeof(int) == size && *ptr && NutPunch_PeerCount() >= *ptr) {
 				memset(players, 0, sizeof(players));
-				players[0].x = 200 - sqr / 2;
-				players[0].y = 150 - sqr / 2;
-				players[0].live = true;
+				players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
+				players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
+				players[NutPunch_LocalPeer()].live = true;
 				expectingPlayers = 0;
 			}
 		}
 
-		const int32_t spd = 5;
-		if (IsKeyDown(KEY_A))
-			players[0].x -= spd;
-		if (IsKeyDown(KEY_D))
-			players[0].x += spd;
-		if (IsKeyDown(KEY_W))
-			players[0].y -= spd;
-		if (IsKeyDown(KEY_S))
-			players[0].y += spd;
+		if (NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS) {
+			const int32_t spd = 5;
+			if (IsKeyDown(KEY_A))
+				players[NutPunch_LocalPeer()].x -= spd;
+			if (IsKeyDown(KEY_D))
+				players[NutPunch_LocalPeer()].x += spd;
+			if (IsKeyDown(KEY_W))
+				players[NutPunch_LocalPeer()].y -= spd;
+			if (IsKeyDown(KEY_S))
+				players[NutPunch_LocalPeer()].y += spd;
+		}
 
-		data[0] = (uint8_t)(players[0].x / SCALE);
-		data[1] = (uint8_t)(players[0].y / SCALE);
+		data[0] = (uint8_t)(players[NutPunch_LocalPeer()].x / SCALE);
+		data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y / SCALE);
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			NutPunch_Send(i, data, sizeof(data));
 
 		if (NP_Status_Online == status) {
-			for (int i = 1; i < NUTPUNCH_MAX_PLAYERS; i++)
-				if (players[i].live)
+			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+				if (NutPunch_LocalPeer() == i)
+					DrawRectangle(players[i].x, players[i].y, sqr, sqr, RED);
+				else if (players[i].live)
 					DrawRectangle(players[i].x, players[i].y, sqr, sqr, GREEN);
-			DrawRectangle(players[0].x, players[0].y, sqr, sqr, RED);
 			DrawText("GAMING!!!", 240, 5, fs, GREEN);
 		} else {
 			expectingPlayers = _expectingPlayers;

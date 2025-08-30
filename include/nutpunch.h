@@ -97,11 +97,14 @@ int NutPunch_NextPacket(void* out, int* size);
 /// Send data to specified peer.
 void NutPunch_Send(int peer, const void* data, int size);
 
-/// Count how many "live" peers we're expected to have, excluding our local peer.
+/// Count how many "live" peers we're expected to have, including our local peer.
 int NutPunch_PeerCount();
 
 /// Return true if you are connected to peer with the specified index.
 bool NutPunch_PeerAlive(int peer);
+
+/// Get the local peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
+int NutPunch_LocalPeer();
 
 /// Use this to reset the underlying socket in case of an inexplicable error.
 void NutPunch_Reset();
@@ -467,18 +470,13 @@ static int NutPunch_RealUpdate() {
 		}
 	}
 
-	intro[sizeof(introMagic)] = 127;
-	for (char i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (0 != NP_AvailPeers[i].port && !*(uint32_t*)NP_AvailPeers[i].addr) {
-			intro[sizeof(introMagic)] = i;
-			break;
-		}
-	if (intro[sizeof(introMagic)] == 127)
+	intro[sizeof(introMagic)] = NutPunch_LocalPeer();
+	if (intro[sizeof(introMagic)] == NUTPUNCH_MAX_PLAYERS)
 		goto end;
 
 	// Send introduction packets to everyone:
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (0 != NP_AvailPeers[i].port && *(uint32_t*)NP_AvailPeers[i].addr) {
+		if (NP_AvailPeers[i].port && NutPunch_LocalPeer() != i) {
 			struct sockaddr addr = {0};
 			((struct sockaddr_in*)&addr)->sin_family = AF_INET;
 			((struct sockaddr_in*)&addr)->sin_port = NP_AvailPeers[i].port;
@@ -533,9 +531,7 @@ int NutPunch_NextPacket(void* out, int* size) {
 }
 
 void NutPunch_Send(int peer, const void* data, int size) {
-	if (NP_LastStatus != NP_Status_Online)
-		return;
-	if (!NutPunch_PeerAlive(peer))
+	if (NP_LastStatus != NP_Status_Online || !NutPunch_PeerAlive(peer) || NutPunch_LocalPeer() == peer)
 		return;
 	struct NP_Packet* next = NP_QueueOut;
 	NP_QueueOut = (struct NP_Packet*)NutPunch_Malloc(sizeof(*next));
@@ -566,6 +562,13 @@ const void* NutPunch_ServerAddr() {
 bool NutPunch_PeerAlive(int peer) {
 	static const struct sockaddr nully = {0};
 	return 0 != NutPunch_Memcmp(&nully, NP_Connections + peer, sizeof(nully));
+}
+
+int NutPunch_LocalPeer() {
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+		if (NP_AvailPeers[i].port && !*(uint32_t*)NP_AvailPeers[i].addr)
+			return i;
+	return NUTPUNCH_MAX_PLAYERS;
 }
 
 #endif
