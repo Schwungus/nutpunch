@@ -179,11 +179,14 @@ struct Lobby {
 		uint8_t* ptr = buf;
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (playerIdx == i || players[i].isDead()) {
+			if (players[i].isDead()) {
 				std::memset(ptr, 0, 6);
 				ptr += 6;
 			} else {
-				std::memcpy(ptr, &players[i].addr.sin_addr, 4);
+				if (playerIdx == i)
+					std::memset(ptr, 0, 4);
+				else
+					std::memcpy(ptr, &players[i].addr.sin_addr, 4);
 				ptr += 4;
 
 				std::memcpy(ptr, &players[i].addr.sin_port, 2);

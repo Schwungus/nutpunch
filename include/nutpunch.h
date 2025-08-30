@@ -385,7 +385,8 @@ static int NutPunch_RealUpdate() {
 	if (!NP_LobbyId[0] || NP_Socket == INVALID_SOCKET)
 		return NP_Status_Idle;
 
-	static const char intro[4] = "hii";
+	static char introMagic[5] = "INTR", intro[6] = {0};
+	NutPunch_Memcpy(intro, introMagic, sizeof(introMagic));
 
 	struct sockaddr addr = NP_RemoteAddr;
 	static char request[NUTPUNCH_REQUEST_SIZE] = {0};
@@ -424,28 +425,20 @@ static int NutPunch_RealUpdate() {
 				ptr += 2;
 			}
 			NutPunch_Memcpy(NP_MetadataIn, ptr, sizeof(NP_MetadataIn));
+		} else if (size == sizeof(intro) && !NutPunch_Memcmp(buf, introMagic, sizeof(introMagic))) {
+			int connIdx = ((uint8_t*)buf)[sizeof(introMagic)];
+			NP_Connections[connIdx] = addr;
 		} else {
 			int connIdx = NUTPUNCH_MAX_PLAYERS;
 			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 				if (!NutPunch_Memcmp(&addr, NP_Connections + i, sizeof(addr))) {
 					connIdx = i;
-					goto push;
+					break;
 				}
 			}
-			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-				if (!NutPunch_PeerAlive(i)) {
-					connIdx = i;
-					goto push;
-				}
-			}
-
 		push:
 			if (connIdx == NUTPUNCH_MAX_PLAYERS)
 				continue;
-			NP_Connections[connIdx] = addr;
-			if (size == sizeof(intro) && !NutPunch_Memcmp(buf, intro, size))
-				continue; // ignore introduction packets
-
 			struct NP_Packet* next = NP_QueueIn;
 			NP_QueueIn = (struct NP_Packet*)NutPunch_Malloc(sizeof(*next));
 			NP_QueueIn->data = (char*)NutPunch_Malloc(size);
@@ -474,9 +467,18 @@ static int NutPunch_RealUpdate() {
 		}
 	}
 
+	intro[sizeof(introMagic)] = 127;
+	for (char i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+		if (0 != NP_AvailPeers[i].port && !*(uint32_t*)NP_AvailPeers[i].addr) {
+			intro[sizeof(introMagic)] = i;
+			break;
+		}
+	if (intro[sizeof(introMagic)] == 127)
+		goto end;
+
 	// Send introduction packets to everyone:
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (0 != NP_AvailPeers[i].port) {
+		if (0 != NP_AvailPeers[i].port && *(uint32_t*)NP_AvailPeers[i].addr) {
 			struct sockaddr addr = {0};
 			((struct sockaddr_in*)&addr)->sin_family = AF_INET;
 			((struct sockaddr_in*)&addr)->sin_port = NP_AvailPeers[i].port;
@@ -484,6 +486,7 @@ static int NutPunch_RealUpdate() {
 			sendto(NP_Socket, intro, sizeof(intro), 0, &addr, sizeof(addr));
 		}
 
+end:
 	return NP_Status_Online;
 
 sockFail:
