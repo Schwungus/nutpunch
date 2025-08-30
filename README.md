@@ -1,37 +1,36 @@
 # NutPunch
 
 > [!WARNING]
-> Using this library and implementing UDP hole-punching **only** makes sense if you're **making a P2P networked game**. If you need server-based networking (**which is arguably much simpler to implement**), you're out of luck -- go elsewhere. You have been warned.
+> Using NutPunch and UDP hole-punching makes sense **only if you're making a P2P networked game**. If you need server-based networking (**which is arguably much simpler to implement**), you're out of luck -- go elsewhere. You have been warned.
 
 A UDP hole-punching library for REAL men (and women). Header-only. Brutal. Uses plain C and Winsock.
 
 ## Introductory Lecture
 
-This library implies P2P networking, where **each peer communicates with all others**. It's a complex and, in the wrong hands, a counterproductive model. If you don't feel like reading the immediately following blanket of words and scribbles, you may skip to [using premade integrations](#premade-integrations).
+This library implements P2P networking, where **each peer communicates with all others**. It's a complex model, and it could be counterproductive to use if you don't know what you're signing yourself up for. If you don't feel like reading the immediately following blanket of words and scribbles, you may skip to [using premade integrations](#premade-integrations).
 
-Before you can punch any holes in your peers' NAT, you'll need a hole-punching server **with a public IP address**. Connecting to it lets us bust a port open to the global network, and the server to relay the busted ports to each of its peers. For testing, you can use [our public instance](#public-instance). The current server implementation uses a lobby-based approach, where each lobby supports up to 16 peers and is identified by a unique ASCII string.
+Before you can punch any holes in your peers' NAT, you will need a hole-punching server **with a public IP address** assigned. Querying a public server lets us bust a gateway open to the global network, all while the server relays the connection info for other peers to us. If you're just testing, you can use [our public instance](#public-instance) instead of [hosting your own](#hosting-a-nutpuncher-server). The current server implementation uses a lobby-based approach, where each lobby supports up to 16 peers and is identified by a unique ASCII string.
 
-In order to run your own hole-puncher server, you'll need to get the server binary from our [reference implementation releases](https://github.com/Schwungus/nutpunch/releases/tag/stable). Use [the provided Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher) to host a NutPuncher server on Linux, since Winsock is a hard requirement. If you're in a pinch and don't have a public IP address, and your players reside on a LAN/virtual network such as [Radmin VPN](https://www.radmin-vpn.com), you can actually run the server locally and use your LAN IP address to connect to it.
+In order to run your own hole-puncher server, you'll need to get the server binary from our [reference implementation releases](https://github.com/Schwungus/nutpunch/releases/tag/stable). Use [the batteries-included Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher) to host a NutPuncher server on Linux. Winsock is a hard requirement for now, and the Docker image for Linux comes with everything you need to run a NutPuncher. If you're in a pinch, don't have access to a public IP address, and your players reside on a LAN/virtual network such as [Radmin VPN](https://www.radmin-vpn.com), you can actually run NutPuncher locally and use your LAN IP address to connect to it.
 
-Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. You might also find some of these[^1][^2] docs and examples useful if you're going ham with Winsock. But here's the general usage guide for the NutPunch library:
+Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. Here's the general usage guide for the NutPunch library:
 
 1. Join a lobby:
-   1. Put a `NutPunch_SetServerAddr("nutpunch-ip-addr")` call to set the hole-puncher server address. You may either use an IPv4 address or the server's DNS hostname, if it has an `A` record set. Use the [public instance address](#public-instance) if you're having a severe brainfart reading all this.
-   2. Call `NutPunch_Join("lobby-id")` immediately after `NutPunch_SetServerAddr()` to initiate the joining process.
+   1. Call `NutPunch_SetServerAddr("nutpuncher-ip-address")` to set the NutPuncher server address. You may either use an IPv4 address or the server's DNS hostname, if it has an `A` record set. Use the [public instance address](#public-instance) if you're having a severe brainfart reading all this.
+   2. Call `NutPunch_Join("lobby-id")` immediately after `NutPunch_SetServerAddr(...)` to initiate the joining process.
 2. Optionally add metadata to the lobby:
    1. If you join an empty lobby, you will be considered its master. A lobby master has the authority from the server to set global metadata for the lobby. This is usually needed to start games with specific parameters or to enforce an expected player count in a lobby. If you don't need metadata, you can just skip this entire step.
    2. After calling `NutPunch_Join()`, you can set metadata in the lobby by calling `NutPunch_Set()` as a master. A lobby can hold up to 16 fields of metadata, each of which are identified with 8-byte strings and can hold up to 32 bytes of data. Non-masters aren't allowed to set metadata, so that function becomes no-op for them. The actual metadata also won't be updated until the next call to `NutPunch_Update()`, which will be covered later.
 3. Listen for hole-puncher server responses:
-   1. Call `NutPunch_Update()` each frame, regardless of whether you're still joining or already playing with the boys. This will also automatically update lobby metadata.
-   2. Check your status by matching the returned value against `NP_Status_*` constants. `NP_Status_Online` is the only one you need to handle explicitly, as you can safely start retrieving metadata and player count with it. Optionally, you can also handle `NP_Status_Error` and get clues from it by calling `NutPunch_GetLastError()`.
+   1. Call `NutPunch_Update()` each frame, regardless of whether you're still joining or already playing with the boys. This will also automatically update lobby metadata back and forth.
+   2. Check your status by matching the returned value against `NP_Status_*` constants. `NP_Status_Online` is the only one you need to handle explicitly, as you can safely start retrieving metadata and player count with it. Optionally, you can also handle `NP_Status_Error` and get clues as to what's wrong by calling `NutPunch_GetLastError()`.
 4. Optionally read metadata from the lobby during `NP_Status_Online` status. Use `NutPunch_Get()` to get a pointer to a metadata field, which you can then read from (as long as it's valid and is the exact size that you expect it to be). These pointers are volatile, especially when calling `NutPunch_Update()`, so if you need to use the gotten value more than once, cache it somewhere.
 5. If all went well (i.e. you have enough metadata and player count is fulfilled), start your match.
 6. Run the game logic.
-7. Keep in sync with each peer: Send datagrams through `NutPunch_Send()` and poll for incoming datagrams by looping with `NutPunch_HasNext()` and retrieving with `NutPunch_NextPacket()`. In scenarios where you need to hold packet data in a static `char` array, set the array size to `NUTPUNCH_BUFFER_SIZE`[^3].
+7. Keep in sync with each peer: Send datagrams through `NutPunch_Send()` and poll for incoming datagrams by looping with `NutPunch_HasNext()` and retrieving with `NutPunch_NextPacket()`. In scenarios where you need to hold packet data in a static `char` array, set the array size to `NUTPUNCH_BUFFER_SIZE`[^1].
+8. Come back to step 6 the next frame. You're all Gucci!
 
-[^1]: <https://learn.microsoft.com/en-us/windows/win32/winsock/using-winsock>
-[^2]: <https://pastebin.com/JkGnQyPX>
-[^3]: `NUTPUNCH_BUFFER_SIZE` is currently `512000` as in 512 KB, which is the hard limit for the size of a single NutPunch packet. If you think this is a bit overkill, feel free to scold one of the developers on Discord.
+[^1]: `NUTPUNCH_BUFFER_SIZE` is currently `512000` as in 512 KB, which is the hard limit for the size of a single NutPunch packet. If you think this is a bit overkill, feel free to scold one of the developers on Discord.
 
 ## Premade Integrations
 
@@ -69,7 +68,7 @@ You can specify custom memory handling functions for NutPunch to use through `#d
 #define NutPunch_Memcpy SDL_memcpy
 #define NutPunch_Malloc SDL_malloc
 #define NutPunch_Free SDL_free
-#include "nutpunch.h"
+#include <nutpunch.h>
 ```
 
 ## Hosting a NutPuncher Server
