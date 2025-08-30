@@ -24,7 +24,6 @@ static const char* const lobbyName = "Ligma";
 struct Player {
 	int32_t x, y;
 	struct sockaddr addr;
-	uint8_t live : 1;
 };
 
 static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
@@ -61,7 +60,6 @@ int main(int argc, char* argv[]) {
 				continue;
 			players[peer].x = ((int32_t)(data[0])) * SCALE;
 			players[peer].y = ((int32_t)(data[1])) * SCALE;
-			players[peer].live = true; // TODO: demonstrate a timeout mechanism
 		}
 
 		BeginDrawing();
@@ -73,7 +71,6 @@ int main(int argc, char* argv[]) {
 				memset(players, 0, sizeof(players));
 				players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
 				players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
-				players[NutPunch_LocalPeer()].live = true;
 				expectingPlayers = 0;
 			}
 		}
@@ -99,7 +96,7 @@ int main(int argc, char* argv[]) {
 			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 				if (NutPunch_LocalPeer() == i)
 					DrawRectangle(players[i].x, players[i].y, sqr, sqr, RED);
-				else if (players[i].live)
+				else if (NutPunch_PeerAlive(i))
 					DrawRectangle(players[i].x, players[i].y, sqr, sqr, GREEN);
 			DrawText("GAMING!!!", 240, 5, fs, GREEN);
 		} else {

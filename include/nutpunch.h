@@ -560,6 +560,8 @@ const void* NutPunch_ServerAddr() {
 }
 
 bool NutPunch_PeerAlive(int peer) {
+	if (NutPunch_LocalPeer() == peer)
+		return true;
 	return 0 != ((struct sockaddr_in*)(NP_Connections + peer))->sin_port;
 }
 
