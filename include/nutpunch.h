@@ -334,7 +334,9 @@ void NutPunch_Set(const char* name, int dataSize, const void* data) {
 
 static bool NutPunch_BindSocket() {
 	struct sockaddr addr;
+#ifdef NUTPUNCH_WINDOSE
 	u_long argp = 1;
+#endif
 
 	NutPunch_NukeSocket();
 
