@@ -11,7 +11,7 @@ target_include_directories(nutpunch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/includ
 target_compile_definitions(nutpunch INTERFACE _WINSOCK_DEPRECATED_NO_WARNINGS)
 if(WIN32)
     target_link_options(nutpunch INTERFACE -static)
-    target_link_libraries(nutpunch INTERFACE Ws2_32)
+    target_link_libraries(nutpunch INTERFACE ws2_32)
 endif()
 
 option(NUTPUNCH_BUILD_TESTS "Build nutpunch test binary?" ON)
