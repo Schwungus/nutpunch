@@ -56,6 +56,8 @@ jobs:
     name: Upload binaries for ${{ matrix.config.os-name }}
     runs-on: ${{ matrix.config.runner-os }}
     if: github.ref_type == 'tag'
+    env:
+      BINARY: nutpuncher-${{ matrix.config.os-name }}-${{ github.ref_name }}${{ matrix.config.bin-ext }}
     strategy:
       matrix:
         config:
@@ -76,8 +78,8 @@ jobs:
           cmake --build build --config Release --target nutpuncher
       - name: Rename binary artifact
         run: |
-          cp build/nutpuncher${{ matrix.config.bin-ext }} nutpuncher-${{ github.ref_name }}${{ matrix.config.bin-ext }}
+          cp build/nutpuncher${{ matrix.config.bin-ext }} ${{ env.BINARY }}
       - name: Release binary
         uses: softprops/action-gh-release@v2
         with:
-          files: nutpuncher-${{ matrix.config.os-name }}-${{ github.ref_name }}${{ matrix.config.bin-ext }}
+          files: ${{ env.BINARY }}
