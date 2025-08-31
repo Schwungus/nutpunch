@@ -7,7 +7,7 @@
 > [!WARNING]
 > Using NutPunch and UDP hole-punching makes sense **only if you're making a P2P networked game**. If you need server-based networking (**which is arguably much simpler to implement**), you're out of luck -- go elsewhere. You have been warned.
 
-A UDP hole-punching library for REAL men (and women). Header-only. Brutal. Uses plain C and Winsock.
+A UDP hole-punching library for REAL men (and women). Header-only. Brutal. Written in plain C.
 
 ## Introductory Lecture
 
@@ -15,7 +15,7 @@ This library implements P2P networking, where **each peer communicates with all 
 
 Before you can punch any holes in your peers' NAT, you will need a hole-punching server **with a public IP address** assigned. Querying a public server lets us bust a gateway open to the global network, all while the server relays the connection info for other peers to us. If you're just testing, you can use [our public instance](#public-instance) instead of [hosting your own](#hosting-a-nutpuncher-server). The current server implementation uses a lobby-based approach, where each lobby supports up to 16 peers and is identified by a unique ASCII string.
 
-In order to run your own hole-puncher server, you'll need to get the server binary from our [reference implementation releases](https://github.com/Schwungus/nutpunch/releases/tag/stable). Use [the batteries-included Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher) to host a NutPuncher server on Linux. Winsock is a hard requirement for now, and the Docker image for Linux comes with everything you need to run a NutPuncher. If you're in a pinch, don't have access to a public IP address, and your players reside on a LAN/virtual network such as [Radmin VPN](https://www.radmin-vpn.com), you can actually run NutPuncher locally and use your LAN IP address to connect to it.
+In order to run your own hole-puncher server, you'll need to get the server binary from our [reference implementation releases](https://github.com/Schwungus/nutpunch/releases/tag/stable). [A Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher) is also available for hosting a NutPuncher server on Linux. If you're in a pinch, don't have access to a public IP address, and your players reside on a LAN/virtual network such as [Radmin VPN](https://www.radmin-vpn.com), you can actually run NutPuncher locally and use your LAN IP address to connect to it.
 
 Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. Here's the general usage guide for the NutPunch library:
 
@@ -31,10 +31,10 @@ Once you've figured out how the players are to connect to your hole-puncher serv
 4. Optionally read metadata from the lobby during `NP_Status_Online` status. Use `NutPunch_Get()` to get a pointer to a metadata field, which you can then read from (as long as it's valid and is the exact size that you expect it to be). These pointers are volatile, especially when calling `NutPunch_Update()`, so if you need to use the gotten value more than once, cache it somewhere.
 5. If all went well (i.e. you have enough metadata and player count is fulfilled), start your match.
 6. Run the game logic.
-7. Keep in sync with each peer: Send datagrams through `NutPunch_Send()` and poll for incoming datagrams by looping with `NutPunch_HasNext()` and retrieving with `NutPunch_NextPacket()`. In scenarios where you need to hold packet data in a static `char` array, set the array size to `NUTPUNCH_BUFFER_SIZE`[^1].
+7. Keep in sync with each peer: Send datagrams through `NutPunch_Send()` and poll for incoming datagrams by looping with `NutPunch_HasNext()` and retrieving with `NutPunch_NextPacket()`. In scenarios where you need to hold packet data in a static `char` array, set the array size to `NUTPUNCH_BUFFER_SIZE`[^kb].
 8. Come back to step 6 the next frame. You're all Gucci!
 
-[^1]: `NUTPUNCH_BUFFER_SIZE` is currently `512000` as in 512 KB, which is the hard limit for the size of a single NutPunch packet. If you think this is a bit overkill, feel free to scold one of the developers on Discord.
+[^kb]: `NUTPUNCH_BUFFER_SIZE` is currently `512000` as in 512 KB, which is the hard limit for the size of a single NutPunch packet. If you think this is a bit overkill, feel free to scold one of the developers on Discord.
 
 ## Premade Integrations
 
@@ -79,16 +79,17 @@ You can specify custom memory handling functions for NutPunch to use through `#d
 
 If you're dissatisfied with [the public instance](#public-instance), whether from needing to stick to a specific build or fork or whatever, you can host your own. Make sure to read [the introductory pamphlet](#introductory-lecture) before attempting this.
 
-On Windows, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/stable) and make sure the **UDP port `30001`** is open to the public.
+On Windows and Linux, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/stable) and make sure the **UDP port `30001`** is open to the public.
 
-On Linux, **if your system supports Wine**, you can use [our Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher), e.g. with docker-compose:
+On Linux, you may also use [our Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher), e.g. with docker-compose:
 
 ```yaml
 services:
   main:
     image: ghcr.io/schwungus/nutpuncher
     container_name: nutpuncher
-    network_mode: host # kludge, required: just forwarding port 30001 breaks nutpuncher connectivity for unknown reasons
+    network_mode: host # kludge, required: just forwarding port 30001 breaks connectivity
     restart: always
-    tty: true # kludge, required: the Windows binary doesn't run at all without this
 ```
+
+If you're on MacOS, well, bad luck, buddy...

@@ -60,8 +60,11 @@ jobs:
       matrix:
         config:
           - os-name: Windows
-            runner-os: windows-latest
+            runner-os: windows-2022
             bin-ext: .exe
+          - os-name: Linux
+            runner-os: ubuntu-24.04
+            bin-ext: ""
     permissions:
       contents: write
     steps:
@@ -77,4 +80,4 @@ jobs:
       - name: Release binary
         uses: softprops/action-gh-release@v2
         with:
-          files: nutpuncher-${{ github.ref_name }}${{ matrix.config.bin-ext }}
+          files: nutpuncher-${{ matrix.config.os-name }}-${{ github.ref_name }}${{ matrix.config.bin-ext }}

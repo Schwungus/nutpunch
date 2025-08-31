@@ -440,7 +440,13 @@ static int NutPunch_RealUpdate() {
 
 	for (;;) {
 		struct sockaddr addr = {0};
-		int addrSize = sizeof(addr);
+#ifdef NUTPUNCH_WINDOSE
+		int
+#else
+		socklen_t
+#endif
+			addrSize;
+		addrSize = sizeof(addr);
 
 		static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
 		int size = recvfrom(NP_Socket, buf, sizeof(buf), 0, &addr, &addrSize);

@@ -4,27 +4,23 @@
 #include <map>
 #include <string>
 
+#define NUTPUNCH_IMPLEMENTATION
 #include "nutpunch.h"
 
 #ifdef NUTPUNCH_WINDOSE
-
-#define _AMD64_
-#define _INC_WINDOWS
-
-#include <windef.h>
-
-#include <minwinbase.h>
-#include <winbase.h>
-
-#include <winsock2.h>
-#include <ws2tcpip.h>
-
-#include <synchapi.h>
-
-#define SleepMs(ms) (Sleep((ms)))
-
+#define SleepMs(ms) Sleep(ms)
 #else
-#error shit....
+#include <time.h> // stolen from: <https://stackoverflow.com/a/1157217>
+#define SleepMs(ms)                                                                                                    \
+	do {                                                                                                           \
+		struct timespec ts;                                                                                    \
+		int res;                                                                                               \
+		ts.tv_sec = (ms) / 1000;                                                                               \
+		ts.tv_nsec = ((ms) % 1000) * 1000000;                                                                  \
+		do                                                                                                     \
+			res = nanosleep(&ts, &ts);                                                                     \
+		while (res && errno == EINTR);                                                                         \
+	} while (0)
 #endif
 
 struct Lobby;
@@ -32,7 +28,7 @@ struct Lobby;
 constexpr const int beatsPerSecond = 60, keepAliveSeconds = 5, keepAliveBeats = keepAliveSeconds * beatsPerSecond,
 		    maxLobbies = 512;
 
-static SOCKET sock = INVALID_SOCKET;
+static NP_SocketType sock = NUTPUNCH_INVALID_SOCKET;
 static std::map<std::string, Lobby> lobbies;
 
 struct Player {
@@ -197,7 +193,7 @@ struct Lobby {
 
 		auto addr = *reinterpret_cast<sockaddr*>(&plr.addr);
 		int sent = sendto(sock, (char*)buf, sizeof(buf), 0, &addr, sizeof(addr));
-		if (sent == SOCKET_ERROR && WSAGetLastError() != WSAEWOULDBLOCK)
+		if (sent < 0 && NP_SockError() != NP_WouldBlock)
 			plr.reset();
 	}
 
@@ -229,36 +225,55 @@ private:
 
 static void bindSock() {
 	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (sock == INVALID_SOCKET)
+	if (sock == NUTPUNCH_INVALID_SOCKET)
 		throw "Failed to create the underlying UDP socket";
 
-	u_long argp = 1;
+#ifdef NUTPUNCH_WINDOSE
+	u_long
+#else
+	std::uint32_t
+#endif
+		argp;
+
+	argp = 1;
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&argp, sizeof(argp)))
 		throw "Failed to set socket reuseaddr option";
 
 	argp = 1;
-	if (SOCKET_ERROR == ioctlsocket(sock, FIONBIO, &argp))
+	if (
+#ifdef NUTPUNCH_WINDOSE
+		ioctlsocket(sock, FIONBIO, &argp)
+#else
+		fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK)
+#endif
+		< 0)
 		throw "Failed to set socket to non-blocking mode";
 
 	sockaddr_in addr = {0};
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(NUTPUNCH_SERVER_PORT);
 
-	if (SOCKET_ERROR == bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)))
+	if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
 		throw "Failed to bind the UDP socket";
 }
 
 static int receiveShit() {
-	if (sock == INVALID_SOCKET)
+	if (sock == NUTPUNCH_INVALID_SOCKET)
 		std::exit(EXIT_FAILURE);
 
 	char request[NUTPUNCH_REQUEST_SIZE] = {0};
 	sockaddr addr = {0};
-	int addrLen = sizeof(addr);
+#ifdef NUTPUNCH_WINDOSE
+	int
+#else
+	socklen_t
+#endif
+		addrSize;
+	addrSize = sizeof(addr);
 
-	int nRecv = recvfrom(sock, request, sizeof(request), 0, &addr, &addrLen);
-	if (SOCKET_ERROR == nRecv && WSAGetLastError() != WSAECONNRESET)
-		return WSAGetLastError() == WSAEWOULDBLOCK ? -1 : WSAGetLastError();
+	int nRecv = recvfrom(sock, request, sizeof(request), 0, &addr, &addrSize);
+	if (nRecv < 0 && NP_SockError() != NP_ConnReset)
+		return NP_SockError() == NP_WouldBlock ? -1 : NP_SockError();
 	if (sizeof(request) != nRecv) // skip weirdass packets
 		return 0;
 
@@ -298,24 +313,32 @@ static int receiveShit() {
 struct cleanup {
 	cleanup() = default;
 	~cleanup() {
-		if (sock != INVALID_SOCKET) {
+		if (sock != NUTPUNCH_INVALID_SOCKET) {
+#ifdef NUTPUNCH_WINDOSE
 			closesocket(sock);
-			sock = INVALID_SOCKET;
+#else
+			close(sock);
+#endif
+			sock = NUTPUNCH_INVALID_SOCKET;
 		}
+#ifdef NUTPUNCH_WINDOSE
 		WSACleanup();
+#endif
 	}
 };
 
 int main(int, char**) {
 	cleanup clnup;
 
+#ifdef NUTPUNCH_WINDOSE
 	WSADATA bitch = {0};
 	WSAStartup(MAKEWORD(2, 2), &bitch);
+#endif
 
 	try {
 		bindSock();
 	} catch (const char* msg) {
-		NutPunch_Log("Bind failed (code %d) - %s", WSAGetLastError(), msg);
+		NutPunch_Log("Bind failed (code %d) - %s", NP_SockError(), msg);
 		return EXIT_FAILURE;
 	}
 

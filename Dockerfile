@@ -1,8 +1,10 @@
-FROM scottyhardy/docker-wine:devel
+FROM alpine:3.22
 
-RUN wget https://github.com/Schwungus/nutpunch/releases/download/stable/nutpuncher-stable.exe -O /usr/local/bin/nutpuncher.exe
-ENV NO_RDP=yes RDP_SERVER=no DUMMY_PULSEAUDIO=yes USER_SUDO=no WINEDLLOVERRIDES="mscoree=d;mshtml=d" WINEDEBUG="-all"
+RUN apk add --no-cache wget
+RUN mkdir -p /usr/local/bin \
+    && wget https://github.com/Schwungus/nutpunch/releases/download/stable/nutpuncher-Linux-stable \
+        -O /usr/local/bin/nutpuncher \
+    && chmod +x /usr/local/bin/nutpuncher
 EXPOSE 30001/udp
 
-ENTRYPOINT ["/usr/bin/entrypoint"]
-CMD ["wine", "/usr/local/bin/nutpuncher.exe"]
+CMD ["/usr/local/bin/nutpuncher"]
