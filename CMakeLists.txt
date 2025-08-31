@@ -26,7 +26,7 @@ if(NUTPUNCH_BUILD_TESTS)
     target_link_libraries(nutpunchTest PRIVATE nutpunch raylib)
 endif()
 
-option(NUTPUNCH_BUILD_SERVER "Build nutpunch server binary?" ON)
+option(NUTPUNCH_BUILD_SERVER "Build nutpuncher?" ON)
 if(NUTPUNCH_BUILD_SERVER)
     add_executable(nutpuncher ${CMAKE_CURRENT_SOURCE_DIR}/src/nutpuncher.cpp)
     set_target_properties(nutpuncher PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
