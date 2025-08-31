@@ -135,7 +135,7 @@ struct Lobby {
 			if (plr.countdown > 0) {
 				plr.countdown--;
 				if (plr.isDead()) {
-					NutPunch_Log("Peer %d timed out in lobby '%s'", i + 1, fmtId());
+					NP_Log("Peer %d timed out in lobby '%s'", i + 1, fmtId());
 					plr.reset();
 				}
 			}
@@ -282,10 +282,10 @@ static int receiveShit() {
 
 	if (!lobbies.count(id)) {
 		if (lobbies.size() >= maxLobbies) {
-			NutPunch_Log("WARN: Reached lobby limit...");
+			NP_Log("WARN: Reached lobby limit...");
 			return 0;
 		} else {
-			NutPunch_Log("Created lobby '%s'", fmtLobbyId(id));
+			NP_Log("Created lobby '%s'", fmtLobbyId(id));
 			lobbies.insert({id, Lobby(id)});
 		}
 	}
@@ -301,12 +301,12 @@ static int receiveShit() {
 		if (players[i].isDead()) {
 			std::memcpy(&players[i].addr, &addr, sizeof(addr));
 			lobbies[id].processRequest(i, request);
-			NutPunch_Log("Peer %d joined lobby '%s'", i + 1, fmtLobbyId(id));
+			NP_Log("Peer %d joined lobby '%s'", i + 1, fmtLobbyId(id));
 			return 0;
 		}
 	}
 
-	NutPunch_Log("Lobby '%s' is full!", fmtLobbyId(id));
+	NP_Log("Lobby '%s' is full!", fmtLobbyId(id));
 	return 0;
 }
 
@@ -338,20 +338,20 @@ int main(int, char**) {
 	try {
 		bindSock();
 	} catch (const char* msg) {
-		NutPunch_Log("Bind failed (code %d) - %s", NP_SockError(), msg);
+		NP_Log("Bind failed (code %d) - %s", NP_SockError(), msg);
 		return EXIT_FAILURE;
 	}
 
 	std::int64_t start = clock(), end, delta;
 	const std::int64_t minDelta = 1000 / beatsPerSecond;
 
-	NutPunch_Log("Running!");
+	NP_Log("Running!");
 	for (;;) {
 		int result;
 		while (!(result = receiveShit())) {
 		}
 		if (result > 0)
-			NutPunch_Log("Failed to receive data (code %d)", result);
+			NP_Log("Failed to receive data (code %d)", result);
 
 		for (auto& [id, lobby] : lobbies)
 			lobby.update();
@@ -359,7 +359,7 @@ int main(int, char**) {
 			const auto& lobby = kv.second;
 			bool dead = lobby.isDead();
 			if (dead)
-				NutPunch_Log("Deleted lobby '%s'", lobby.fmtId());
+				NP_Log("Deleted lobby '%s'", lobby.fmtId());
 			return dead;
 		});
 
