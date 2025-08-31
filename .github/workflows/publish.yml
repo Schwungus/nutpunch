@@ -2,23 +2,22 @@ name: Publish nutpuncher for major platforms
 
 on:
   push:
-    tags: ["stable"]
+    tags: [stable]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: Schwungus/nutpuncher
-
-permissions:
-  contents: write
-  packages: write
-  attestations: write
-  id-token: write
 
 jobs:
   docker:
     name: Build Docker image
     runs-on: ubuntu-latest
     if: github.ref_name == 'stable'
+    permissions:
+      contents: write
+      packages: write
+      attestations: write
+      id-token: write
     needs: [binary]
     steps:
       - name: Checkout repository
@@ -48,7 +47,7 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-      - name: Deploy with Jenkins
+      - name: Mark for Jenkins deployment
         run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
@@ -56,13 +55,15 @@ jobs:
   binary:
     name: Upload binaries for ${{ matrix.config.os-name }}
     runs-on: ${{ matrix.config.runner-os }}
+    if: github.ref_type == 'tag'
     strategy:
-      fail-fast: false
       matrix:
         config:
           - os-name: Windows
             runner-os: windows-latest
             bin-ext: .exe
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -75,6 +76,5 @@ jobs:
           cp build/nutpuncher${{ matrix.config.bin-ext }} nutpuncher-${{ github.ref_name }}${{ matrix.config.bin-ext }}
       - name: Release binary
         uses: softprops/action-gh-release@v2
-        if: github.ref_type == 'tag'
         with:
           files: nutpuncher-${{ github.ref_name }}${{ matrix.config.bin-ext }}
