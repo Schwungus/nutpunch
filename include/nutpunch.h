@@ -105,6 +105,9 @@ bool NutPunch_PeerAlive(int peer);
 /// Get the local peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
 int NutPunch_LocalPeer();
 
+/// Call this to gracefully disconnect from the lobby.
+void NutPunch_Disconnect();
+
 /// Use this to reset the underlying socket in case of an inexplicable error.
 void NutPunch_Reset();
 
@@ -211,12 +214,23 @@ static char NP_ServerHost[128] = {0};
 static struct NP_Packet *NP_QueueIn = NULL, *NP_QueueOut = NULL;
 static struct NutPunch_Field NP_MetadataIn[NUTPUNCH_MAX_FIELDS] = {0}, NP_MetadataOut[NUTPUNCH_MAX_FIELDS] = {0};
 
+static void NP_CleanupPackets(struct NP_Packet** queue) {
+	while (*queue != NULL) {
+		struct NP_Packet* ptr = *queue;
+		*queue = ptr->next;
+		NutPunch_Free(ptr->data);
+		NutPunch_Free(ptr);
+	}
+}
+
 static void NP_NukeLobbyData() {
 	NP_Closing = false;
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
 	NutPunch_Memset(NP_MetadataIn, 0, sizeof(NP_MetadataIn));
 	NutPunch_Memset(NP_MetadataOut, 0, sizeof(NP_MetadataOut));
 	NutPunch_Memset(NP_Connections, 0, sizeof(NP_Connections));
+	NP_CleanupPackets(&NP_QueueIn);
+	NP_CleanupPackets(&NP_QueueOut);
 }
 
 static void NP_NukeRemote() {
@@ -414,22 +428,14 @@ fail:
 	return false;
 }
 
-static void NP_CleanupPackets(struct NP_Packet** queue) {
-	while (*queue != NULL) {
-		struct NP_Packet* ptr = *queue;
-		*queue = ptr->next;
-		NutPunch_Free(ptr->data);
-		NutPunch_Free(ptr);
-	}
+void NutPunch_Disconnect() {
+	NP_Closing = true;
+	NutPunch_Update();
+	NutPunch_Reset();
 }
 
 void NutPunch_Cleanup() {
-	NP_Closing = true;
-	NutPunch_Update();
-
-	NP_CleanupPackets(&NP_QueueIn);
-	NP_CleanupPackets(&NP_QueueOut);
-	NutPunch_Reset();
+	NutPunch_Disconnect();
 #ifdef NUTPUNCH_WINDOSE
 	WSACleanup();
 #endif
@@ -562,7 +568,8 @@ static int NP_RealUpdate() {
 	static char bye[] = {'D', 'I', 'S', 'C'};
 	if (NP_Closing)
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			NutPunch_Send(i, bye, sizeof(bye));
+			for (int kkk = 0; kkk < 10; kkk++)
+				NutPunch_Send(i, bye, sizeof(bye));
 
 sendShit:
 	while (NP_QueueOut != NULL) {
