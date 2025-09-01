@@ -83,15 +83,16 @@ jobs:
     if: github.ref_name == 'stable'
     runs-on: ubuntu-24.04
     needs: binary
+    env:
+      BINARY: /home/nutpuncher/server
     steps:
       - name: Deploy
         uses: appleboy/ssh-action@v1.2.2
         with:
           host: 194.87.232.108
-          username: root
+          username: nutpuncher
           key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
           script: |
-            wget https://github.com/Schwungus/nutpunch/releases/download/stable/nutpuncher-Linux-${{ github.ref_name }} \
-              -O /usr/local/bin/nutpuncher
-            chmod +x /usr/local/bin/nutpuncher
+            wget -O ${{ env.BINARY }} https://github.com/Schwungus/nutpunch/releases/download/stable/nutpuncher-Linux-${{ github.ref_name }}
+            chmod +x ${{ env.BINARY }}
             systemctl restart nutpuncher
