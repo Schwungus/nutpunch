@@ -40,8 +40,7 @@ Once you've figured out how the players are to connect to your hole-puncher serv
 
 Not documented yet.
 
-> **TODO**
-> Add a [GekkoNet](https://github.com/HeatXD/GekkoNet) network adapter implementation. In the meantime, you can look into [the code of a real usecase](https://github.com/toggins/Klawiatura/blob/master/src/K_net.c).
+> **TODO**: Add a [GekkoNet](https://github.com/HeatXD/GekkoNet) network adapter implementation. In the meantime, you can look into [the code of a real usecase](https://github.com/toggins/Klawiatura/blob/master/src/K_net.c).
 
 ## Public Instance
 
