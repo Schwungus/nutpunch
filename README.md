@@ -2,7 +2,7 @@
 
 # NutPunch
 
-<img align="right" src=".github/assets/nutpunch256.png">
+<img align="right" src="/.github/assets/nutpunch256.png">
 
 > [!WARNING]
 > Using NutPunch and UDP hole-punching makes sense **only if you're making a P2P networked game**. If you need server-based networking (**which is arguably much simpler to implement**), you're out of luck -- go elsewhere. You have been warned.
@@ -47,7 +47,7 @@ Not documented yet.
 If you don't feel like [hosting your own instance](#hosting-a-nutpuncher-server), you can use our public instance as a kludge. In C code, write:
 
 ```c
-NutPunch_SetServerAddr("95.163.233.200");
+NutPunch_SetServerAddr("194.87.232.108");
 NutPunch_Join("lobby-id");
 ```
 
@@ -55,7 +55,7 @@ Or if you just want to try the test binary after building it:
 
 ```bat
 @echo off
-start .\build\nutpunchTest.exe 2 95.163.233.200
+start .\build\nutpunchTest.exe 2 194.87.232.108
 ```
 
 ## Advanced Usage

@@ -4,10 +4,6 @@ on:
   push:
     tags: [stable]
 
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: Schwungus/nutpuncher
-
 jobs:
   docker:
     name: Build Docker image
@@ -18,7 +14,10 @@ jobs:
       packages: write
       attestations: write
       id-token: write
-    needs: [binary]
+    needs: binary
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: Schwungus/nutpuncher
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,26 +46,22 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME}}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-      - name: Mark for Jenkins deployment
-        run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git tag -f deploy && git push -f --tags
   binary:
-    name: Upload binaries for ${{ matrix.config.os-name }}
-    runs-on: ${{ matrix.config.runner-os }}
+    name: Upload binaries for ${{ matrix.cfg.os-name }}
+    runs-on: ${{ matrix.cfg.runner-os }}
     if: github.ref_type == 'tag'
     env:
-      BINARY: nutpuncher-${{ matrix.config.os-name }}-${{ github.ref_name }}${{ matrix.config.bin-ext }}
+      BINARY: nutpuncher-${{ matrix.cfg.os-name }}-${{ github.ref_name }}${{ matrix.cfg.bin-ext }}
     strategy:
       matrix:
-        config:
+        cfg:
           - os-name: Windows
             runner-os: windows-2022
             bin-ext: .exe
           - os-name: Linux
             runner-os: ubuntu-24.04
             bin-ext: ""
+            deploy: true
     permissions:
       contents: write
     steps:
@@ -78,8 +73,25 @@ jobs:
           cmake --build build --config Release --target nutpuncher
       - name: Rename binary artifact
         run: |
-          cp build/nutpuncher${{ matrix.config.bin-ext }} ${{ env.BINARY }}
+          cp build/nutpuncher${{ matrix.cfg.bin-ext }} ${{ env.BINARY }}
       - name: Release binary
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.BINARY }}
+  deploy:
+    name: Deploy the public instance
+    if: github.ref_name == 'stable'
+    runs-on: ubuntu-24.04
+    needs: binary
+    steps:
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: 194.87.232.108
+          username: root
+          key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
+          script: |
+            wget https://github.com/Schwungus/nutpunch/releases/download/stable/nutpuncher-Linux-${{ github.ref_name }} \
+              -O /usr/local/bin/nutpuncher
+            chmod +x /usr/local/bin/nutpuncher
+            systemctl restart nutpuncher
