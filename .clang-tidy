@@ -6,6 +6,7 @@ Checks: |
   -bugprone-assignment-in-if-condition,
   -bugprone-suspicious-string-compare,
   -bugprone-reserved-identifier,
+  -bugprone-not-null-terminated-result,
   performance-*,
   -performance-no-int-to-ptr,
   -performance-enum-size,
