@@ -2,5 +2,5 @@ services:
   main:
     image: ghcr.io/schwungus/nutpuncher
     container_name: nutpuncher
-    restart: always
     ports: [30001:30001/udp]
+    restart: always

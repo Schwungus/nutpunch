@@ -88,7 +88,7 @@ services:
   main:
     image: ghcr.io/schwungus/nutpuncher
     container_name: nutpuncher
-    network_mode: host # kludge, required: just forwarding port 30001 breaks connectivity
+    ports: [30001:30001/udp]
     restart: always
 ```
 
