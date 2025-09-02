@@ -552,21 +552,10 @@ NP_MakeHandler(NP_HandleList) {
 	}
 }
 
-static int NP_RealUpdate() {
-	if (NP_Socket == NUTPUNCH_INVALID_SOCKET)
-		return NP_Status_Idle;
-
+static bool NP_SendHeartbeat() {
 	static char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
-#ifdef NUTPUNCH_WINDOSE
-	int
-#else
-	socklen_t
-#endif
-		addrSize;
-	struct sockaddr addr = NP_RemoteAddr;
-	addrSize = sizeof(addr);
-
 	char* beat = heartbeat;
+
 	if (NP_Querying) {
 		NutPunch_Memcpy(beat, "LIST", NUTPUNCH_HEADER_SIZE);
 		beat += NUTPUNCH_HEADER_SIZE;
@@ -579,76 +568,77 @@ static int NP_RealUpdate() {
 		NutPunch_Memcpy(beat, NP_MetadataOut, sizeof(NP_MetadataOut));
 	}
 
-	if (sendto(NP_Socket, heartbeat, sizeof(heartbeat), 0, &addr, sizeof(addr)) < 0
+	if (sendto(NP_Socket, heartbeat, sizeof(heartbeat), 0, &NP_RemoteAddr, sizeof(NP_RemoteAddr)) < 0
 		&& NP_SockError() != NP_WouldBlock && NP_SockError() != NP_ConnReset)
 	{
 		NP_LastError = "Failed to send heartbeat to NutPuncher";
-		goto sockFail;
+		return false;
 	}
 
-	for (;;) {
-		int connIdx = NUTPUNCH_MAX_PLAYERS;
-		struct NP_Packet* next = NP_QueueIn;
-		addrSize = sizeof(addr);
-		NutPunch_Memset(&addr, 0, addrSize);
+	return true;
+}
 
-		static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
-		int size = recvfrom(NP_Socket, buf, sizeof(buf), 0, &addr, &addrSize);
-		if (size < 0) {
-			if (NP_SockError() == NP_WouldBlock)
-				break;
-			if (NP_SockError() == NP_ConnReset)
-				continue;
-			NP_LastError = "Failed to receive from holepunch server";
-			goto sockFail;
-		}
+static int NP_ReceiveShit() {
+	int connIdx = NUTPUNCH_MAX_PLAYERS;
+	struct NP_Packet* next = NP_QueueIn;
+#ifdef NUTPUNCH_WINDOSE
+	int
+#else
+	socklen_t
+#endif
+		addrSize;
 
-		if (!size)
-			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-				if (!NutPunch_Memcmp(&addr, NP_Peers + i, addrSize)) {
-					NP_KillPeer(i);
-					goto recvNext;
-				}
+	struct sockaddr addr = {0};
+	addrSize = sizeof(addr);
+	NutPunch_Memset(&addr, 0, addrSize);
 
-		for (int i = 0; i < sizeof(NP_ServiceTable) / sizeof(*NP_ServiceTable); i++) {
-			const struct NP_ServicePacket entry = NP_ServiceTable[i];
-			if (size < NUTPUNCH_HEADER_SIZE)
-				break;
-			if (!NutPunch_Memcmp(buf, entry.identifier, NUTPUNCH_HEADER_SIZE)) {
-				entry.handler(
-					addr, size - NUTPUNCH_HEADER_SIZE, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
-				goto recvNext;
-			}
-		}
+	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
+	int size = recvfrom(NP_Socket, buf, sizeof(buf), 0, &addr, &addrSize);
+	if (size < 0) {
+		if (NP_SockError() == NP_WouldBlock)
+			return 1;
+		if (NP_SockError() == NP_ConnReset)
+			return 0;
+		NP_LastError = "Failed to receive from holepunch server";
+		return -1;
+	}
 
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+	if (!size)
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			if (!NutPunch_Memcmp(&addr, NP_Peers + i, addrSize)) {
-				connIdx = i;
-				break;
+				NP_KillPeer(i);
+				return 0;
 			}
+
+	for (int i = 0; i < sizeof(NP_ServiceTable) / sizeof(*NP_ServiceTable); i++) {
+		const struct NP_ServicePacket entry = NP_ServiceTable[i];
+		if (size < NUTPUNCH_HEADER_SIZE)
+			break;
+		if (!NutPunch_Memcmp(buf, entry.identifier, NUTPUNCH_HEADER_SIZE)) {
+			entry.handler(addr, size - NUTPUNCH_HEADER_SIZE, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
+			return 0;
 		}
-
-		if (connIdx == NUTPUNCH_MAX_PLAYERS)
-			continue;
-		NP_QueueIn = (struct NP_Packet*)NutPunch_Malloc(sizeof(*next));
-		NP_QueueIn->data = (char*)NutPunch_Malloc(size);
-		NutPunch_Memcpy(NP_QueueIn->data, buf, size);
-		NP_QueueIn->peer = connIdx;
-		NP_QueueIn->size = size;
-		NP_QueueIn->next = next;
-
-	recvNext:
-		continue;
 	}
 
-	static char bye[] = {'D', 'I', 'S', 'C'};
-	if (!NP_Closing)
-		goto sendAway;
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		for (int kkk = 0; kkk < 10; kkk++)
-			NutPunch_Send(i, bye, sizeof(bye));
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+		if (!NutPunch_Memcmp(&addr, NP_Peers + i, addrSize)) {
+			connIdx = i;
+			break;
+		}
+	}
 
-sendAway:
+	if (connIdx == NUTPUNCH_MAX_PLAYERS)
+		return 0;
+	NP_QueueIn = (struct NP_Packet*)NutPunch_Malloc(sizeof(*next));
+	NP_QueueIn->data = (char*)NutPunch_Malloc(size);
+	NutPunch_Memcpy(NP_QueueIn->data, buf, size);
+	NP_QueueIn->peer = connIdx;
+	NP_QueueIn->size = size;
+	NP_QueueIn->next = next;
+	return 0;
+}
+
+static bool NP_FlushOutQueue() {
 	while (NP_QueueOut != NULL) {
 		struct NP_Packet* packet = NP_QueueOut;
 		NP_QueueOut = NP_QueueOut->next;
@@ -660,8 +650,8 @@ sendAway:
 			continue;
 		}
 
-		addr = NP_Peers[packet->peer];
-		int result = sendto(NP_Socket, packet->data, packet->size, 0, &addr, addrSize);
+		struct sockaddr addr = NP_Peers[packet->peer];
+		int result = sendto(NP_Socket, packet->data, packet->size, 0, &addr, sizeof(addr));
 		NutPunch_Free(packet->data);
 		NutPunch_Free(packet);
 
@@ -670,12 +660,41 @@ sendAway:
 				NP_KillPeer(packet->peer);
 			else {
 				NP_LastError = "Failed to send to peer";
-				goto sockFail;
+				return false;
 			}
 		}
 	}
+	return true;
+}
 
-	return NP_Status_Online;
+static int NP_RealUpdate() {
+	if (NP_Socket == NUTPUNCH_INVALID_SOCKET)
+		return NP_Status_Idle;
+
+	if (!NP_SendHeartbeat())
+		goto sockFail;
+
+	for (;;)
+		switch (NP_ReceiveShit()) {
+			case 1:
+				goto recvDone;
+			case -1:
+				goto sockFail;
+			default:
+				break;
+		}
+
+recvDone:
+	static char bye[] = {'D', 'I', 'S', 'C'};
+	if (!NP_Closing)
+		goto flush;
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+		for (int kkk = 0; kkk < 10; kkk++)
+			NutPunch_Send(i, bye, sizeof(bye));
+
+flush:
+	if (NP_FlushOutQueue())
+		return NP_Status_Online;
 
 sockFail:
 	NP_LastErrorCode = NP_SockError();
