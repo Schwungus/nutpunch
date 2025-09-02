@@ -345,11 +345,13 @@ static int receiveShit() {
 			return 0;
 		}
 
+#if 0
 		// Match against existing peers to prevent creating multiple lobbies with the same master.
 		for (const auto& [lobbyId, lobby] : lobbies)
 			for (const auto& player : lobby.players)
 				if (!player.isDead() && !std::memcmp(&player.addr, &addr, sizeof(addr)))
 					return 0; // fuck you...
+#endif
 
 		NP_Log("Created lobby '%s'", fmtLobbyId(id));
 		lobbies.insert({id, Lobby(id)});
