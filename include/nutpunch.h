@@ -169,6 +169,8 @@ typedef SOCKET NP_SocketType;
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <netdb.h>
+
 #include <errno.h>
 #include <fcntl.h>
 
@@ -317,13 +319,35 @@ static void NP_PrintError() {
 }
 
 static struct sockaddr NP_SockAddr(const char* host, uint16_t port) {
+	NP_LazyInit();
+
+	struct addrinfo *result = NULL, hints = {0};
 	struct sockaddr_in addr = {0};
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(port);
-	if (host != NULL) {
-		uint32_t conv = inet_addr(host);
-		NutPunch_Memcpy(&addr.sin_addr, &conv, 4);
+	if (host == NULL)
+		goto skip;
+
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_protocol = IPPROTO_UDP;
+	hints.ai_flags = AI_PASSIVE;
+
+	static char fmt[32] = {0};
+	snprintf(fmt, sizeof(fmt), "%d", port);
+	if (getaddrinfo(host, fmt, &hints, &result) != 0) {
+		NP_LastError = "Failed to get NutPuncher server address info";
+		NP_LastErrorCode = NP_SockError();
+		NP_PrintError();
+		goto skip;
 	}
+	if (result == NULL)
+		goto skip;
+
+	NutPunch_Memcpy(&addr, result->ai_addr, sizeof(addr));
+	freeaddrinfo(result);
+
+skip:
 	return *(struct sockaddr*)&addr;
 }
 
