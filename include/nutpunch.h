@@ -41,8 +41,13 @@ extern "C" {
 /// The maximum amount of filters you can pass to `NutPunch_FindLobbies`.
 #define NUTPUNCH_SEARCH_FILTERS_MAX (8)
 
+/// Maximum length of a metadata field name.
 #define NUTPUNCH_FIELD_NAME_MAX (8)
+
+/// Maximum volume of data you can store in a metadata field.
 #define NUTPUNCH_FIELD_DATA_MAX (32)
+
+/// Maximum amount of metadata fields per lobby.
 #define NUTPUNCH_MAX_FIELDS (16)
 
 #define NUTPUNCH_MAX(a, b) ((a) > (b) ? (a) : (b))
