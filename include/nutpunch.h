@@ -20,6 +20,9 @@ extern "C" {
 #define _WIN32_WINNT 0x0501
 #endif
 
+/// The default NutPuncher instance. It's public, so feel free to use it.
+#define NUTPUNCH_DEFAULT_SERVER "nutpunch.schwung.us"
+
 /// Maximum amount of players in a lobby. Not intended to be customizable.
 #define NUTPUNCH_MAX_PLAYERS (16)
 
@@ -460,6 +463,8 @@ static bool NP_BindSocket() {
 	}
 
 	NP_LastStatus = NP_Status_Online;
+	if (!NP_ServerHost[0])
+		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
 	NP_RemoteAddr = NP_SockAddr(NP_ServerHost, NUTPUNCH_SERVER_PORT);
 	return true;
 

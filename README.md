@@ -47,7 +47,7 @@ Not documented yet.
 If you don't feel like [hosting your own instance](#hosting-a-nutpuncher-server), you can use our public instance as a kludge. In C code, write:
 
 ```c
-NutPunch_SetServerAddr("194.87.232.108");
+NutPunch_SetServerAddr("nutpunch.schwung.us");
 NutPunch_Join("lobby-id");
 ```
 
@@ -55,7 +55,7 @@ Or if you just want to try the test binary after building it:
 
 ```bat
 @echo off
-start .\build\nutpunchTest.exe 2 194.87.232.108
+start .\build\nutpunchTest.exe 2 nutpunch.schwung.us
 ```
 
 ## Advanced Usage
