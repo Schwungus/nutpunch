@@ -28,11 +28,12 @@ static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
 #define SCALE (3)
 
 int main(int argc, char* argv[]) {
-	if (argc != 3) {
+	if (argc != 2 && argc != 3) {
 		printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
 		return EXIT_FAILURE;
 	}
 
+	const char* serverAddr = argc == 2 ? NUTPUNCH_DEFAULT_SERVER : argv[2];
 	int expectingPlayers = strtol(argv[1], NULL, 10), _expectingPlayers = expectingPlayers;
 	if (expectingPlayers < 2) {
 		printf("The fuck do you mean?\n");
@@ -104,7 +105,7 @@ int main(int argc, char* argv[]) {
 			if (IsKeyPressed(KEY_K))
 				NutPunch_Reset();
 			if (IsKeyPressed(KEY_J)) {
-				NutPunch_SetServerAddr(argv[2]);
+				NutPunch_SetServerAddr(serverAddr);
 				NutPunch_Join(lobbyName);
 			}
 		}

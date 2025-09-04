@@ -58,6 +58,8 @@ Or if you just want to try the test binary after building it:
 start .\build\nutpunchTest.exe 2 nutpunch.schwung.us
 ```
 
+You may also omit the `NutPunch_SetServerAddr` call to fall back to default instance implicitly.
+
 ## Advanced Usage
 
 You can specify custom memory handling functions for NutPunch to use through `#define`s. For example, if you're working with SDL3:
