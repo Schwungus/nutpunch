@@ -780,7 +780,10 @@ fail:
 
 const char** NutPunch_LobbyList(int* count) {
 	static const char nully[NUTPUNCH_ID_MAX + 1] = {0};
+
+	NP_LazyInit();
 	*count = 0;
+
 	while (*count < NUTPUNCH_SEARCH_RESULTS_MAX) {
 		if (!NutPunch_Memcmp(NP_Lobbies[*count], nully, sizeof(nully)))
 			break;
