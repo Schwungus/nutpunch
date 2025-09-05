@@ -31,7 +31,7 @@ Once you've figured out how the players are to connect to your hole-puncher serv
 4. Optionally read metadata from the lobby during `NP_Status_Online` status. Use `NutPunch_Get()` to get a pointer to a metadata field, which you can then read from (as long as it's valid and is the exact size that you expect it to be). These pointers are volatile, especially when calling `NutPunch_Update()`, so if you need to use the gotten value more than once, cache it somewhere.
 5. If all went well (i.e. you have enough metadata and player count is fulfilled), start your match.
 6. Run the game logic.
-7. Keep in sync with each peer: Send datagrams through `NutPunch_Send()` and poll for incoming datagrams by looping with `NutPunch_HasNext()` and retrieving with `NutPunch_NextPacket()`. In scenarios where you need to hold packet data in a static `char` array, set the array size to `NUTPUNCH_BUFFER_SIZE`[^kb].
+7. Keep in sync with each peer: Send datagrams through `NutPunch_Send()` and poll for incoming datagrams by looping with `NutPunch_HasNext()` and retrieving them with `NutPunch_NextPacket()`. In scenarios where you need to cache packet data, `memcpy` it into a static array of `NUTPUNCH_BUFFER_SIZE`[^kb] bytes.
 8. Come back to step 6 the next frame. You're all Gucci!
 
 [^kb]: `NUTPUNCH_BUFFER_SIZE` is currently `512000` as in 512 KB, which is the hard limit for the size of a single NutPunch packet. If you think this is a bit overkill, feel free to scold one of the developers on Discord.
@@ -41,6 +41,41 @@ Once you've figured out how the players are to connect to your hole-puncher serv
 Not documented yet.
 
 > **TODO**: Add a [GekkoNet](https://github.com/HeatXD/GekkoNet) network adapter implementation. In the meantime, you can look into [the code of a real usecase](https://github.com/toggins/Klawiatura/blob/master/src/K_net.c).
+
+## Basic Usage
+
+If you're using CMake, you can include this library in your project by adding the following to your `CMakeLists.txt`:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(nutpunch
+   GIT_REPOSITORY https://github.com/Schwungus/nutpunch.git
+   GIT_TAG stable) # you can use a specific commit hash here
+FetchContent_MakeAvailable(nutpunch)
+
+# create your target here, e.g. with `add_executable(MyGame)`, then link against nutpunch:
+target_link_libraries(MyGame PRIVATE nutpunch)
+```
+
+For other build system (or lack thereof), you only need to copy [`nutpunch.h`](/include/nutpunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with Winsock-related scary linker errors all over the place.
+
+Once [`nutpunch.h`](/include/nutpunch.h) is discoverable by your compiler, using it is straightforward:
+
+```c
+#include <stdlib.h>
+
+#define NUTPUNCH_IMPLEMENTATION
+#include <nutpunch.h>
+
+int main(int argc, char* argv[]) {
+   NutPunch_Join("MyLobby");
+   for (;;) // your game's mockup mainloop
+      NutPunch_Update();
+   return EXIT_SUCCESS;
+}
+```
+
+Also see [advanced usage](#advanced-usage) for things you can customize.
 
 ## Public Instance
 
