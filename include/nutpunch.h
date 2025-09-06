@@ -60,6 +60,7 @@ extern "C" {
 		+ NP_MOut_Size * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
