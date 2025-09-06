@@ -51,13 +51,16 @@ int main(int argc, char* argv[]) {
 	while (!WindowShouldClose()) {
 		int status = NutPunch_Update();
 
-		static uint8_t data[PAYLOAD_SIZE] = {0};
+		static uint8_t data[512] = {0};
 		while (NutPunch_HasNext()) {
 			int size = sizeof(data), peer = NutPunch_NextPacket(data, &size);
-			if (peer >= NUTPUNCH_MAX_PLAYERS || size != sizeof(data))
+			if (peer >= NUTPUNCH_MAX_PLAYERS)
 				continue;
-			players[peer].x = ((int32_t)(data[0])) * SCALE;
-			players[peer].y = ((int32_t)(data[1])) * SCALE;
+			if (size == PAYLOAD_SIZE) {
+				players[peer].x = ((int32_t)(data[0])) * SCALE;
+				players[peer].y = ((int32_t)(data[1])) * SCALE;
+			} else
+				printf("%s\n", data);
 		}
 
 		BeginDrawing();
@@ -87,8 +90,25 @@ int main(int argc, char* argv[]) {
 
 		data[0] = (uint8_t)(players[NutPunch_LocalPeer()].x / SCALE);
 		data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y / SCALE);
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			NutPunch_Send(i, data, sizeof(data));
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+			NutPunch_Send(i, data, PAYLOAD_SIZE);
+			char name1[32] = {0}, name2[32] = {0};
+
+			const char* theirName = NutPunch_PeerGet(i, "NAME", NULL);
+			if (theirName == NULL)
+				continue;
+			snprintf(name1, sizeof(name1), "%s", theirName);
+
+			const char* ourName = NutPunch_PeerGet(NutPunch_LocalPeer(), "NAME", NULL);
+			if (ourName == NULL)
+				continue;
+			snprintf(name2, sizeof(name2), "%s", ourName);
+
+			static char buf[96] = {0};
+			snprintf(buf, sizeof(buf), "[%s]: Hi, %s!", name2, name1);
+			if (IsKeyPressed(KEY_T))
+				NutPunch_SendReliably(i, buf, sizeof(buf));
+		}
 
 		if (NP_Status_Online == status) {
 			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
