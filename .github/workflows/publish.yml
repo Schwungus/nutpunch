@@ -93,6 +93,7 @@ jobs:
           username: root
           key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
           script: |
+            systemctl stop nutpuncher
             wget -O ${{ env.BINARY }} https://github.com/Schwungus/nutpunch/releases/download/stable/nutpuncher-Linux-${{ github.ref_name }}
             chmod +x ${{ env.BINARY }}
-            systemctl restart nutpuncher
+            systemctl start nutpuncher
