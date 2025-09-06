@@ -31,42 +31,23 @@ constexpr const int beatsPerSecond = 60, keepAliveSeconds = 5, keepAliveBeats = 
 static NP_SocketType sock = NUTPUNCH_INVALID_SOCKET;
 static std::map<std::string, Lobby> lobbies;
 
-struct Player {
-	sockaddr_in addr;
-	std::uint32_t countdown;
-
-	Player(const sockaddr_in& addr) : addr(addr), countdown(keepAliveBeats) {}
-	Player() : addr(*reinterpret_cast<const sockaddr_in*>(&zeroAddr)), countdown(0) {}
-
-	bool isDead() const {
-		return !countdown || !std::memcmp(&addr, zeroAddr, sizeof(addr));
-	}
-
-	void reset() {
-		std::memset(&addr, 0, sizeof(addr));
-		countdown = 0;
-	}
-
-private:
-	static constexpr const char zeroAddr[sizeof(addr)] = {0};
-};
-
 static const char* fmtLobbyId(const char* id) {
 	static char buf[NUTPUNCH_ID_MAX + 1] = {0};
-
 	for (int i = 0; i < NUTPUNCH_ID_MAX; i++) {
 		char c = id[i];
 		if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_')
 			buf[i] = c;
-		else
+		else if (!c) {
+			buf[i] = 0;
+			return buf;
+		} else
 			buf[i] = ' ';
 	}
 	for (int i = NUTPUNCH_ID_MAX; i >= 0; i--)
-		if (buf[i] != ' ' && buf[i] != '\0') {
+		if (buf[i] != ' ' && buf[i] != 0) {
 			buf[i + 1] = '\0';
-			break;
+			return buf;
 		}
-
 	return buf;
 }
 
@@ -85,22 +66,19 @@ struct Field : NutPunch_Field {
 	bool nameMatches(const char* name) const {
 		if (isDead())
 			return false;
-		int nameSize = NUTPUNCH_FIELD_NAME_MAX;
-		for (int i = 0; i < NUTPUNCH_FIELD_NAME_MAX; i++)
+		int nameLen = NUTPUNCH_FIELD_NAME_MAX, inputLen = std::strlen(name);
+		if (inputLen > NUTPUNCH_FIELD_NAME_MAX)
+			inputLen = NUTPUNCH_FIELD_NAME_MAX;
+		for (int i = 0; i < inputLen; i++)
 			if (!name[i]) {
-				nameSize = i;
+				nameLen = i;
 				break;
 			}
-		if (!nameSize)
+		if (!nameLen)
 			return false;
-		for (int i = 0; i < NUTPUNCH_FIELD_NAME_MAX; i++)
-			if (!this->name[i]) {
-				if (i != nameSize)
-					return false;
-				else
-					break;
-			}
-		return !std::memcmp(this->name, name, nameSize);
+		if (nameLen != inputLen)
+			return false;
+		return !std::memcmp(this->name, name, nameLen);
 	}
 
 	bool filterMatches(const NutPunch_Filter& filter) const {
@@ -120,10 +98,77 @@ struct Field : NutPunch_Field {
 	}
 };
 
+struct Metadata {
+	Field fields[NUTPUNCH_MAX_FIELDS];
+
+	Metadata() {
+		reset();
+	}
+
+	Field* get(const char* name) {
+		int idx = find(name);
+		if (NUTPUNCH_MAX_FIELDS == idx)
+			return nullptr;
+		return &fields[idx];
+	}
+
+	void set(const char* name, int size, const void* value) {
+		int idx = find(name);
+		if (NUTPUNCH_MAX_FIELDS == idx)
+			return;
+		int count = std::strlen(name);
+		if (count > NUTPUNCH_FIELD_NAME_MAX)
+			count = NUTPUNCH_FIELD_NAME_MAX;
+		std::memcpy(fields[idx].name, name, count);
+		fields[idx].size = size;
+		std::memcpy(fields[idx].data, value, size);
+	}
+
+	void reset() {
+		std::memset(fields, 0, sizeof(fields));
+	}
+
+private:
+	int find(const char* name) {
+		if (!*name)
+			return NUTPUNCH_MAX_FIELDS;
+		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // first matching
+			if (fields[i].nameMatches(name))
+				return i;
+		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // or first empty
+			if (fields[i].isDead())
+				return i;
+		return NUTPUNCH_MAX_FIELDS; // or bust
+	}
+};
+
+struct Player {
+	sockaddr_in addr;
+	std::uint32_t countdown;
+	Metadata metadata;
+
+	Player(const sockaddr_in& addr) : addr(addr), countdown(keepAliveBeats) {}
+
+	Player() : countdown(0) {
+		std::memset(&addr, 0, sizeof(addr));
+	}
+
+	bool isDead() const {
+		static constexpr const char zeroAddr[sizeof(addr)] = {0};
+		return !countdown || !std::memcmp(&addr, zeroAddr, sizeof(addr));
+	}
+
+	void reset() {
+		std::memset(&addr, 0, sizeof(addr));
+		metadata.reset();
+		countdown = 0;
+	}
+};
+
 struct Lobby {
 	char id[NUTPUNCH_ID_MAX];
 	Player players[NUTPUNCH_MAX_PLAYERS];
-	Field metadata[NUTPUNCH_MAX_FIELDS];
+	Metadata metadata;
 
 	Lobby() : Lobby(nullptr) {}
 	Lobby(const char* id) {
@@ -132,7 +177,6 @@ struct Lobby {
 		else
 			std::memcpy(this->id, id, sizeof(this->id));
 		std::memset(players, 0, sizeof(players));
-		std::memset(metadata, 0, sizeof(metadata));
 	}
 
 	const char* fmtId() const {
@@ -164,17 +208,22 @@ struct Lobby {
 	void processRequest(const int playerIdx, const char* request) {
 		if (std::memcmp(request, id, NUTPUNCH_ID_MAX))
 			return;
+
 		players[playerIdx].countdown = keepAliveBeats;
+
+		const char* ptr = request + NUTPUNCH_ID_MAX;
+		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+			const auto* fields = (Field*)ptr;
+			players[playerIdx].metadata.set(fields[i].name, fields[i].size, fields[i].data);
+		}
 
 		if (playerIdx != getMasterIdx())
 			return;
-		const auto* fields = (Field*)&request[NUTPUNCH_ID_MAX];
+
+		ptr += sizeof(Metadata);
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-			if (fields[i].isDead())
-				continue;
-			int idx = nextFieldIdx(fields[i].name);
-			if (NUTPUNCH_MAX_FIELDS != idx)
-				std::memcpy(&metadata[idx], &fields[i], sizeof(Field));
+			const auto* fields = (Field*)ptr;
+			metadata.set(fields[i].name, fields[i].size, fields[i].data);
 		}
 	}
 
@@ -190,6 +239,9 @@ struct Lobby {
 			if (players[i].isDead()) {
 				std::memset(ptr, 0, 6);
 				ptr += 6;
+
+				std::memset(ptr, 0, sizeof(Metadata));
+				ptr += sizeof(Metadata);
 			} else {
 				if (playerIdx == i)
 					std::memset(ptr, 0, 4);
@@ -199,12 +251,15 @@ struct Lobby {
 
 				std::memcpy(ptr, &players[i].addr.sin_port, 2);
 				ptr += 2;
+
+				std::memcpy(ptr, players[i].metadata.fields, sizeof(Metadata));
+				ptr += sizeof(Metadata);
 			}
 		}
-		std::memcpy(ptr, metadata, sizeof(metadata));
+		std::memcpy(ptr, metadata.fields, sizeof(Metadata));
 
 		auto addr = *reinterpret_cast<sockaddr*>(&plr.addr);
-		int sent = sendto(sock, (char*)buf, sizeof(buf), 0, &addr, sizeof(addr));
+		int sent = sendto(sock, (char*)buf, NUTPUNCH_RESPONSE_SIZE, 0, &addr, sizeof(addr));
 		if (sent < 0 && NP_SockError() != NP_WouldBlock)
 			plr.reset();
 	}
@@ -219,16 +274,6 @@ struct Lobby {
 			masterIdx = NUTPUNCH_MAX_PLAYERS;
 		}
 		return masterIdx;
-	}
-
-	int nextFieldIdx(const char* name) {
-		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // first matching
-			if (metadata[i].nameMatches(name))
-				return i;
-		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // or first empty
-			if (metadata[i].isDead())
-				return i;
-		return NUTPUNCH_MAX_FIELDS; // or bust
 	}
 
 private:
@@ -286,7 +331,7 @@ static void sendLobbyList(sockaddr addr, const NutPunch_Filter* filters) {
 	for (const auto& [id, lobby] : lobbies) {
 		for (int f = 0; f < filterCount; f++) {
 			for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++)
-				if (lobby.metadata[m].filterMatches(filters[f]))
+				if (lobby.metadata.fields[m].filterMatches(filters[f]))
 					goto nextFilter;
 			goto nextLobby; // no field matched the filter
 
@@ -305,7 +350,7 @@ static void sendLobbyList(sockaddr addr, const NutPunch_Filter* filters) {
 	}
 
 	for (int i = 0; i < 5; i++)
-		sendto(sock, (char*)buf, sizeof(buf), 0, &addr, sizeof(addr));
+		sendto(sock, (char*)buf, NUTPUNCH_HEADER_SIZE + NP_LIST_LEN, 0, &addr, sizeof(addr));
 }
 
 static int receiveShit() {
@@ -322,20 +367,20 @@ static int receiveShit() {
 		addrSize;
 	addrSize = sizeof(addr);
 
-	int nRecv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, &addr, &addrSize);
-	if (nRecv < 0 && NP_SockError() != NP_ConnReset)
+	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, &addr, &addrSize);
+	if (rcv < 0 && NP_SockError() != NP_ConnReset)
 		return NP_SockError() == NP_WouldBlock ? -1 : NP_SockError();
-	if (sizeof(heartbeat) != nRecv) // skip weirdass packets
-		return 0;
 
 	char* ptr = heartbeat + NUTPUNCH_HEADER_SIZE;
-	if (!std::memcmp(heartbeat, "LIST", NUTPUNCH_HEADER_SIZE)) {
+	if (!std::memcmp(heartbeat, "LIST", NUTPUNCH_HEADER_SIZE) && rcv == NUTPUNCH_HEADER_SIZE + sizeof(NP_Filters)) {
 		sendLobbyList(addr, reinterpret_cast<const NutPunch_Filter*>(ptr));
 		return 0;
 	}
-	if (std::memcmp(heartbeat, "JOIN", NUTPUNCH_HEADER_SIZE))
-		return 0; // most likely junk...
+	if (!std::memcmp(heartbeat, "JOIN", NUTPUNCH_HEADER_SIZE) && rcv == NUTPUNCH_HEARTBEAT_SIZE)
+		goto process;
+	return 0; // most likely junk...
 
+process:
 	static char id[NUTPUNCH_ID_MAX + 1] = {0};
 	std::memcpy(id, ptr, NUTPUNCH_ID_MAX);
 

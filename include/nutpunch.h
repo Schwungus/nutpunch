@@ -45,23 +45,19 @@ extern "C" {
 #define NUTPUNCH_FIELD_NAME_MAX (8)
 
 /// Maximum volume of data you can store in a metadata field.
-#define NUTPUNCH_FIELD_DATA_MAX (32)
+#define NUTPUNCH_FIELD_DATA_MAX (16)
 
 /// Maximum amount of metadata fields per lobby.
-#define NUTPUNCH_MAX_FIELDS (16)
+#define NUTPUNCH_MAX_FIELDS (12)
 
-#define NUTPUNCH_MAX(a, b) ((a) > (b) ? (a) : (b))
 #define NUTPUNCH_HEADER_SIZE (4)
 
 #define NUTPUNCH_RESPONSE_SIZE                                                                                         \
-	(NUTPUNCH_HEADER_SIZE                                                                                          \
-		+ NUTPUNCH_MAX(NUTPUNCH_MAX_PLAYERS * (int)sizeof(struct NutPunch)                                     \
-				       + NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field),                     \
-			NUTPUNCH_SEARCH_RESULTS_MAX * NUTPUNCH_ID_MAX))
+	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_MAX_PLAYERS * 6                                                               \
+		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
-	(NUTPUNCH_HEADER_SIZE                                                                                          \
-		+ NUTPUNCH_MAX(NUTPUNCH_ID_MAX + NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field),             \
-			NUTPUNCH_SEARCH_FILTERS_MAX * (int)sizeof(struct NutPunch_Filter)))
+	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX                                                                        \
+		+ NP_MOut_Size * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -73,11 +69,6 @@ enum {
 	NP_Status_Online,
 };
 
-struct NutPunch {
-	uint8_t addr[4];
-	uint16_t port;
-};
-
 struct NutPunch_Field {
 	char name[NUTPUNCH_FIELD_NAME_MAX], data[NUTPUNCH_FIELD_DATA_MAX];
 	uint8_t size;
@@ -86,6 +77,12 @@ struct NutPunch_Field {
 struct NutPunch_Filter {
 	char name[NUTPUNCH_FIELD_NAME_MAX], value[NUTPUNCH_FIELD_DATA_MAX];
 	int8_t comparison;
+};
+
+enum {
+	NP_MOut_Peer,
+	NP_MOut_Lobby,
+	NP_MOut_Size,
 };
 
 // Forward-declarations:
@@ -106,13 +103,19 @@ int NutPunch_Update();
 /// `NutPunch_Update()`, and won't do anything unless you're the lobby's master.
 ///
 /// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for limitations on the amount of data you can squeeze.
-void NutPunch_Set(const char* key, int size, const void* data);
+void NutPunch_LobbySet(const char* name, int size, const void* data);
 
 /// Request lobby metadata. Sets `size` to the field's actual size if the pointer isn't `NULL`.
 ///
 /// The resulting pointer is actually a static allocation, so don't rely too much on it; its data will change after the
-/// next `NutPunch_Get` call.
-void* NutPunch_Get(const char* key, int* size);
+/// next `NutPunch_LobbyGet` call.
+void* NutPunch_LobbyGet(const char* name, int* size);
+
+/// Request your peer-specific metadata to be set. Works the same way as `NutPunch_LobbySet` otherwise.
+void NutPunch_PeerSet(const char* name, int size, const void* data);
+
+/// Request metadata for a specific peer. Works the same way as `NutPunch_LobbyGet` otherwise.
+void* NutPunch_PeerGet(int peer, const char* name, int* size);
 
 /// Return true if there is a packet in the receiving queue. Retrieve it with `NutPunch_NextPacket()`.
 bool NutPunch_HasNext();
@@ -224,6 +227,7 @@ struct NP_Packet {
 
 struct NP_ServicePacket {
 	const char identifier[NUTPUNCH_HEADER_SIZE];
+	int packetSize;
 	void (*const handler)(struct sockaddr, int, const uint8_t*);
 };
 
@@ -233,11 +237,16 @@ NP_MakeHandler(NP_HandleDisconnect);
 NP_MakeHandler(NP_HandleJoin);
 NP_MakeHandler(NP_HandleList);
 
+#define NP_JOIN_LEN                                                                                                    \
+	(NUTPUNCH_MAX_PLAYERS * 6                                                                                      \
+		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
+#define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (NUTPUNCH_ID_MAX + 1))
+
 static const struct NP_ServicePacket NP_ServiceTable[] = {
-	{'I', 'N', 'T', 'R', NP_HandleIntro},
-	{'D', 'I', 'S', 'C', NP_HandleDisconnect},
-	{'J', 'O', 'I', 'N', NP_HandleJoin},
-	{'L', 'I', 'S', 'T', NP_HandleList},
+	{'I', 'N', 'T', 'R', 1, NP_HandleIntro},
+	{'D', 'I', 'S', 'C', 0, NP_HandleDisconnect},
+	{'J', 'O', 'I', 'N', NP_JOIN_LEN, NP_HandleJoin},
+	{'L', 'I', 'S', 'T', NP_LIST_LEN, NP_HandleList},
 };
 
 static const char* NP_LastError = NULL;
@@ -255,7 +264,9 @@ static struct sockaddr NP_RemoteAddr = {0};
 static char NP_ServerHost[128] = {0};
 
 static struct NP_Packet *NP_QueueIn = NULL, *NP_QueueOut = NULL;
-static struct NutPunch_Field NP_MetadataIn[NUTPUNCH_MAX_FIELDS] = {0}, NP_MetadataOut[NUTPUNCH_MAX_FIELDS] = {0};
+static struct NutPunch_Field NP_LobbyMetadata[NUTPUNCH_MAX_FIELDS] = {0},
+			     NP_PeerMetadata[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0},
+			     NP_MetadataOut[NP_MOut_Size][NUTPUNCH_MAX_FIELDS] = {0};
 
 static bool NP_Querying = false;
 static struct NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
@@ -275,7 +286,8 @@ static void NP_CleanupPackets(struct NP_Packet** queue) {
 static void NP_NukeLobbyData() {
 	NP_Closing = NP_Querying = false;
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
-	NutPunch_Memset(NP_MetadataIn, 0, sizeof(NP_MetadataIn));
+	NutPunch_Memset(NP_LobbyMetadata, 0, sizeof(NP_LobbyMetadata));
+	NutPunch_Memset(NP_PeerMetadata, 0, sizeof(NP_PeerMetadata));
 	NutPunch_Memset(NP_MetadataOut, 0, sizeof(NP_MetadataOut));
 	NutPunch_Memset(NP_Peers, 0, sizeof(NP_Peers));
 	NutPunch_Memset(NP_Filters, 0, sizeof(NP_Filters));
@@ -288,6 +300,7 @@ static void NP_NukeRemote() {
 	NutPunch_Memset(&NP_RemoteAddr, 0, sizeof(NP_RemoteAddr));
 	NutPunch_Memset(NP_ServerHost, 0, sizeof(NP_ServerHost));
 	NutPunch_Memset(NP_Peers, 0, sizeof(NP_Peers));
+	NutPunch_Memset(NP_PeerMetadata, 0, sizeof(NP_PeerMetadata));
 	NutPunch_Memset(NP_Filters, 0, sizeof(NP_Filters));
 }
 
@@ -379,35 +392,51 @@ static int NP_FieldNameSize(const char* name) {
 	return NUTPUNCH_FIELD_NAME_MAX;
 }
 
-void* NutPunch_Get(const char* name, int* size) {
-	static char copy[NUTPUNCH_FIELD_DATA_MAX] = {0};
+static void* NP_GetMetadataFrom(struct NutPunch_Field fields[NUTPUNCH_MAX_FIELDS], const char* name, int* size) {
+	static char buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
+	NutPunch_Memset(buf, 0, sizeof(buf));
 
 	int nameSize = NP_FieldNameSize(name);
 	if (!nameSize)
-		goto skip;
+		goto none;
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		struct NutPunch_Field* ptr = &NP_MetadataIn[i];
+		struct NutPunch_Field* ptr = &fields[i];
 		if (!NutPunch_Memcmp(ptr->name, name, nameSize)) {
-			NutPunch_Memset(copy, 0, sizeof(copy));
-			*size = ptr->size;
-			NutPunch_Memcpy(copy, ptr->data, *size);
-			return copy;
+			NutPunch_Memcpy(buf, ptr->data, ptr->size);
+			if (size != NULL)
+				*size = ptr->size;
+			return buf;
 		}
 	}
 
-skip:
-	NutPunch_Memset(copy, 0, sizeof(copy));
-	*size = 0;
-	return copy;
+none:
+	if (size != NULL)
+		*size = 0;
+	return NULL;
 }
 
-void NutPunch_Set(const char* name, int dataSize, const void* data) {
+void* NutPunch_LobbyGet(const char* name, int* size) {
+	return NP_GetMetadataFrom(NP_LobbyMetadata, name, size);
+}
+
+void* NutPunch_PeerGet(int peer, const char* name, int* size) {
+	if (!NutPunch_PeerAlive(peer))
+		goto none;
+	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS)
+		goto none;
+	return NP_GetMetadataFrom(NP_PeerMetadata[peer], name, size);
+
+none:
+	if (size != NULL)
+		*size = 0;
+	return NULL;
+}
+
+static void NP_SetMetadataOut(int type, const char* name, int dataSize, const void* data) {
 	int nameSize = NP_FieldNameSize(name);
 	if (!nameSize)
 		return;
-	if (nameSize > NUTPUNCH_FIELD_NAME_MAX)
-		nameSize = NUTPUNCH_FIELD_NAME_MAX;
 
 	if (dataSize <= 0) {
 		NP_Log("Invalid metadata field size!");
@@ -420,19 +449,32 @@ void NutPunch_Set(const char* name, int dataSize, const void* data) {
 
 	static const struct NutPunch_Field nullfield = {0};
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		struct NutPunch_Field* ptr = &NP_MetadataOut[i];
-		if (!NutPunch_Memcmp(ptr->name, name, nameSize) || !NutPunch_Memcmp(ptr, &nullfield, sizeof(nullfield)))
-		{
-			NutPunch_Memset(ptr->name, 0, sizeof(ptr->name));
-			NutPunch_Memcpy(ptr->name, name, nameSize);
+		struct NutPunch_Field* ptr = &NP_MetadataOut[type][i];
 
-			NutPunch_Memset(ptr->data, 0, sizeof(ptr->data));
-			NutPunch_Memcpy(ptr->data, data, dataSize);
+		if (!NutPunch_Memcmp(ptr, &nullfield, sizeof(nullfield)))
+			goto set;
+		if (NP_FieldNameSize(ptr->name) == nameSize && !NutPunch_Memcmp(ptr->name, name, nameSize))
+			goto set;
+		continue;
 
-			ptr->size = dataSize;
-			return;
-		}
+	set:
+		NutPunch_Memset(ptr->name, 0, sizeof(ptr->name));
+		NutPunch_Memcpy(ptr->name, name, nameSize);
+
+		NutPunch_Memset(ptr->data, 0, sizeof(ptr->data));
+		NutPunch_Memcpy(ptr->data, data, dataSize);
+
+		ptr->size = dataSize;
+		return;
 	}
+}
+
+void NutPunch_PeerSet(const char* name, int size, const void* data) {
+	NP_SetMetadataOut(NP_MOut_Peer, name, size, data);
+}
+
+void NutPunch_LobbySet(const char* name, int size, const void* data) {
+	NP_SetMetadataOut(NP_MOut_Lobby, name, size, data);
 }
 
 static bool NP_BindSocket() {
@@ -528,13 +570,10 @@ static void NP_KillPeer(int peer) {
 NP_MakeHandler(NP_HandleIntro) {
 	if (!NutPunch_Memcmp(&addr, &NP_RemoteAddr, sizeof(addr)))
 		return;
-	if (size == 1)
-		NP_Peers[*data] = addr;
+	NP_Peers[*data] = addr;
 }
 
 NP_MakeHandler(NP_HandleDisconnect) {
-	if (size)
-		return;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 		if (!NutPunch_Memcmp(&NP_Peers[i], &addr, sizeof(addr))) {
 			NutPunch_Memset(&NP_Peers[i], 0, sizeof(addr));
@@ -545,12 +584,12 @@ NP_MakeHandler(NP_HandleDisconnect) {
 NP_MakeHandler(NP_HandleJoin) {
 	if (NutPunch_Memcmp(&addr, &NP_RemoteAddr, sizeof(addr)))
 		return;
-	if (size != NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
-		return;
 
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
+	const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(struct NutPunch_Field);
+
 	for (uint8_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		const uint8_t* ptr = data + ((size_t)i * 6);
+		const uint8_t* ptr = data + i * (ptrdiff_t)(6 + metaSize);
 		if (!*(uint32_t*)ptr && *(uint16_t*)(ptr + 4)) {
 			NP_LocalPeer = i;
 			break;
@@ -568,16 +607,16 @@ NP_MakeHandler(NP_HandleJoin) {
 		data += 4;
 		NutPunch_Memcpy(&((struct sockaddr_in*)&addr)->sin_port, data, 2);
 		data += 2;
+		NutPunch_Memcpy(NP_PeerMetadata[i], data, metaSize);
+		data += metaSize;
 		if (i != NP_LocalPeer && ((struct sockaddr_in*)&addr)->sin_port)
 			sendto(NP_Socket, hello, sizeof(hello), 0, &addr, sizeof(addr));
 	}
-	NutPunch_Memcpy(NP_MetadataIn, data, sizeof(NP_MetadataIn));
+	NutPunch_Memcpy(NP_LobbyMetadata, data, sizeof(NP_LobbyMetadata));
 }
 
 NP_MakeHandler(NP_HandleList) {
 	if (NutPunch_Memcmp(&addr, &NP_RemoteAddr, sizeof(addr)))
-		return;
-	if (size != NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
 		return;
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++) {
 		NutPunch_Memcpy(NP_Lobbies[i], data, NUTPUNCH_ID_MAX);
@@ -588,21 +627,31 @@ NP_MakeHandler(NP_HandleList) {
 
 static bool NP_SendHeartbeat() {
 	static char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
+	NutPunch_Memset(heartbeat, 0, sizeof(heartbeat));
+
 	char* beat = heartbeat;
+	int length = NUTPUNCH_HEARTBEAT_SIZE;
 
 	if (NP_Querying) {
 		NutPunch_Memcpy(beat, "LIST", NUTPUNCH_HEADER_SIZE);
 		beat += NUTPUNCH_HEADER_SIZE;
 		NutPunch_Memcpy(beat, NP_Filters, sizeof(NP_Filters));
-	} else {
-		NutPunch_Memcpy(beat, "JOIN", NUTPUNCH_HEADER_SIZE);
-		beat += NUTPUNCH_HEADER_SIZE;
-		NutPunch_Memcpy(beat, NP_LobbyId, NUTPUNCH_ID_MAX);
-		beat += NUTPUNCH_ID_MAX;
-		NutPunch_Memcpy(beat, NP_MetadataOut, sizeof(NP_MetadataOut));
+		length = NUTPUNCH_HEADER_SIZE + sizeof(NP_Filters);
+		goto send;
 	}
 
-	if (sendto(NP_Socket, heartbeat, sizeof(heartbeat), 0, &NP_RemoteAddr, sizeof(NP_RemoteAddr)) < 0
+	NutPunch_Memcpy(beat, "JOIN", NUTPUNCH_HEADER_SIZE);
+	beat += NUTPUNCH_HEADER_SIZE;
+	NutPunch_Memcpy(beat, NP_LobbyId, NUTPUNCH_ID_MAX);
+	beat += NUTPUNCH_ID_MAX;
+
+	for (int i = 0; i < NP_MOut_Size; i++) {
+		NutPunch_Memcpy(beat, NP_MetadataOut[i], sizeof(NP_MetadataOut[i]));
+		beat += sizeof(NP_MetadataOut[i]);
+	}
+
+send:
+	if (sendto(NP_Socket, heartbeat, length, 0, &NP_RemoteAddr, sizeof(NP_RemoteAddr)) < 0
 		&& NP_SockError() != NP_WouldBlock && NP_SockError() != NP_ConnReset)
 	{
 		NP_LastError = "Failed to send heartbeat to NutPuncher";
@@ -637,7 +686,7 @@ static int NP_ReceiveShit() {
 		return -1;
 	}
 
-	if (!size)
+	if (!size) // graceful disconnection
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			if (!NutPunch_Memcmp(&addr, NP_Peers + i, addrSize)) {
 				NP_KillPeer(i);
@@ -648,7 +697,9 @@ static int NP_ReceiveShit() {
 		const struct NP_ServicePacket entry = NP_ServiceTable[i];
 		if (size < NUTPUNCH_HEADER_SIZE)
 			break;
-		if (!NutPunch_Memcmp(buf, entry.identifier, NUTPUNCH_HEADER_SIZE)) {
+		if (!NutPunch_Memcmp(buf, entry.identifier, NUTPUNCH_HEADER_SIZE)
+			&& size - NUTPUNCH_HEADER_SIZE == entry.packetSize)
+		{
 			entry.handler(addr, size - NUTPUNCH_HEADER_SIZE, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
 			return 0;
 		}

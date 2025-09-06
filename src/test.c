@@ -22,6 +22,9 @@ struct Player {
 	struct sockaddr addr;
 };
 
+static const char* randomNames[] = {"Fimon", "Trollga", "Marsoyob", "Ficus", "Caccus", "Skibidi69er", "Caulksucker"};
+static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
+
 static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
 
 #define PAYLOAD_SIZE ((size_t)(2))
@@ -34,8 +37,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	const char* serverAddr = argc == 2 ? NUTPUNCH_DEFAULT_SERVER : argv[2];
-	int expectingPlayers = strtol(argv[1], NULL, 10), _expectingPlayers = expectingPlayers;
-	if (expectingPlayers < 2) {
+	int waitingForPlayers = strtol(argv[1], NULL, 10), _waitingForPlayers = waitingForPlayers;
+	if (waitingForPlayers < 2) {
 		printf("The fuck do you mean?\n");
 		return EXIT_FAILURE;
 	}
@@ -46,8 +49,6 @@ int main(int argc, char* argv[]) {
 
 	const int fs = 20, sqr = 30;
 	while (!WindowShouldClose()) {
-		if (expectingPlayers)
-			NutPunch_Set("PLAYERS", sizeof(expectingPlayers), &expectingPlayers);
 		int status = NutPunch_Update();
 
 		static uint8_t data[PAYLOAD_SIZE] = {0};
@@ -62,13 +63,13 @@ int main(int argc, char* argv[]) {
 		BeginDrawing();
 		ClearBackground(RAYWHITE);
 
-		if (expectingPlayers && NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS) {
-			int size = 0, *ptr = NutPunch_Get("PLAYERS", &size);
+		if (waitingForPlayers && NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS) {
+			int size = 0, *ptr = NutPunch_LobbyGet("PLAYERS", &size);
 			if (sizeof(int) == size && *ptr && NutPunch_PeerCount() >= *ptr) {
 				memset(players, 0, sizeof(players));
 				players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
 				players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
-				expectingPlayers = 0;
+				waitingForPlayers = 0;
 			}
 		}
 
@@ -90,25 +91,35 @@ int main(int argc, char* argv[]) {
 			NutPunch_Send(i, data, sizeof(data));
 
 		if (NP_Status_Online == status) {
-			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 				if (NutPunch_LocalPeer() == i)
 					DrawRectangle(players[i].x, players[i].y, sqr, sqr, RED);
 				else if (NutPunch_PeerAlive(i))
 					DrawRectangle(players[i].x, players[i].y, sqr, sqr, GREEN);
+				else
+					continue;
+				const char* name = NutPunch_PeerGet(i, "NAME", NULL);
+				int fs = 20, width = MeasureText(name, fs);
+				DrawText(name, players[i].x + sqr / 2 - width / 2, players[i].y - fs, fs, BLACK);
+			}
 			DrawText("GAMING!!!", 240, 5, fs, GREEN);
 		} else {
-			expectingPlayers = _expectingPlayers;
+			waitingForPlayers = _waitingForPlayers;
 			DrawText("DISCONNECTED", 5, 5, fs, RED);
 			DrawText("Press J to join", 5, 5 + fs, fs, BLACK);
 			DrawText("Press K to reset", 5, 5 + fs + fs, fs, BLACK);
 
-			if (IsKeyPressed(KEY_K))
-				NutPunch_Reset();
 			if (IsKeyPressed(KEY_J)) {
 				NutPunch_SetServerAddr(serverAddr);
 				NutPunch_Join(lobbyName);
+
+				NutPunch_LobbySet("PLAYERS", sizeof(waitingForPlayers), &waitingForPlayers);
+				const char* name = randomNames[GetRandomValue(1, nameCount) - 1];
+				NutPunch_PeerSet("NAME", strlen(name) + 1, name);
 			}
 		}
+		if (IsKeyPressed(KEY_K))
+			NutPunch_Reset();
 
 		EndDrawing();
 	}
