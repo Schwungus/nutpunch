@@ -538,15 +538,16 @@ fail:
 	return false;
 }
 
+static void NP_ExpectNutpuncher() {
+	if (!NP_ServerHost[0]) {
+		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
+		NP_Log("Connecting to NutPunch public instance because no address was specified");
+	}
+}
+
 bool NutPunch_Join(const char* lobbyId) {
 	NP_LazyInit();
-
-	if (!NP_ServerHost[0]) {
-		NP_LastError = "Holepuncher server address unset";
-		NP_LastErrorCode = 0;
-		NP_PrintError();
-		goto fail;
-	}
+	NP_ExpectNutpuncher();
 
 	if (NP_BindSocket()) {
 		NP_LastStatus = NP_Status_Online;
@@ -555,7 +556,6 @@ bool NutPunch_Join(const char* lobbyId) {
 		return true;
 	}
 
-fail:
 	NutPunch_Reset();
 	NP_LastStatus = NP_Status_Error;
 	return false;
@@ -946,12 +946,7 @@ void NutPunch_SendReliably(int peer, const void* data, int size) {
 
 void NutPunch_FindLobbies(int filterCount, const struct NutPunch_Filter* filters) {
 	NP_LazyInit();
-
-	if (!NP_ServerHost[0]) {
-		NP_LastError = "Holepuncher server address unset";
-		NP_LastErrorCode = 0;
-		goto fail;
-	}
+	NP_ExpectNutpuncher();
 
 	if (filterCount < 1)
 		return;
