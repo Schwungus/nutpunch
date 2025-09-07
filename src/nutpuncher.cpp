@@ -7,6 +7,18 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include "nutpunch.h"
 
+#ifdef NP_Log
+#undef NP_Log
+#endif
+
+// Just remove the damn prefix...
+#define NP_Log(...)                                                                                                    \
+	do {                                                                                                           \
+		fprintf(stdout, __VA_ARGS__);                                                                          \
+		fprintf(stdout, "\n");                                                                                 \
+		fflush(stdout);                                                                                        \
+	} while (0)
+
 #ifdef NUTPUNCH_WINDOSE
 #define SleepMs(ms) Sleep(ms)
 #else
