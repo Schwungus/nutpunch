@@ -2,7 +2,7 @@
 
 # NutPunch
 
-<img align="right" src="/.github/assets/nutpunch256.png">
+<img align="right" src=".github/assets/nutpunch256.png">
 
 > [!WARNING]
 > Using NutPunch and UDP hole-punching makes sense **only if you're making a P2P networked game**. If you need server-based networking (**which is arguably much simpler to implement**), you're out of luck -- go elsewhere. You have been warned.
@@ -57,9 +57,9 @@ FetchContent_MakeAvailable(nutpunch)
 target_link_libraries(MyGame PRIVATE nutpunch)
 ```
 
-For other build system (or lack thereof), you only need to copy [`nutpunch.h`](/include/nutpunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with Winsock-related scary linker errors all over the place.
+For other build system (or lack thereof), you only need to copy [`nutpunch.h`](include/nutpunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with Winsock-related scary linker errors all over the place.
 
-Once [`nutpunch.h`](/include/nutpunch.h) is discoverable by your compiler, using it is straightforward:
+Once [`nutpunch.h`](include/nutpunch.h) is discoverable by your compiler, using it is straightforward:
 
 ```c
 #include <stdlib.h>
