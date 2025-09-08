@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	int lobbyCount = 0;
-	const char** lobbies = NutPunch_LobbyList(&lobbyCount);
+	char** lobbies = NutPunch_LobbyList(&lobbyCount);
 	printf("%d lobbies\n", lobbyCount);
 	for (int i = 0; i < lobbyCount; i++)
 		printf("'%s' ", lobbies[i]);
