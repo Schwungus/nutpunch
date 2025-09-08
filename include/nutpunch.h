@@ -89,15 +89,13 @@ enum {
 	NP_MOut_Size,
 };
 
-// Forward-declarations:
-
 /// Set a custom hole-puncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
 
-/// Initiate a nut-punch to the specified lobby. Query status by calling `NutPunch_Update()` every frame.
+/// Join a lobby by its ID. Query your connection status by calling `NutPunch_Update()` every frame.
 bool NutPunch_Join(const char* lobbyId);
 
-/// Run this at the end of your program to do semi-important cleanup.
+/// Call this at the end of your program to run semi-important cleanup.
 void NutPunch_Cleanup();
 
 /// Call this every frame to update nutpunch. Returns one of the `NP_Status_*` constants.
@@ -121,7 +119,7 @@ void NutPunch_PeerSet(const char* name, int size, const void* data);
 /// Request metadata for a specific peer. Works the same way as `NutPunch_LobbyGet` otherwise.
 void* NutPunch_PeerGet(int peer, const char* name, int* size);
 
-/// Return true if there is a packet in the receiving queue. Retrieve it with `NutPunch_NextPacket()`.
+/// Check if there is a packet waiting in the receiving queue. Retrieve it with `NutPunch_NextPacket()`.
 bool NutPunch_HasNext();
 
 /// Retrieve the next packet in the receiving queue. Return the index of the peer who sent it.
@@ -133,10 +131,15 @@ void NutPunch_Send(int peer, const void* data, int size);
 /// Send data to specified peer expecting them to acknowledge the fact of reception.
 void NutPunch_SendReliably(int peer, const void* data, int size);
 
-/// Count how many "live" peers we're expected to have, including our local peer.
+/// Count how many "live" peers we have a route to, including our local peer.
+///
+/// Do not use this as an upper bound for iterating over peers. They can come in any order and with gaps in-between.
 int NutPunch_PeerCount();
 
-/// Return true if you are connected to peer with the specified index.
+/// Return true if you are connected to the peer with the specified index.
+///
+/// If you're iterating over peers, use `NUTPUNCH_MAX_PLAYERS` as the upper index bound, and check their status using
+/// this function.
 bool NutPunch_PeerAlive(int peer);
 
 /// Get the local peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
@@ -148,10 +151,15 @@ void NutPunch_Disconnect();
 /// Query the lobbies given a set of filters. Make sure to call `NutPunch_SetServerAddr` beforehand.
 ///
 /// For `comparison`, use `0` for an exact value match, `-1` for "less than the server's", and `1` vice versa.
+///
+/// The lobby list is queried every call to `NutPunch_Update`, so make sure you aren't skipping it.
 void NutPunch_FindLobbies(int filterCount, const struct NutPunch_Filter* filters);
 
 /// Reap the fruits of `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
-char** NutPunch_LobbyList(int* length);
+const char* NutPunch_GetLobby(int index);
+
+/// Count how many lobbies were found after `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
+int NutPunch_LobbyCount();
 
 /// Use this to reset the underlying socket in case of an inexplicable error.
 void NutPunch_Reset();
@@ -971,18 +979,23 @@ fail:
 	return;
 }
 
-char** NutPunch_LobbyList(int* count) {
+const char* NutPunch_GetLobby(int index) {
 	NP_LazyInit();
-	*count = 0;
+	return index < NutPunch_LobbyCount() ? NP_Lobbies[index] : NULL;
+}
+
+int NutPunch_LobbyCount() {
+	NP_LazyInit();
+	int count = 0;
 
 	static const char nully[NUTPUNCH_ID_MAX + 1] = {0};
-	while (*count < NUTPUNCH_SEARCH_RESULTS_MAX) {
-		if (!NutPunch_Memcmp(NP_Lobbies[*count], nully, sizeof(nully)))
+	while (count < NUTPUNCH_SEARCH_RESULTS_MAX) {
+		if (!NutPunch_Memcmp(NP_Lobbies[count], nully, sizeof(nully)))
 			break;
-		*count += 1;
+		count += 1;
 	}
 
-	return NP_Lobbies;
+	return count;
 }
 
 int NutPunch_PeerCount() {

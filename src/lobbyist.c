@@ -34,11 +34,10 @@ int main(int argc, char* argv[]) {
 		SleepMs(ms / rate);
 	}
 
-	int lobbyCount = 0;
-	char** lobbies = NutPunch_LobbyList(&lobbyCount);
+	int lobbyCount = NutPunch_LobbyCount();
 	printf("%d lobbies\n", lobbyCount);
 	for (int i = 0; i < lobbyCount; i++)
-		printf("'%s' ", lobbies[i]);
+		printf("'%s' ", NutPunch_GetLobby(i));
 
 	return EXIT_SUCCESS;
 
