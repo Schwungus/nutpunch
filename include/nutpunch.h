@@ -458,14 +458,17 @@ none:
 }
 
 static void NP_SetMetadataOut(int type, const char* name, int dataSize, const void* data) {
+	if (!dataSize)
+		return; // safe to skip e.g. 0-length strings entirely
+	if (dataSize < 0) {
+		NP_Log("Invalid metadata field size!");
+		return;
+	}
+
 	int nameSize = NP_FieldNameSize(name);
 	if (!nameSize)
 		return;
 
-	if (dataSize <= 0) {
-		NP_Log("Invalid metadata field size!");
-		return;
-	}
 	if (dataSize > NUTPUNCH_FIELD_DATA_MAX) {
 		NP_Log("WARN: trimming metadata field from %d to %d bytes", dataSize, NUTPUNCH_FIELD_DATA_MAX);
 		dataSize = NUTPUNCH_FIELD_DATA_MAX;
