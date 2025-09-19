@@ -60,7 +60,7 @@ extern "C" {
 		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX                                                                        \
-		+ NP_MOut_Size * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
+		+ NP_MetaCount * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -84,9 +84,9 @@ struct NutPunch_Filter {
 };
 
 enum {
-	NP_MOut_Peer,
-	NP_MOut_Lobby,
-	NP_MOut_Size,
+	NP_MetaPeer,
+	NP_MetaLobby,
+	NP_MetaCount,
 };
 
 /// Set a custom hole-puncher server address.
@@ -291,7 +291,7 @@ static char NP_ServerHost[128] = {0};
 static struct NP_Packet *NP_QueueIn = NULL, *NP_QueueOut = NULL;
 static struct NutPunch_Field NP_LobbyMetadata[NUTPUNCH_MAX_FIELDS] = {0},
 			     NP_PeerMetadata[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0},
-			     NP_MetadataOut[NP_MOut_Size][NUTPUNCH_MAX_FIELDS] = {0};
+			     NP_MetadataOut[NP_MetaCount][NUTPUNCH_MAX_FIELDS] = {0};
 
 static bool NP_Querying = false;
 static struct NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
@@ -497,11 +497,11 @@ static void NP_SetMetadataOut(int type, const char* name, int dataSize, const vo
 }
 
 void NutPunch_PeerSet(const char* name, int size, const void* data) {
-	NP_SetMetadataOut(NP_MOut_Peer, name, size, data);
+	NP_SetMetadataOut(NP_MetaPeer, name, size, data);
 }
 
 void NutPunch_LobbySet(const char* name, int size, const void* data) {
-	NP_SetMetadataOut(NP_MOut_Lobby, name, size, data);
+	NP_SetMetadataOut(NP_MetaLobby, name, size, data);
 }
 
 static bool NP_BindSocket() {
@@ -732,7 +732,7 @@ static bool NP_SendHeartbeat() {
 	NutPunch_Memcpy(beat, NP_LobbyId, NUTPUNCH_ID_MAX);
 	beat += NUTPUNCH_ID_MAX;
 
-	for (int i = 0; i < NP_MOut_Size; i++) {
+	for (int i = 0; i < NP_MetaCount; i++) {
 		NutPunch_Memcpy(beat, NP_MetadataOut[i], sizeof(NP_MetadataOut[i]));
 		beat += sizeof(NP_MetadataOut[i]);
 	}

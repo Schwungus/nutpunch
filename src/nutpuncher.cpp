@@ -11,7 +11,7 @@
 #undef NP_Log
 #endif
 
-// Just remove the damn prefix...
+// Just strip the damn <NutPunch> prefix...
 #define NP_Log(...)                                                                                                    \
 	do {                                                                                                           \
 		fprintf(stdout, __VA_ARGS__);                                                                          \
@@ -453,8 +453,10 @@ int main(int, char**) {
 	cleanup clnup;
 
 #ifdef NUTPUNCH_WINDOSE
-	WSADATA bitch = {0};
-	WSAStartup(MAKEWORD(2, 2), &bitch);
+	do {
+		WSADATA bitch = {0};
+		WSAStartup(MAKEWORD(2, 2), &bitch);
+	} while (0);
 #endif
 
 	try {
