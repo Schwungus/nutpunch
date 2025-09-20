@@ -35,8 +35,9 @@ int main(int argc, char* argv[]) {
 		printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
 		return EXIT_FAILURE;
 	}
+	if (argc >= 3)
+		NutPunch_SetServerAddr(argv[2]);
 
-	const char* serverAddr = argc == 2 ? NUTPUNCH_DEFAULT_SERVER : argv[2];
 	int waitingForPlayers = strtol(argv[1], NULL, 10), _waitingForPlayers = waitingForPlayers;
 	if (waitingForPlayers < 2) {
 		printf("The fuck do you mean?\n");
@@ -130,9 +131,7 @@ int main(int argc, char* argv[]) {
 			DrawText("Press K to reset", 5, 5 + fs + fs, fs, BLACK);
 
 			if (IsKeyPressed(KEY_J)) {
-				NutPunch_SetServerAddr(serverAddr);
 				NutPunch_Join(lobbyName);
-
 				NutPunch_LobbySet("PLAYERS", sizeof(waitingForPlayers), &waitingForPlayers);
 				const char* name = randomNames[GetRandomValue(1, nameCount) - 1];
 				NutPunch_PeerSet("NAME", strlen(name) + 1, name);

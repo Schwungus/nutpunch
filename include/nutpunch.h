@@ -178,6 +178,7 @@ const char* NutPunch_GetLastError();
 
 #ifdef NUTPUNCH_WINDOSE
 
+#define _UNICODE
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -323,7 +324,6 @@ static void NP_NukeLobbyData() {
 static void NP_NukeRemote() {
 	NP_LobbyId[0] = 0;
 	NutPunch_Memset(&NP_RemoteAddr, 0, sizeof(NP_RemoteAddr));
-	NutPunch_Memset(NP_ServerHost, 0, sizeof(NP_ServerHost));
 	NutPunch_Memset(NP_Peers, 0, sizeof(NP_Peers));
 	NutPunch_Memset(NP_PeerMetadata, 0, sizeof(NP_PeerMetadata));
 	NutPunch_Memset(NP_Filters, 0, sizeof(NP_Filters));
@@ -504,6 +504,13 @@ void NutPunch_LobbySet(const char* name, int size, const void* data) {
 	NP_SetMetadataOut(NP_MetaLobby, name, size, data);
 }
 
+static void NP_ExpectNutpuncher() {
+	if (!NP_ServerHost[0]) {
+		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
+		NP_Log("Connecting to NutPunch public instance because no address was specified");
+	}
+}
+
 static bool NP_BindSocket() {
 	struct sockaddr addr;
 #ifdef NUTPUNCH_WINDOSE
@@ -536,9 +543,8 @@ static bool NP_BindSocket() {
 		goto fail;
 	}
 
+	NP_ExpectNutpuncher();
 	NP_LastStatus = NP_Status_Online;
-	if (!NP_ServerHost[0])
-		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
 	NP_RemoteAddr = NP_SockAddr(NP_ServerHost, NUTPUNCH_SERVER_PORT);
 	return true;
 
@@ -548,13 +554,6 @@ fail:
 	NP_PrintError();
 	NutPunch_Reset();
 	return false;
-}
-
-static void NP_ExpectNutpuncher() {
-	if (!NP_ServerHost[0]) {
-		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
-		NP_Log("Connecting to NutPunch public instance because no address was specified");
-	}
 }
 
 bool NutPunch_Join(const char* lobbyId) {

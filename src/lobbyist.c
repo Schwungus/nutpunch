@@ -19,13 +19,13 @@ int main(int argc, char* argv[]) {
 	int data = strtol(argv[2], NULL, 10);
 	if (!data)
 		goto fail;
+	NutPunch_SetServerAddr(argv[3]);
 
 	struct NutPunch_Filter filter = {0};
 	memcpy(filter.name, argv[1], NUTPUNCH_FIELD_NAME_MAX);
 	memcpy(filter.value, &data, sizeof(data));
 	filter.comparison = 0;
 
-	NutPunch_SetServerAddr(argv[3]);
 	NutPunch_FindLobbies(1, &filter);
 
 	int rate = 20, ms = 1000;
