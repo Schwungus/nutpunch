@@ -19,13 +19,12 @@ In order to run your own hole-puncher server, you'll need to get the server bina
 
 Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. Here's the general usage guide for the NutPunch library:
 
-1. Join a lobby:
-   1. Call `NutPunch_SetServerAddr("nutpuncher-ip-address")` to set the NutPuncher server address. You may either use an IPv4 address or the server's DNS hostname, if it has an `A` record set. Use the [public instance address](#public-instance) if you're having a severe brainfart reading all this.
-   2. Call `NutPunch_Join("lobby-id")` immediately after `NutPunch_SetServerAddr(...)` to initiate the joining process.
+1. Call `NutPunch_Join("lobby-id")` to initiate joining a lobby in the background.
 2. Optionally add metadata to the lobby:
    1. If you join an empty lobby, you will be considered its master. A lobby master has the authority from the server to set global metadata for the lobby. This is usually needed to start games with specific parameters or to enforce an expected player count in a lobby. If you don't need metadata, you can just skip this entire step.
-   2. After calling `NutPunch_Join()`, you can set metadata in the lobby by calling `NutPunch_Set()` as a master. A lobby can hold up to 16 fields of metadata, each of which are identified with 8-byte strings and can hold up to 32 bytes of data. Non-masters aren't allowed to set metadata, so that function becomes no-op for them. The actual metadata also won't be updated until the next call to `NutPunch_Update()`, which will be covered later.
-3. Listen for hole-puncher server responses:
+   2. After calling `NutPunch_Join()`, you can set metadata in the lobby by calling `NutPunch_LobbySet()` as a master. You don't have to finish "connecting" and handshaking with NutPuncher before setting metadata. A lobby can hold up to 16 fields, each identified by 8-byte strings and holding up to 32 bytes of data. Non-masters aren't allowed to set metadata, so calls are no-op for them. The actual metadata also won't be updated until the next call to `NutPunch_Update()`, which will be covered later.
+   3. Just like `NutPunch_LobbySet()`, you can use `NutPunch_PeerSet()` to set your very own peer-specific metadata such as nickname or skin spritesheet name. Use `NutPunch_PeerGet()` with a peer index to query your own or others' peer metadata.
+3. Listen for NutPuncher response:
    1. Call `NutPunch_Update()` each frame, regardless of whether you're still joining or already playing with the boys. This will also automatically update lobby metadata back and forth.
    2. Check your status by matching the returned value against `NP_Status_*` constants. `NP_Status_Online` is the only one you need to handle explicitly, as you can safely start retrieving metadata and player count with it. Optionally, you can also handle `NP_Status_Error` and get clues as to what's wrong by calling `NutPunch_GetLastError()`.
 4. Optionally read metadata from the lobby during `NP_Status_Online` status. Use `NutPunch_Get()` to get a pointer to a metadata field, which you can then read from (as long as it's valid and is the exact size that you expect it to be). These pointers are volatile, especially when calling `NutPunch_Update()`, so if you need to use the gotten value more than once, cache it somewhere.
@@ -93,7 +92,7 @@ Or if you just want to try the test binary after building it:
 start .\build\nutpunchTest.exe 2 nutpunch.schwung.us
 ```
 
-You may also omit the `NutPunch_SetServerAddr` call to fall back to default instance implicitly.
+You may also omit the `NutPunch_SetServerAddr` call to fall back to the default instance implicitly.
 
 ## Advanced Usage
 
