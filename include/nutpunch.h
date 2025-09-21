@@ -564,7 +564,7 @@ static bool NP_BindSocket(bool v6) {
 #ifdef NUTPUNCH_WINDOSE
 		ioctlsocket(*sock, FIONBIO, &argp)
 #else
-		fcntl((*sock, F_SETFL, fcntl(NP_Socket, F_GETFL, 0) | O_NONBLOCK)
+		fcntl(*sock, F_SETFL, fcntl(NP_Socket, F_GETFL, 0) | O_NONBLOCK)
 #endif
 		< 0)
 	{
