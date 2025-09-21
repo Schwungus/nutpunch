@@ -169,7 +169,7 @@ const char* NutPunch_GetLastError();
 
 #define NP_Log(...)                                                                                                    \
 	do {                                                                                                           \
-		fprintf(stdout, "<[NutPunch]> " __VA_ARGS__);                                                          \
+		fprintf(stdout, "<[NP]> " __VA_ARGS__);                                                                \
 		fprintf(stdout, "\n");                                                                                 \
 		fflush(stdout);                                                                                        \
 	} while (0)
@@ -354,6 +354,9 @@ static void NP_LazyInit() {
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++)
 		NP_Lobbies[i] = NP_LobbyNames[i];
 	NP_NukeSocket();
+
+	NP_Log("For troubleshooting multiplayer connectivity, visit:");
+	NP_Log("https://github.com/Schwungus/nutpunch#troubleshooting");
 }
 
 static void NP_PrintError() {
@@ -507,7 +510,7 @@ void NutPunch_LobbySet(const char* name, int size, const void* data) {
 static void NP_ExpectNutpuncher() {
 	if (!NP_ServerHost[0]) {
 		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
-		NP_Log("Connecting to NutPunch public instance because no address was specified");
+		NP_Log("Connecting to public NutPunch instance because no address was specified");
 	}
 }
 
