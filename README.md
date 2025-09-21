@@ -4,16 +4,18 @@
 
 <img align="right" src=".github/assets/nutpunch256.png">
 
-> [!WARNING]
-> Using NutPunch and UDP hole-punching makes sense **only if you're making a P2P networked game**. If you need server-based networking (**which is arguably much simpler to implement**), you're out of luck -- go elsewhere. You have been warned.
+> [!CAUTION]
+> NutPunch implements **UDP-based peer-to-peer networking**. Use only if you know what you're getting yourself into. **Client-server architecture** is a lot more commonplace in games, and arguably much easier to implement and understand. You have been warned. Think for yourself to make the right decision.
 
-A UDP hole-punching library for REAL men (and women). Header-only. Brutal. Written in plain C.
+NutPunch is a UDP hole-punching library for REAL men (and women). Header-only. Brutal. Written in plain C.
+
+Comes with a [public instance](#public-instance) for out-of-the-box integration.
 
 ## Troubleshooting
 
 UDP hole-punching can be finnicky at times, especially in non-standard networking environments. For that reason, this troubleshooting section comes before all else. If you're having connectivity issues **in a game powered by NutPunch**, please **make sure** the following conditions are met before you start throwing hooks and jabs at the developers:
 
-1. **Your VPN client and censorship circumvention software are off**. Whatever that might be, it could be preventing UDP traffic from arriving to the correct destination (that being your computer). **Software that 100% breaks NutPunch** includes [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks) and [zapret DPI bypass](https://github.com/bol-van/zapret).
+1. **Your VPN client and censorship circumvention software are off**. Whatever that might be, it could be preventing UDP traffic from arriving to the correct destination (that being your computer). **Software that's verified to break NutPunch** includes [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks) and [zapret DPI bypass](https://github.com/bol-van/zapret).
 2. **Your firewall allows the game executable to bind to and connect to any UDP port**. This is the default behavior on Windows machines nowadays, but it's an edge case worth noting.
 
 ## Introductory Lecture
@@ -55,8 +57,8 @@ If you're using CMake, you can include this library in your project by adding th
 ```cmake
 include(FetchContent)
 FetchContent_Declare(nutpunch
-   GIT_REPOSITORY https://github.com/Schwungus/nutpunch.git
-   GIT_TAG stable) # you can use a specific commit hash here
+    GIT_REPOSITORY https://github.com/Schwungus/nutpunch.git
+    GIT_TAG stable) # you can use a specific commit hash here
 FetchContent_MakeAvailable(nutpunch)
 
 # create your target here, e.g. with `add_executable(MyGame)`, then link against nutpunch:
@@ -74,10 +76,10 @@ Once [`nutpunch.h`](include/nutpunch.h) is discoverable by your compiler, using 
 #include <nutpunch.h>
 
 int main(int argc, char* argv[]) {
-   NutPunch_Join("MyLobby");
-   for (;;) // your game's mockup mainloop
-      NutPunch_Update();
-   return EXIT_SUCCESS;
+    NutPunch_Join("MyLobby");
+    for (;;) // your game's mockup mainloop
+        NutPunch_Update();
+    return EXIT_SUCCESS;
 }
 ```
 
@@ -85,21 +87,14 @@ Also see [advanced usage](#advanced-usage) for things you can customize.
 
 ## Public Instance
 
-If you don't feel like [hosting your own instance](#hosting-a-nutpuncher-server), you can use our public instance as a kludge. In C code, write:
+If you don't feel like [hosting your own instance](#hosting-a-nutpuncher-server), you may use our public instance. It's implied by default unless a different server is specified.
+
+If you want to be explicit about using the public instance, call `NutPunch_SetServerAddr`:
 
 ```c
-NutPunch_SetServerAddr("nutpunch.schwung.us");
+NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
 NutPunch_Join("lobby-id");
 ```
-
-Or if you just want to try the test binary after building it:
-
-```bat
-@echo off
-start .\build\nutpunchTest.exe 2 nutpunch.schwung.us
-```
-
-You may also omit the `NutPunch_SetServerAddr` call to fall back to the default instance implicitly.
 
 ## Advanced Usage
 
