@@ -8,6 +8,7 @@ Checks: |
   -bugprone-reserved-identifier,
   -bugprone-not-null-terminated-result,
   -bugprone-easily-swappable-parameters,
+  -bugprone-suspicious-memory-comparison,
   performance-*,
   -performance-no-int-to-ptr,
   -performance-enum-size,

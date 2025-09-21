@@ -14,8 +14,7 @@ A UDP hole-punching library for REAL men (and women). Header-only. Brutal. Writt
 UDP hole-punching can be finnicky at times, especially in non-standard networking environments. For that reason, this troubleshooting section comes before all else. If you're having connectivity issues **in a game powered by NutPunch**, please **make sure** the following conditions are met before you start throwing hooks and jabs at the developers:
 
 1. **Your VPN client and censorship circumvention software are off**. Whatever that might be, it could be preventing UDP traffic from arriving to the correct destination (that being your computer). **Software that 100% breaks NutPunch** includes [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks) and [zapret DPI bypass](https://github.com/bol-van/zapret).
-2. **You have IPv4 connectivity**. NutPunch doesn't support IPv6 _at all_ (yet). IPv6-only peers won't be able to reach the [NutPuncher server](#public-instance).
-3. **Your firewall allows the game executable to bind to and connect to any UDP port**. This is the default behavior on Windows machines nowadays, but it's an edge case worth noting.
+2. **Your firewall allows the game executable to bind to and connect to any UDP port**. This is the default behavior on Windows machines nowadays, but it's an edge case worth noting.
 
 ## Introductory Lecture
 

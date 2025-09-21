@@ -11,7 +11,7 @@
 #undef NP_Log
 #endif
 
-// Just strip the damn <NutPunch> prefix...
+// Just strip the damn <NP> prefix...
 #define NP_Log(...)                                                                                                    \
 	do {                                                                                                           \
 		fprintf(stdout, __VA_ARGS__);                                                                          \
@@ -37,10 +37,10 @@
 
 struct Lobby;
 
-constexpr const int beatsPerSecond = 60, keepAliveSeconds = 5, keepAliveBeats = keepAliveSeconds * beatsPerSecond,
+constexpr const int beatsPerSecond = 60, keepAliveSeconds = 3, keepAliveBeats = keepAliveSeconds * beatsPerSecond,
 		    maxLobbies = 512;
 
-static NP_SocketType sock = NUTPUNCH_INVALID_SOCKET;
+static NP_Socket sock4 = NUTPUNCH_INVALID_SOCKET, sock6 = NUTPUNCH_INVALID_SOCKET;
 static std::map<std::string, Lobby> lobbies;
 
 static const char* fmtLobbyId(const char* id) {
@@ -154,12 +154,28 @@ private:
 	}
 };
 
+struct Addr : NP_Addr {
+	Addr() : Addr(false) {}
+	Addr(bool v6) {
+		std::memset(&value, 0, sizeof(value));
+		this->v6 = v6;
+	}
+
+	sockaddr_in* asV4() {
+		return reinterpret_cast<sockaddr_in*>(&value);
+	}
+
+	sockaddr_in6* asV6() {
+		return reinterpret_cast<sockaddr_in6*>(&value);
+	}
+};
+
 struct Player {
-	sockaddr_in addr;
+	Addr addr;
 	std::uint32_t countdown;
 	Metadata metadata;
 
-	Player(const sockaddr_in& addr) : addr(addr), countdown(keepAliveBeats) {}
+	Player(const Addr& addr) : addr(addr), countdown(keepAliveBeats) {}
 
 	Player() : countdown(0) {
 		std::memset(&addr, 0, sizeof(addr));
@@ -198,13 +214,13 @@ struct Lobby {
 	void update() {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& plr = players[i];
-			if (plr.countdown > 0) {
-				plr.countdown--;
-				if (plr.isDead()) {
-					NP_Log("Peer %d timed out in lobby '%s'", i + 1, fmtId());
-					plr.reset();
-				}
-			}
+			if (plr.countdown <= 0)
+				continue;
+			plr.countdown--;
+			if (!plr.isDead())
+				continue;
+			NP_Log("Peer %d timed out in lobby '%s'", i + 1, fmtId());
+			plr.reset();
 		}
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			sendTo(i);
@@ -240,40 +256,48 @@ struct Lobby {
 	}
 
 	void sendTo(const int playerIdx) {
-		auto& plr = players[playerIdx];
-		if (plr.isDead())
+		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {'J', 'O', 'I', 'N', 0};
+		if (players[playerIdx].isDead())
 			return;
 
-		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {'J', 'O', 'I', 'N', 0};
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
-
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (players[i].isDead()) {
-				std::memset(ptr, 0, 6);
-				ptr += 6;
+			auto& cur = players[i];
 
-				std::memset(ptr, 0, sizeof(Metadata));
-				ptr += sizeof(Metadata);
-			} else {
-				if (playerIdx == i)
-					std::memset(ptr, 0, 4);
-				else
-					std::memcpy(ptr, &players[i].addr.sin_addr, 4);
-				ptr += 4;
-
-				std::memcpy(ptr, &players[i].addr.sin_port, 2);
-				ptr += 2;
-
-				std::memcpy(ptr, players[i].metadata.fields, sizeof(Metadata));
-				ptr += sizeof(Metadata);
+			std::memset(ptr, 0, 19 + sizeof(Metadata));
+			if (cur.isDead()) {
+				ptr += 19 + sizeof(Metadata);
+				continue;
 			}
+
+			*ptr++ = cur.addr.v6;
+
+			if (playerIdx != i) {
+				if (cur.addr.v6)
+					std::memcpy(ptr, &cur.addr.asV6()->sin6_addr, 16);
+				else
+					std::memcpy(ptr, &cur.addr.asV4()->sin_addr, 4);
+			}
+			ptr += 16;
+
+			if (cur.addr.v6)
+				std::memcpy(ptr, &cur.addr.asV6()->sin6_port, 2);
+			else
+				std::memcpy(ptr, &cur.addr.asV4()->sin_port, 2);
+			ptr += 2;
+
+			std::memcpy(ptr, cur.metadata.fields, sizeof(Metadata));
+			ptr += sizeof(Metadata);
 		}
 		std::memcpy(ptr, metadata.fields, sizeof(Metadata));
 
-		auto addr = *reinterpret_cast<sockaddr*>(&plr.addr);
-		int sent = sendto(sock, (char*)buf, NUTPUNCH_RESPONSE_SIZE, 0, &addr, sizeof(addr));
-		if (sent < 0 && NP_SockError() != NP_WouldBlock)
-			plr.reset();
+		auto& player = players[playerIdx];
+		int sent = sendto(player.addr.v6 ? sock6 : sock4, (char*)buf, sizeof(buf), 0,
+			reinterpret_cast<sockaddr*>(&player.addr.value), sizeof(player.addr.value));
+		if (sent < 0 && NP_SockError() != NP_WouldBlock) {
+			NP_Log("Player %d aborted connection", playerIdx + 1);
+			player.reset();
+		}
 	}
 
 	int getMasterIdx() {
@@ -292,8 +316,10 @@ private:
 	int masterIdx = NUTPUNCH_MAX_PLAYERS;
 };
 
-static void bindSock() {
-	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+static void bindSock(bool v6) {
+	auto& sock = v6 ? sock6 : sock4;
+
+	sock = socket(v6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		throw "Failed to create the underlying UDP socket";
 
@@ -318,15 +344,27 @@ static void bindSock() {
 		< 0)
 		throw "Failed to set socket to non-blocking mode";
 
-	sockaddr_in addr = {0};
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(NUTPUNCH_SERVER_PORT);
+	sockaddr_storage addr;
+	std::memset(&addr, 0, sizeof(addr));
+	if (v6) {
+		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_family = AF_INET6;
+		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port = htons(NUTPUNCH_SERVER_PORT);
+	} else {
+		reinterpret_cast<sockaddr_in*>(&addr)->sin_family = AF_INET;
+		reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
+	}
+	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)))
+		return;
 
-	if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
-		throw "Failed to bind the UDP socket";
+	if (v6) {
+		// IPv6 is optional and skipped with a warning
+		NP_Log("WARN: failed to bind IPv6 socket");
+		sock = NUTPUNCH_INVALID_SOCKET;
+	} else
+		throw "Failed to bind IPv4 socket, and IPv6-only mode is unsupported";
 }
 
-static void sendLobbyList(sockaddr addr, const NutPunch_Filter* filters) {
+static void sendLobbyList(Addr addr, const NutPunch_Filter* filters) {
 	static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {'L', 'I', 'S', 'T', 0};
 	uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
 	int resultCount = 0, filterCount = 0;
@@ -361,25 +399,28 @@ static void sendLobbyList(sockaddr addr, const NutPunch_Filter* filters) {
 		continue;
 	}
 
+	auto sock = addr.v6 ? sock6 : sock4;
 	for (int i = 0; i < 5; i++)
-		sendto(sock, (char*)buf, NUTPUNCH_HEADER_SIZE + NP_LIST_LEN, 0, &addr, sizeof(addr));
+		sendto(sock, (char*)buf, NUTPUNCH_HEADER_SIZE + NP_LIST_LEN, 0,
+			reinterpret_cast<sockaddr*>(&addr.value), sizeof(addr.value));
 }
 
-static int receiveShit() {
+static int receiveShit(bool v6) {
+	auto& sock = v6 ? sock6 : sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
-		std::exit(EXIT_FAILURE);
+		return -1;
 
 	char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
-	sockaddr addr = {0};
+	Addr addr(v6);
 #ifdef NUTPUNCH_WINDOSE
 	int
 #else
 	socklen_t
 #endif
 		addrSize;
-	addrSize = sizeof(addr);
+	addrSize = sizeof(addr.value);
 
-	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, &addr, &addrSize);
+	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.value), &addrSize);
 	if (rcv < 0 && NP_SockError() != NP_ConnReset)
 		return NP_SockError() == NP_WouldBlock ? -1 : NP_SockError();
 
@@ -423,7 +464,7 @@ process:
 		if (players[i].isDead()) {
 			std::memcpy(&players[i].addr, &addr, sizeof(addr));
 			lobbies[id].processRequest(i, ptr);
-			NP_Log("Peer %d joined lobby '%s'", i + 1, fmtLobbyId(id));
+			NP_Log("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id), v6 ? "IPv6" : "IPv4");
 			return 0;
 		}
 	}
@@ -435,14 +476,8 @@ process:
 struct cleanup {
 	cleanup() = default;
 	~cleanup() {
-		if (sock != NUTPUNCH_INVALID_SOCKET) {
-#ifdef NUTPUNCH_WINDOSE
-			closesocket(sock);
-#else
-			close(sock);
-#endif
-			sock = NUTPUNCH_INVALID_SOCKET;
-		}
+		NP_NukeSocket(&sock4);
+		NP_NukeSocket(&sock6);
 #ifdef NUTPUNCH_WINDOSE
 		WSACleanup();
 #endif
@@ -450,19 +485,20 @@ struct cleanup {
 };
 
 int main(int, char**) {
-	cleanup clnup;
+	cleanup __cleanup;
 
 #ifdef NUTPUNCH_WINDOSE
-	do {
+	{
 		WSADATA bitch = {0};
 		WSAStartup(MAKEWORD(2, 2), &bitch);
-	} while (0);
+	}
 #endif
 
 	try {
-		bindSock();
+		bindSock(true);
+		bindSock(false);
 	} catch (const char* msg) {
-		NP_Log("Bind failed (code %d) - %s", NP_SockError(), msg);
+		NP_Log("CRITICAL: %s (code %d)", msg, NP_SockError());
 		return EXIT_FAILURE;
 	}
 
@@ -471,11 +507,19 @@ int main(int, char**) {
 
 	NP_Log("Running!");
 	for (;;) {
-		int result;
-		while (!(result = receiveShit())) {
+		if (sock4 == NUTPUNCH_INVALID_SOCKET && sock6 == NUTPUNCH_INVALID_SOCKET)
+			return EXIT_FAILURE;
+
+		static const bool ipvs[2] = {true, false};
+		for (const auto ipv : ipvs) {
+			int result;
+			while (!(result = receiveShit(ipv))) {
+			}
+			if (result > 0) {
+				NP_Log("Failed to receive data (code %d)", result);
+				(ipv ? sock6 : sock4) = NUTPUNCH_INVALID_SOCKET;
+			}
 		}
-		if (result > 0)
-			NP_Log("Failed to receive data (code %d)", result);
 
 		for (auto& [id, lobby] : lobbies)
 			lobby.update();

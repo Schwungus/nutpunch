@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
 		printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
 		return EXIT_FAILURE;
 	}
-	if (argc >= 3)
+	if (argc == 3)
 		NutPunch_SetServerAddr(argv[2]);
 
 	int waitingForPlayers = strtol(argv[1], NULL, 10), _waitingForPlayers = waitingForPlayers;
