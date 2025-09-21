@@ -564,7 +564,7 @@ static bool NP_BindSocket(bool v6) {
 #ifdef NUTPUNCH_WINDOSE
 		ioctlsocket(*sock, FIONBIO, &argp)
 #else
-		fcntl(NP_Socket, F_SETFL, fcntl(NP_Socket, F_GETFL, 0) | O_NONBLOCK)
+		fcntl((*sock, F_SETFL, fcntl(NP_Socket, F_GETFL, 0) | O_NONBLOCK)
 #endif
 		< 0)
 	{
@@ -802,7 +802,7 @@ send:
 
 static int NP_ReceiveShit(bool v6) {
 	NP_Socket* sock = v6 ? &NP_Sock6 : &NP_Sock4;
-	if (*sock == INVALID_SOCKET)
+	if (*sock == NUTPUNCH_INVALID_SOCKET)
 		return 1;
 
 #ifdef NUTPUNCH_WINDOSE
