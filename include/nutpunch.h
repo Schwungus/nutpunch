@@ -169,7 +169,7 @@ const char* NutPunch_GetLastError();
 
 #define NP_Log(...)                                                                                                    \
 	do {                                                                                                           \
-		fprintf(stdout, "<[NP]> " __VA_ARGS__);                                                                \
+		fprintf(stdout, "[NP] " __VA_ARGS__);                                                                  \
 		fprintf(stdout, "\n");                                                                                 \
 		fflush(stdout);                                                                                        \
 	} while (0)
