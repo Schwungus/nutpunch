@@ -65,7 +65,7 @@ add_executable(MyGame main.c) # your game's CMake target goes here
 target_link_libraries(MyGame PRIVATE nutpunch)
 ```
 
-For other build system (or lack thereof), you only need to copy [`nutpunch.h`](include/nutpunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with scary linker errors related to Winsock.
+For other build systems (or lack thereof), you only need to copy [`nutpunch.h`](include/nutpunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with scary linker errors related to Winsock.
 
 Once [`nutpunch.h`](include/nutpunch.h) is in your include-path, using it is straightforward:
 
