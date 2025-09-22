@@ -61,33 +61,33 @@ FetchContent_Declare(nutpunch
     GIT_TAG stable) # you can use a specific commit hash here
 FetchContent_MakeAvailable(nutpunch)
 
-# create your target here, e.g. with `add_executable(MyGame)`, then link against nutpunch:
+add_executable(MyGame main.c) # your game's CMake target goes here
 target_link_libraries(MyGame PRIVATE nutpunch)
 ```
 
-For other build system (or lack thereof), you only need to copy [`nutpunch.h`](include/nutpunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with Winsock-related scary linker errors all over the place.
+For other build system (or lack thereof), you only need to copy [`nutpunch.h`](include/nutpunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with scary linker errors related to Winsock.
 
-Once [`nutpunch.h`](include/nutpunch.h) is discoverable by your compiler, using it is straightforward:
+Once [`nutpunch.h`](include/nutpunch.h) is in your include-path, using it is straightforward:
 
 ```c
-#include <stdlib.h>
+#include <stdlib.h> // for EXIT_SUCCESS
 
 #define NUTPUNCH_IMPLEMENTATION
 #include <nutpunch.h>
 
 int main(int argc, char* argv[]) {
     NutPunch_Join("MyLobby");
-    for (;;) // your game's mockup mainloop
+    for (;;) // your game's mainloop goes here...
         NutPunch_Update();
     return EXIT_SUCCESS;
 }
 ```
 
-Also see [advanced usage](#advanced-usage) for things you can customize.
+Take a look at [advanced usage](#advanced-usage) to discover things you can customize.
 
 ## Public Instance
 
-If you don't feel like [hosting your own instance](#hosting-a-nutpuncher-server), you may use our public instance. It's implied by default unless a different server is specified.
+If you don't feel like [hosting your own instance](#hosting-a-nutpuncher-server), you may use our public instance. It's used by default unless a different server is specified.
 
 If you want to be explicit about using the public instance, call `NutPunch_SetServerAddr`:
 
@@ -98,7 +98,9 @@ NutPunch_Join("lobby-id");
 
 ## Advanced Usage
 
-You can specify custom memory handling functions for NutPunch to use through `#define`s. For example, if you're working with SDL3:
+You can `#define` custom memory handling functions for NutPunch to use. They're only relevant to the implementation.
+
+SDL3 example:
 
 ```c
 #include <SDL3/SDL_stdinc.h>
@@ -118,7 +120,7 @@ If you're dissatisfied with [the public instance](#public-instance), whether fro
 
 On Windows and Linux, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/stable) and make sure the **UDP port `30001`** is open to the public.
 
-On Linux, you may also use [our Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher), e.g. with docker-compose:
+If you're crazy enough, you may also use [our Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher), e.g. with docker-compose:
 
 ```yaml
 services:
