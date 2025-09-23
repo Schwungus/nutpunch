@@ -69,8 +69,7 @@ jobs:
         uses: actions/checkout@v5
       - name: Build
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -D NUTPUNCH_BUILD_TESTS=OFF -D NUTPUNCH_BUILD_LOBBYIST=OFF
+          cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D NUTPUNCH_BUILD_TESTS=OFF -D NUTPUNCH_BUILD_LOBBYIST=OFF
           cmake --build build --target nutpuncher
       - name: Rename binary artifact
         run: |
