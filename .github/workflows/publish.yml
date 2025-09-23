@@ -61,7 +61,6 @@ jobs:
           - os-name: Linux
             runner-os: ubuntu-24.04
             bin-ext: ""
-            deploy: true
     permissions:
       contents: write
     steps:
