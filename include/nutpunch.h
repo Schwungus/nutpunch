@@ -235,11 +235,18 @@ typedef int64_t NP_Socket;
 #define NutPunch_Memcmp memcmp
 #endif
 
+typedef bool NP_IPv;
+#define NP_IPv4 (false)
+#define NP_IPv6 (true)
+
 typedef uint64_t NP_PacketIdx;
 
+#define NP_AddrPort(addr)                                                                                              \
+	((addr).ipv == NP_IPv6 ? &((struct sockaddr_in6*)&(addr))->sin6_port                                           \
+			       : &((struct sockaddr_in*)&(addr))->sin_port)
 struct NP_Addr {
 	struct sockaddr_storage value;
-	bool v6;
+	NP_IPv ipv;
 };
 
 struct NP_Packet {
@@ -376,13 +383,13 @@ static void NP_PrintError() {
 		NP_Log("WARN: %s", NP_LastError);
 }
 
-static bool NP_GetAddrInfo(struct NP_Addr* out, const char* host, uint16_t port, bool v6) {
+static bool NP_GetAddrInfo(struct NP_Addr* out, const char* host, uint16_t port, NP_IPv ipv) {
 	NP_LazyInit();
 
-	out->v6 = v6;
+	out->ipv = ipv;
 	NutPunch_Memset(&out->value, 0, sizeof(out->value));
 
-	if (v6) {
+	if (ipv == NP_IPv6) {
 		((struct sockaddr_in6*)&out->value)->sin6_family = AF_INET6;
 		((struct sockaddr_in6*)&out->value)->sin6_port = htons(port);
 	} else {
@@ -394,7 +401,7 @@ static bool NP_GetAddrInfo(struct NP_Addr* out, const char* host, uint16_t port,
 		return true;
 
 	struct addrinfo *result = NULL, hints = {0};
-	hints.ai_family = v6 ? AF_INET6 : AF_INET;
+	hints.ai_family = ipv == NP_IPv6 ? AF_INET6 : AF_INET;
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_protocol = IPPROTO_UDP;
 	hints.ai_flags = AI_PASSIVE;
@@ -420,8 +427,8 @@ static bool NP_GetAddrInfo(struct NP_Addr* out, const char* host, uint16_t port,
 
 static struct NP_Addr NP_ResolveAddr(const char* host, uint16_t port) {
 	struct NP_Addr out = {0};
-	if (!NP_GetAddrInfo(&out, host, port, true))
-		NP_GetAddrInfo(&out, host, port, false);
+	if (!NP_GetAddrInfo(&out, host, port, NP_IPv6))
+		NP_GetAddrInfo(&out, host, port, NP_IPv4);
 	return out;
 }
 
@@ -462,7 +469,6 @@ static void* NP_GetMetadataFrom(struct NutPunch_Field fields[NUTPUNCH_MAX_FIELDS
 			return buf;
 		}
 	}
-
 none:
 	if (size != NULL)
 		*size = 0;
@@ -479,7 +485,6 @@ void* NutPunch_PeerGet(int peer, const char* name, int* size) {
 	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS)
 		goto none;
 	return NP_GetMetadataFrom(NP_PeerMetadata[peer], name, size);
-
 none:
 	if (size != NULL)
 		*size = 0;
@@ -540,19 +545,19 @@ static void NP_ExpectNutpuncher() {
 	}
 }
 
-static bool NP_BindSocket(bool v6) {
+static bool NP_BindSocket(NP_IPv ipv) {
 	NP_LazyInit();
 
 	struct NP_Addr local = {0};
 #ifdef NUTPUNCH_WINDOSE
 	u_long argp = 1;
 #endif
-	NP_Socket* sock = v6 ? &NP_Sock6 : &NP_Sock4;
+	NP_Socket* sock = ipv == NP_IPv6 ? &NP_Sock6 : &NP_Sock4;
 	NP_NukeSocket(sock);
 
-	*sock = socket(v6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	*sock = socket(ipv == NP_IPv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (*sock == NUTPUNCH_INVALID_SOCKET) {
-		if (v6)
+		if (ipv == NP_IPv6)
 			goto v6_optional;
 		else {
 			NP_LastError = "Failed to create the underlying UDP socket";
@@ -572,7 +577,7 @@ static bool NP_BindSocket(bool v6) {
 		goto fail;
 	}
 
-	NP_GetAddrInfo(&local, NULL, 0, v6);
+	NP_GetAddrInfo(&local, NULL, 0, ipv);
 	if (!bind(*sock, (struct sockaddr*)&local.value, sizeof(local.value))) {
 		NP_ExpectNutpuncher();
 		NP_PuncherPeer = NP_ResolveAddr(NP_ServerHost, NUTPUNCH_SERVER_PORT);
@@ -580,7 +585,7 @@ static bool NP_BindSocket(bool v6) {
 		return true;
 	}
 
-	if (v6) {
+	if (ipv == NP_IPv6) {
 	v6_optional:
 		NP_Log("WARN: failed to bind an IPv6 socket");
 		NP_NukeSocket(sock);
@@ -688,9 +693,9 @@ NP_MakeHandler(NP_HandleJoin) {
 	hello[NUTPUNCH_HEADER_SIZE] = NP_LocalPeer;
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		peer.v6 = *data++;
+		peer.ipv = *data++;
 
-		if (peer.v6) {
+		if (peer.ipv == NP_IPv6) {
 			((struct sockaddr_in6*)&peer.value)->sin6_family = AF_INET6;
 			NutPunch_Memcpy(&((struct sockaddr_in6*)&peer.value)->sin6_addr, data, 16);
 		} else {
@@ -699,8 +704,7 @@ NP_MakeHandler(NP_HandleJoin) {
 		}
 		data += 16;
 
-		uint16_t* port = peer.v6 ? &((struct sockaddr_in6*)&peer.value)->sin6_port
-		                         : &((struct sockaddr_in*)&peer.value)->sin_port;
+		uint16_t* port = NP_AddrPort(peer);
 		NutPunch_Memcpy(port, data, 2);
 		data += 2;
 
@@ -708,7 +712,7 @@ NP_MakeHandler(NP_HandleJoin) {
 		data += metaSize;
 
 		if (i != NP_LocalPeer && *port) {
-			const NP_Socket sock = peer.v6 ? NP_Sock6 : NP_Sock4;
+			const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 			sendto(sock, hello, sizeof(hello), 0, (struct sockaddr*)&peer.value, sizeof(peer.value));
 		}
 	}
@@ -786,7 +790,7 @@ static bool NP_SendHeartbeat() {
 	NutPunch_Memcpy(ptr, NP_MetadataOut, sizeof(NP_MetadataOut));
 
 send:
-	NP_Socket sock = NP_PuncherPeer.v6 ? NP_Sock6 : NP_Sock4;
+	NP_Socket sock = NP_PuncherPeer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return true;
 
@@ -800,8 +804,8 @@ send:
 	return true;
 }
 
-static int NP_ReceiveShit(bool v6) {
-	NP_Socket* sock = v6 ? &NP_Sock6 : &NP_Sock4;
+static int NP_ReceiveShit(NP_IPv ipv) {
+	NP_Socket* sock = ipv == NP_IPv6 ? &NP_Sock6 : &NP_Sock4;
 	if (*sock == NUTPUNCH_INVALID_SOCKET)
 		return 1;
 
@@ -843,7 +847,7 @@ static int NP_ReceiveShit(bool v6) {
 		if (!NutPunch_Memcmp(buf, entry.identifier, NUTPUNCH_HEADER_SIZE)
 			&& (entry.packetSize < 0 || size == entry.packetSize))
 		{
-			struct NP_Addr peer = {.value = addr, .v6 = v6};
+			struct NP_Addr peer = {.value = addr, .ipv = ipv};
 			entry.handler(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
 			return 0;
 		}
@@ -899,7 +903,7 @@ static void NP_FlushOutQueue() {
 
 	send:
 		const struct NP_Addr peer = NP_Peers[cur->peer];
-		const NP_Socket sock = peer.v6 ? NP_Sock6 : NP_Sock4;
+		const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 		int result = sendto(sock, cur->data, cur->size, 0, (struct sockaddr*)&peer.value, sizeof(peer.value));
 		if (result > 0 || NP_SockError() == NP_WouldBlock)
 			continue;
@@ -1075,8 +1079,7 @@ bool NutPunch_PeerAlive(int peer) {
 		return true;
 	if (NP_LastStatus != NP_Status_Online)
 		return false;
-	return 0 != NP_Peers[peer].v6 ? ((struct sockaddr_in6*)(&NP_Peers[peer].value))->sin6_port
-	                              : ((struct sockaddr_in*)(&NP_Peers[peer].value))->sin_port;
+	return *NP_AddrPort(NP_Peers[peer]) != 0;
 }
 
 int NutPunch_LocalPeer() {

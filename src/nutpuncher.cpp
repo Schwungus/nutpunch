@@ -156,9 +156,9 @@ private:
 
 struct Addr : NP_Addr {
 	Addr() : Addr(false) {}
-	Addr(bool v6) {
+	Addr(NP_IPv ipv) {
 		std::memset(&value, 0, sizeof(value));
-		this->v6 = v6;
+		this->ipv = ipv;
 	}
 
 	sockaddr_in* asV4() {
@@ -270,17 +270,17 @@ struct Lobby {
 				continue;
 			}
 
-			*ptr++ = cur.addr.v6;
+			*ptr++ = cur.addr.ipv;
 
 			if (playerIdx != i) {
-				if (cur.addr.v6)
+				if (cur.addr.ipv == NP_IPv6)
 					std::memcpy(ptr, &cur.addr.asV6()->sin6_addr, 16);
 				else
 					std::memcpy(ptr, &cur.addr.asV4()->sin_addr, 4);
 			}
 			ptr += 16;
 
-			if (cur.addr.v6)
+			if (cur.addr.ipv == NP_IPv6)
 				std::memcpy(ptr, &cur.addr.asV6()->sin6_port, 2);
 			else
 				std::memcpy(ptr, &cur.addr.asV4()->sin_port, 2);
@@ -292,7 +292,7 @@ struct Lobby {
 		std::memcpy(ptr, metadata.fields, sizeof(Metadata));
 
 		auto& player = players[playerIdx];
-		int sent = sendto(player.addr.v6 ? sock6 : sock4, (char*)buf, sizeof(buf), 0,
+		int sent = sendto(player.addr.ipv == NP_IPv6 ? sock6 : sock4, (char*)buf, sizeof(buf), 0,
 			reinterpret_cast<sockaddr*>(&player.addr.value), sizeof(player.addr.value));
 		if (sent < 0 && NP_SockError() != NP_WouldBlock) {
 			NP_Log("Player %d aborted connection", playerIdx + 1);
@@ -316,10 +316,10 @@ private:
 	int masterIdx = NUTPUNCH_MAX_PLAYERS;
 };
 
-static void bindSock(bool v6) {
-	auto& sock = v6 ? sock6 : sock4;
+static void bindSock(NP_IPv ipv) {
+	auto& sock = ipv == NP_IPv6 ? sock6 : sock4;
 
-	sock = socket(v6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	sock = socket(ipv == NP_IPv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		throw "Failed to create the underlying UDP socket";
 
@@ -346,7 +346,7 @@ static void bindSock(bool v6) {
 
 	sockaddr_storage addr;
 	std::memset(&addr, 0, sizeof(addr));
-	if (v6) {
+	if (ipv == NP_IPv6) {
 		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_family = AF_INET6;
 		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port = htons(NUTPUNCH_SERVER_PORT);
 	} else {
@@ -356,7 +356,7 @@ static void bindSock(bool v6) {
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)))
 		return;
 
-	if (v6) {
+	if (ipv == NP_IPv6) {
 		// IPv6 is optional and skipped with a warning
 		NP_Log("WARN: failed to bind IPv6 socket");
 		sock = NUTPUNCH_INVALID_SOCKET;
@@ -399,19 +399,19 @@ static void sendLobbyList(Addr addr, const NutPunch_Filter* filters) {
 		continue;
 	}
 
-	auto sock = addr.v6 ? sock6 : sock4;
+	auto sock = addr.ipv == NP_IPv6 ? sock6 : sock4;
 	for (int i = 0; i < 5; i++)
 		sendto(sock, (char*)buf, NUTPUNCH_HEADER_SIZE + NP_LIST_LEN, 0,
 			reinterpret_cast<sockaddr*>(&addr.value), sizeof(addr.value));
 }
 
-static int receiveShit(bool v6) {
-	auto& sock = v6 ? sock6 : sock4;
+static int receiveShit(NP_IPv ipv) {
+	auto& sock = ipv == NP_IPv6 ? sock6 : sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return -1;
 
 	char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
-	Addr addr(v6);
+	Addr addr(ipv);
 #ifdef NUTPUNCH_WINDOSE
 	int
 #else
@@ -464,7 +464,8 @@ process:
 		if (players[i].isDead()) {
 			std::memcpy(&players[i].addr, &addr, sizeof(addr));
 			lobbies[id].processRequest(i, ptr);
-			NP_Log("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id), v6 ? "IPv6" : "IPv4");
+			NP_Log("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id),
+				ipv == NP_IPv6 ? "IPv6" : "IPv4");
 			return 0;
 		}
 	}
@@ -510,7 +511,7 @@ int main(int, char**) {
 		if (sock4 == NUTPUNCH_INVALID_SOCKET && sock6 == NUTPUNCH_INVALID_SOCKET)
 			return EXIT_FAILURE;
 
-		static const bool ipvs[2] = {true, false};
+		static const NP_IPv ipvs[2] = {NP_IPv6, NP_IPv4};
 		for (const auto ipv : ipvs) {
 			int result;
 			while (!(result = receiveShit(ipv))) {
