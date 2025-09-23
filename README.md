@@ -22,7 +22,7 @@ UDP hole-punching can be finnicky at times, especially in non-standard networkin
 
 This library implements P2P networking, where **each peer communicates with all others**. It's a complex model, and it could be counterproductive to use if you don't know what you're signing yourself up for. If you don't feel like reading the immediately following blanket of words and scribbles, you may skip to [using premade integrations](#premade-integrations).
 
-Before you can punch any holes in your peers' NAT, you will need a hole-punching server **with a public IP address** assigned. Querying a public server lets us bust a gateway open to the global network, all while the server relays the connection info for other peers to us. If you're just testing, you can use [our public instance](#public-instance) instead of [hosting your own](#hosting-a-nutpuncher-server). The current server implementation uses a lobby-based approach, where each lobby supports up to 16 peers and is identified by a unique ASCII string.
+Before you can punch any holes in your peers' NAT, you will need a hole-punching server **with a public IP address** assigned. Querying a public server lets us bust a gateway open to the global network, all while the server relays the connection info for other peers to us. If you're just testing, you can use [our public instance](#public-instance) instead of [hosting your own](#hosting-your-own-nutpuncher). The current server implementation uses a lobby-based approach, where each lobby supports up to 16 peers and is identified by a unique ASCII string.
 
 In order to run your own hole-puncher server, you'll need to get the server binary from our [reference implementation releases](https://github.com/Schwungus/nutpunch/releases/tag/stable). [A Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher) is also available for hosting a NutPuncher server on Linux. If you're in a pinch, don't have access to a public IP address, and your players reside on a LAN/virtual network such as [Radmin VPN](https://www.radmin-vpn.com), you can actually run NutPuncher locally and use your LAN IP address to connect to it.
 
@@ -30,11 +30,11 @@ Once you've figured out how the players are to connect to your hole-puncher serv
 
 1. Call `NutPunch_Join("lobby-id")` to initiate joining a lobby in the background.
 2. Optionally add metadata to the lobby:
-   1. If you join an empty lobby, you will be considered its master. A lobby master has the authority from the server to set global metadata for the lobby. This is usually needed to start games with specific parameters or to enforce an expected player count in a lobby. If you don't need metadata, you can just skip this entire step.
+   1. If you join an empty lobby, you will be considered its master. A lobby master has the authority from the matchmaking server to set lobby-specific metadata. This is usually needed to start games with specific parameters or to enforce an expected player count in a lobby. If you don't need metadata, you can just skip this entire step.
    2. After calling `NutPunch_Join()`, you can set metadata in the lobby by calling `NutPunch_LobbySet()` as a master. You don't have to finish "connecting" and handshaking with NutPuncher before setting metadata. A lobby can hold up to 16 fields, each identified by 8-byte strings and holding up to 32 bytes of data. Non-masters aren't allowed to set metadata, so calls are no-op for them. The actual metadata also won't be updated until the next call to `NutPunch_Update()`, which will be covered later.
    3. Just like `NutPunch_LobbySet()`, you can use `NutPunch_PeerSet()` to set your very own peer-specific metadata such as nickname or skin spritesheet name. Use `NutPunch_PeerGet()` with a peer index to query your own or others' peer metadata.
-3. Listen for NutPuncher response:
-   1. Call `NutPunch_Update()` each frame, regardless of whether you're still joining or already playing with the boys. This will also automatically update lobby metadata back and forth.
+3. Listen for events:
+   1. Call `NutPunch_Update()` each frame, regardless of whether you're still joining or already [playing with the boys](https://nonk.dev/blog/battlecry). This will also automatically update lobby metadata back and forth.
    2. Check your status by matching the returned value against `NP_Status_*` constants. `NP_Status_Online` is the only one you need to handle explicitly, as you can safely start retrieving metadata and player count with it. Optionally, you can also handle `NP_Status_Error` and get clues as to what's wrong by calling `NutPunch_GetLastError()`.
 4. Optionally read metadata from the lobby during `NP_Status_Online` status. Use `NutPunch_Get()` to get a pointer to a metadata field, which you can then read from (as long as it's valid and is the exact size that you expect it to be). These pointers are volatile, especially when calling `NutPunch_Update()`, so if you need to use the gotten value more than once, cache it somewhere.
 5. If all went well (i.e. you have enough metadata and player count is fulfilled), start your match.
@@ -87,7 +87,7 @@ Take a look at [advanced usage](#advanced-usage) to discover things you can cust
 
 ## Public Instance
 
-If you don't feel like [hosting your own instance](#hosting-a-nutpuncher-server), you may use our public instance. It's used by default unless a different server is specified.
+If you don't feel like [hosting your own instance](#hosting-your-own-nutpuncher), you may use our public instance. It's used by default unless a different server is specified.
 
 If you want to be explicit about using the public instance, call `NutPunch_SetServerAddr`:
 
@@ -114,7 +114,7 @@ SDL3 example:
 #include <nutpunch.h>
 ```
 
-## Hosting a NutPuncher Server
+## Hosting your own NutPuncher
 
 If you're dissatisfied with [the public instance](#public-instance), whether from needing to stick to a specific build or fork or whatever, you can host your own. Make sure to read [the introductory pamphlet](#introductory-lecture) before attempting this.
 
