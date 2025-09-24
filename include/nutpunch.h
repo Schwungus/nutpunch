@@ -59,7 +59,7 @@ extern "C" {
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_MAX_PLAYERS * 19                                                              \
 		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
-	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX                                                                        \
+	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
 		+ NP_MetaCount * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
 
 #include <stdbool.h>
@@ -89,11 +89,20 @@ enum {
 	NP_MetaCount,
 };
 
+enum {
+	NP_Err_Ok,
+	NP_Err_NoSuchLobby,
+	NP_Err_LobbyExists,
+};
+
 /// Set a custom NutPuncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
 
-/// Join a lobby by its ID. Query your connection status by calling `NutPunch_Update()` every frame.
-bool NutPunch_Join(const char* lobbyId);
+/// Join a lobby by its ID. If no lobby exists with this ID, spit an error status out of `NutPunch_Update()`.
+bool NutPunch_Join(const char*);
+
+/// Host a lobby with specified ID. If the lobby already exists, spit an error status out of `NutPunch_Update()`.
+bool NutPunch_Host(const char*);
 
 /// Call this at the end of your program to run semi-important cleanup.
 void NutPunch_Cleanup();
@@ -235,9 +244,9 @@ typedef int64_t NP_Socket;
 #define NutPunch_Memcmp memcmp
 #endif
 
-typedef bool NP_IPv;
-#define NP_IPv4 (false)
-#define NP_IPv6 (true)
+typedef uint8_t NP_IPv;
+#define NP_IPv4 (0)
+#define NP_IPv6 (1)
 
 typedef uint64_t NP_PacketIdx;
 
@@ -271,6 +280,7 @@ struct NP_ServicePacket {
 #define NP_MakeHandler(name) static void name(struct NP_Addr peer, int size, const uint8_t* data)
 NP_MakeHandler(NP_HandleIntro);
 NP_MakeHandler(NP_HandleDisconnect);
+NP_MakeHandler(NP_HandleGTFO);
 NP_MakeHandler(NP_HandleJoin);
 NP_MakeHandler(NP_HandleList);
 NP_MakeHandler(NP_HandleAcky);
@@ -279,6 +289,7 @@ NP_MakeHandler(NP_HandleData);
 static const struct NP_ServicePacket NP_ServiceTable[] = {
 	{'I', 'N', 'T', 'R', 1,           NP_HandleIntro     },
 	{'D', 'I', 'S', 'C', 0,           NP_HandleDisconnect},
+	{'G', 'T', 'F', 'O', 1,           NP_HandleGTFO      },
 	{'J', 'O', 'I', 'N', NP_JOIN_LEN, NP_HandleJoin      },
 	{'L', 'I', 'S', 'T', NP_LIST_LEN, NP_HandleList      },
 	{'A', 'C', 'K', 'Y', NP_ACKY_LEN, NP_HandleAcky      },
@@ -310,6 +321,13 @@ static struct NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
 static char NP_LobbyNames[NUTPUNCH_SEARCH_RESULTS_MAX][NUTPUNCH_ID_MAX + 1] = {0};
 static char* NP_Lobbies[NUTPUNCH_SEARCH_RESULTS_MAX] = {0};
 
+typedef uint8_t NP_HeartbeatFlagsStorage;
+static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
+enum {
+	NP_Beat_Join = 1 << 0,
+	NP_Beat_Host = 1 << 1,
+};
+
 static void NP_CleanupPackets(struct NP_Packet** queue) {
 	while (*queue != NULL) {
 		struct NP_Packet* ptr = *queue;
@@ -333,6 +351,7 @@ static void NP_NukeLobbyData() {
 
 static void NP_NukeRemote() {
 	NP_LobbyId[0] = 0;
+	NP_HeartbeatFlags = 0;
 	NutPunch_Memset(&NP_PuncherPeer, 0, sizeof(NP_PuncherPeer));
 	NutPunch_Memset(NP_Peers, 0, sizeof(NP_Peers));
 	NutPunch_Memset(NP_PeerMetadata, 0, sizeof(NP_PeerMetadata));
@@ -362,8 +381,10 @@ static void NP_LazyInit() {
 	NP_InitDone = true;
 
 #ifdef NUTPUNCH_WINDOSE
-	WSADATA bitch = {0};
-	WSAStartup(MAKEWORD(2, 2), &bitch);
+	{
+		WSADATA bitch = {0};
+		WSAStartup(MAKEWORD(2, 2), &bitch);
+	}
 #endif
 
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++)
@@ -601,12 +622,12 @@ fail:
 	return false;
 }
 
-bool NutPunch_Join(const char* lobbyId) {
+static bool NutPunch_Connect(const char* lobbyId) {
 	NP_LazyInit();
 	NP_NukeLobbyData();
 	NP_ExpectNutpuncher();
 
-	if (NP_BindSocket(false) && NP_BindSocket(true)) {
+	if (NP_BindSocket(NP_IPv6) && NP_BindSocket(NP_IPv4)) {
 		NP_LastStatus = NP_Status_Online;
 		NutPunch_Memset(NP_LobbyId, 0, sizeof(NP_LobbyId));
 		snprintf(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobbyId);
@@ -616,6 +637,16 @@ bool NutPunch_Join(const char* lobbyId) {
 	NutPunch_Reset();
 	NP_LastStatus = NP_Status_Error;
 	return false;
+}
+
+bool NutPunch_Host(const char* lobbyId) {
+	NP_HeartbeatFlags = NP_Beat_Host;
+	return NutPunch_Connect(lobbyId);
+}
+
+bool NutPunch_Join(const char* lobbyId) {
+	NP_HeartbeatFlags = NP_Beat_Join;
+	return NutPunch_Connect(lobbyId);
 }
 
 void NutPunch_Disconnect() {
@@ -672,6 +703,26 @@ NP_MakeHandler(NP_HandleDisconnect) {
 			NP_KillPeer(i);
 }
 
+NP_MakeHandler(NP_HandleGTFO) {
+	if (NutPunch_Memcmp(&peer.value, &NP_PuncherPeer.value, sizeof(peer.value)))
+		return;
+
+	NutPunch_Reset();
+	NP_LastStatus = NP_Status_Error;
+	NP_LastErrorCode = *data;
+
+	switch (NP_LastErrorCode) {
+		case NP_Err_NoSuchLobby:
+			NP_LastError = "Lobby doesn't exist";
+			break;
+		case NP_Err_LobbyExists:
+			NP_LastError = "Lobby already exists";
+			break;
+		default:
+			break;
+	}
+}
+
 NP_MakeHandler(NP_HandleJoin) {
 	if (NutPunch_Memcmp(&peer.value, &NP_PuncherPeer.value, sizeof(peer.value)))
 		return;
@@ -720,7 +771,7 @@ NP_MakeHandler(NP_HandleJoin) {
 }
 
 NP_MakeHandler(NP_HandleList) {
-	if (NutPunch_Memcmp(&peer.value, &NP_PuncherPeer, sizeof(peer.value)))
+	if (NutPunch_Memcmp(&peer.value, &NP_PuncherPeer.value, sizeof(peer.value)))
 		return;
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++) {
 		NutPunch_Memcpy(NP_Lobbies[i], data, NUTPUNCH_ID_MAX);
@@ -787,6 +838,8 @@ static bool NP_SendHeartbeat() {
 	ptr += NUTPUNCH_HEADER_SIZE;
 	NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX);
 	ptr += NUTPUNCH_ID_MAX;
+	*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags; // TODO: correct endianness in case of multibyte flags...
+	ptr += sizeof(NP_HeartbeatFlags);
 	NutPunch_Memcpy(ptr, NP_MetadataOut, sizeof(NP_MetadataOut));
 
 send:
@@ -921,15 +974,13 @@ static void NP_FlushOutQueue() {
 }
 
 static int NP_RealUpdate() {
-	static const int socks[] = {1, 0, -1};
+	static const int socks[] = {NP_IPv6, NP_IPv4, -1};
 	const int* ipVer = socks;
 
-	if (NP_Sock4 == NUTPUNCH_INVALID_SOCKET && NP_Sock6 == NUTPUNCH_INVALID_SOCKET)
-		return NP_Status_Idle;
 	if (!NP_SendHeartbeat())
 		goto sockFail;
 
-	while (*ipVer != -1) {
+	while (*ipVer >= 0) {
 		for (;;)
 			switch (NP_ReceiveShit(*ipVer)) {
 				case 1:
@@ -963,7 +1014,10 @@ sockFail:
 int NutPunch_Update() {
 	NP_LazyInit();
 
-	NP_LastStatus = NP_RealUpdate();
+	if (NP_Sock4 == NUTPUNCH_INVALID_SOCKET && NP_Sock6 == NUTPUNCH_INVALID_SOCKET)
+		return NP_Status_Idle;
+	if (NP_LastStatus != NP_Status_Error)
+		NP_LastStatus = NP_RealUpdate();
 	if (NP_LastStatus == NP_Status_Error) {
 		NP_LastStatus = NP_Status_Idle;
 		NP_PrintError();
@@ -1035,7 +1089,7 @@ void NutPunch_FindLobbies(int filterCount, const struct NutPunch_Filter* filters
 	else if (filterCount > NUTPUNCH_SEARCH_FILTERS_MAX)
 		filterCount = NUTPUNCH_SEARCH_FILTERS_MAX;
 
-	if (!NP_BindSocket(false) || !NP_BindSocket(true))
+	if (!NP_BindSocket(NP_IPv6) || !NP_BindSocket(NP_IPv4))
 		goto fail;
 	NP_Querying = true;
 	NutPunch_Memcpy(NP_Filters, filters, filterCount * sizeof(*filters));

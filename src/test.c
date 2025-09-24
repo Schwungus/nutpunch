@@ -111,7 +111,9 @@ int main(int argc, char* argv[]) {
 				NutPunch_SendReliably(i, buf, sizeof(buf));
 		}
 
-		if (NP_Status_Online == status) {
+		if (NP_Status_Error == status)
+			NP_Log("ERROR: %s", NutPunch_GetLastError());
+		else if (NP_Status_Online == status) {
 			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 				if (NutPunch_LocalPeer() == i)
 					DrawRectangle(players[i].x, players[i].y, sqr, sqr, RED);
@@ -128,15 +130,22 @@ int main(int argc, char* argv[]) {
 			waitingForPlayers = _waitingForPlayers;
 			DrawText("DISCONNECTED", 5, 5, fs, RED);
 			DrawText("Press J to join", 5, 5 + fs, fs, BLACK);
-			DrawText("Press K to reset", 5, 5 + fs + fs, fs, BLACK);
+			DrawText("Press H to host", 5, 5 + fs * 2, fs, BLACK);
+			DrawText("Press K to reset", 5, 5 + fs * 3, fs, BLACK);
 
-			if (IsKeyPressed(KEY_J)) {
+			if (IsKeyPressed(KEY_J))
 				NutPunch_Join(lobbyName);
-				NutPunch_LobbySet("PLAYERS", sizeof(waitingForPlayers), &waitingForPlayers);
-				const char* name = randomNames[GetRandomValue(1, nameCount) - 1];
-				NutPunch_PeerSet("NAME", strlen(name) + 1, name);
-			}
+			else if (IsKeyPressed(KEY_H))
+				NutPunch_Host(lobbyName);
+			else
+				goto skip_network;
+
+			NutPunch_LobbySet("PLAYERS", sizeof(waitingForPlayers), &waitingForPlayers);
+			const char* name = randomNames[GetRandomValue(1, nameCount) - 1];
+			NutPunch_PeerSet("NAME", strlen(name) + 1, name);
 		}
+
+	skip_network:
 		if (IsKeyPressed(KEY_K))
 			NutPunch_Reset();
 

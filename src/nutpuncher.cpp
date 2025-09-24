@@ -168,6 +168,17 @@ struct Addr : NP_Addr {
 	sockaddr_in6* asV6() {
 		return reinterpret_cast<sockaddr_in6*>(&value);
 	}
+
+	template <typename T> int send(const T buf[], size_t size) const {
+		return sendto(ipv == NP_IPv6 ? sock6 : sock4, reinterpret_cast<const char*>(buf), size, 0,
+			reinterpret_cast<const sockaddr*>(&value), sizeof(value));
+	}
+
+	int sendError(uint8_t code) const {
+		static uint8_t buf[NUTPUNCH_HEADER_SIZE + 1] = "GTFO";
+		buf[NUTPUNCH_HEADER_SIZE] = code;
+		return send(buf, sizeof(buf));
+	}
 };
 
 struct Player {
@@ -233,24 +244,20 @@ struct Lobby {
 		return true;
 	}
 
-	void processRequest(const int playerIdx, const char* request) {
-		if (std::memcmp(request, id, NUTPUNCH_ID_MAX))
-			return;
-
+	void processRequest(const int playerIdx, const char* meta) {
 		players[playerIdx].countdown = keepAliveBeats;
 
-		const char* ptr = request + NUTPUNCH_ID_MAX;
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-			const auto* fields = (Field*)ptr;
+			const auto* fields = (Field*)meta;
 			players[playerIdx].metadata.set(fields[i].name, fields[i].size, fields[i].data);
 		}
 
 		if (playerIdx != getMasterIdx())
 			return;
 
-		ptr += sizeof(Metadata);
+		meta += sizeof(Metadata);
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-			const auto* fields = (Field*)ptr;
+			const auto* fields = (Field*)meta;
 			metadata.set(fields[i].name, fields[i].size, fields[i].data);
 		}
 	}
@@ -292,9 +299,7 @@ struct Lobby {
 		std::memcpy(ptr, metadata.fields, sizeof(Metadata));
 
 		auto& player = players[playerIdx];
-		int sent = sendto(player.addr.ipv == NP_IPv6 ? sock6 : sock4, (char*)buf, sizeof(buf), 0,
-			reinterpret_cast<sockaddr*>(&player.addr.value), sizeof(player.addr.value));
-		if (sent < 0 && NP_SockError() != NP_WouldBlock) {
+		if (player.addr.send(buf, sizeof(buf)) < 0 && NP_SockError() != NP_WouldBlock) {
 			NP_Log("Player %d aborted connection", playerIdx + 1);
 			player.reset();
 		}
@@ -399,10 +404,8 @@ static void sendLobbyList(Addr addr, const NutPunch_Filter* filters) {
 		continue;
 	}
 
-	auto sock = addr.ipv == NP_IPv6 ? sock6 : sock4;
 	for (int i = 0; i < 5; i++)
-		sendto(sock, (char*)buf, NUTPUNCH_HEADER_SIZE + NP_LIST_LEN, 0,
-			reinterpret_cast<sockaddr*>(&addr.value), sizeof(addr.value));
+		addr.send(buf, NUTPUNCH_HEADER_SIZE + NP_LIST_LEN);
 }
 
 static int receiveShit(NP_IPv ipv) {
@@ -424,21 +427,33 @@ static int receiveShit(NP_IPv ipv) {
 	if (rcv < 0 && NP_SockError() != NP_ConnReset)
 		return NP_SockError() == NP_WouldBlock ? -1 : NP_SockError();
 
-	char* ptr = heartbeat + NUTPUNCH_HEADER_SIZE;
+	const char* ptr = heartbeat + NUTPUNCH_HEADER_SIZE;
 	if (!std::memcmp(heartbeat, "LIST", NUTPUNCH_HEADER_SIZE) && rcv == NUTPUNCH_HEADER_SIZE + sizeof(NP_Filters)) {
 		sendLobbyList(addr, reinterpret_cast<const NutPunch_Filter*>(ptr));
 		return 0;
 	}
-	if (!std::memcmp(heartbeat, "JOIN", NUTPUNCH_HEADER_SIZE) && rcv == NUTPUNCH_HEARTBEAT_SIZE)
-		goto process;
-	return 0; // most likely junk...
+	if (std::memcmp(heartbeat, "JOIN", NUTPUNCH_HEADER_SIZE) || rcv != NUTPUNCH_HEARTBEAT_SIZE)
+		return 0; // most likely junk...
 
-process:
 	static char id[NUTPUNCH_ID_MAX + 1] = {0};
 	std::memcpy(id, ptr, NUTPUNCH_ID_MAX);
+	ptr += NUTPUNCH_ID_MAX;
 
+	auto flags = *reinterpret_cast<const NP_HeartbeatFlagsStorage*>(ptr);
+	ptr += sizeof(flags);
+
+	if (!flags) // wtf do you want??
+		return 0;
+
+	bool justCreated = false;
 	if (!lobbies.count(id)) {
+		if (!(flags & NP_Beat_Host)) {
+			addr.sendError(NP_Err_NoSuchLobby);
+			return 0;
+		}
+
 		if (lobbies.size() >= maxLobbies) {
+			addr.sendError(NP_Err_NoSuchLobby); // TODO: update this error code
 			NP_Log("WARN: Reached lobby limit...");
 			return 0;
 		}
@@ -449,25 +464,30 @@ process:
 				if (!player.isDead() && !std::memcmp(&player.addr, &addr, sizeof(addr)))
 					return 0; // fuck you...
 
-		NP_Log("Created lobby '%s'", fmtLobbyId(id));
 		lobbies.insert({id, Lobby(id)});
+		NP_Log("Created lobby '%s'", fmtLobbyId(id));
+		justCreated = true;
 	}
 
 	auto* players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!players[i].isDead() && !std::memcmp(&players[i].addr, &addr, sizeof(addr))) {
+		if (!players[i].isDead() && !std::memcmp(&players[i].addr.value, &addr.value, sizeof(addr.value))) {
 			lobbies[id].processRequest(i, ptr);
 			return 0;
 		}
 	}
+
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (players[i].isDead()) {
-			std::memcpy(&players[i].addr, &addr, sizeof(addr));
-			lobbies[id].processRequest(i, ptr);
-			NP_Log("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id),
-				ipv == NP_IPv6 ? "IPv6" : "IPv4");
+		if (!players[i].isDead())
+			continue;
+		if ((justCreated && !(flags & NP_Beat_Host)) || (!justCreated && !(flags & NP_Beat_Join))) {
+			addr.sendError(NP_Err_LobbyExists);
 			return 0;
 		}
+		std::memcpy(&players[i], &addr, sizeof(addr));
+		lobbies[id].processRequest(i, ptr);
+		NP_Log("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id), ipv == NP_IPv6 ? "IPv6" : "IPv4");
+		return 0;
 	}
 
 	NP_Log("Lobby '%s' is full!", fmtLobbyId(id));

@@ -28,7 +28,7 @@ In order to run your own hole-puncher server, you'll need to get the server bina
 
 Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. Here's the general usage guide for the NutPunch library:
 
-1. Call `NutPunch_Join("lobby-id")` to initiate joining a lobby in the background.
+1. Host a lobby with `NutPunch_Host("lobby-id")`, or join an existing one with `NutPunch_Join("lobby-id")`.
 2. Optionally add metadata to the lobby:
    1. If you join an empty lobby, you will be considered its master. A lobby master has the authority from the matchmaking server to set lobby-specific metadata. This is usually needed to start games with specific parameters or to enforce an expected player count in a lobby. If you don't need metadata, you can just skip this entire step.
    2. After calling `NutPunch_Join()`, you can set metadata in the lobby by calling `NutPunch_LobbySet()` as a master. You don't have to finish "connecting" and handshaking with NutPuncher before setting metadata. A lobby can hold up to 16 fields, each identified by 8-byte strings and holding up to 32 bytes of data. Non-masters aren't allowed to set metadata, so calls are no-op for them. The actual metadata also won't be updated until the next call to `NutPunch_Update()`, which will be covered later.
