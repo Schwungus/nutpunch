@@ -3,6 +3,7 @@ IndentWidth: 8
 ContinuationIndentWidth: 8
 UseTab: AlignWithSpaces
 AlignArrayOfStructures: Left
+IndentGotoLabels: true
 BreakBeforeBinaryOperators: All
 BreakBeforeBraces: Custom
 BraceWrapping:
@@ -20,3 +21,5 @@ AccessModifierOffset: -8
 IndentCaseLabels: true
 AlignAfterOpenBracket: DontAlign
 SortIncludes: CaseSensitive
+InsertNewlineAtEOF: true
+InsertBraces: false
