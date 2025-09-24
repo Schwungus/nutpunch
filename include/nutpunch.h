@@ -1109,16 +1109,12 @@ const char* NutPunch_GetLobby(int index) {
 
 int NutPunch_LobbyCount() {
 	NP_LazyInit();
-	int count = 0;
 
 	static const char nully[NUTPUNCH_ID_MAX + 1] = {0};
-	while (count < NUTPUNCH_SEARCH_RESULTS_MAX) {
+	for (int count = 0; count < NUTPUNCH_SEARCH_RESULTS_MAX; count++)
 		if (!NutPunch_Memcmp(NP_Lobbies[count], nully, sizeof(nully)))
-			break;
-		count += 1;
-	}
-
-	return count;
+			return count;
+	return NUTPUNCH_SEARCH_RESULTS_MAX;
 }
 
 int NutPunch_PeerCount() {
@@ -1129,10 +1125,10 @@ int NutPunch_PeerCount() {
 }
 
 bool NutPunch_PeerAlive(int peer) {
-	if (NutPunch_LocalPeer() == peer)
-		return true;
 	if (NP_LastStatus != NP_Status_Online)
 		return false;
+	if (NutPunch_LocalPeer() == peer)
+		return true;
 	return *NP_AddrPort(NP_Peers[peer]) != 0;
 }
 
