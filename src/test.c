@@ -53,8 +53,8 @@ int main(int argc, char* argv[]) {
 		int status = NutPunch_Update();
 
 		static uint8_t data[512] = {0};
-		while (NutPunch_HasNext()) {
-			int size = sizeof(data), peer = NutPunch_NextPacket(data, &size);
+		while (NutPunch_HasMessage()) {
+			int size = sizeof(data), peer = NutPunch_NextMessage(data, &size);
 			if (peer >= NUTPUNCH_MAX_PLAYERS)
 				continue;
 			if (size == PAYLOAD_SIZE) {

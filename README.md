@@ -39,7 +39,7 @@ Once you've figured out how the players are to connect to your hole-puncher serv
 4. Optionally read metadata from the lobby during `NP_Status_Online` status. Use `NutPunch_Get()` to get a pointer to a metadata field, which you can then read from (as long as it's valid and is the exact size that you expect it to be). These pointers are volatile, especially when calling `NutPunch_Update()`, so if you need to use the gotten value more than once, cache it somewhere.
 5. If all went well (i.e. you have enough metadata and player count is fulfilled), start your match.
 6. Run the game logic.
-7. Keep in sync with each peer: Send datagrams through `NutPunch_Send()` and poll for incoming datagrams by looping with `NutPunch_HasNext()` and retrieving them with `NutPunch_NextPacket()`. In scenarios where you need to cache packet data, `memcpy` it into a static array of `NUTPUNCH_BUFFER_SIZE`[^kb] bytes.
+7. Keep in sync with each peer: Send datagrams through `NutPunch_Send()` and poll for incoming datagrams by looping with `NutPunch_HasMessage()` and retrieving them with `NutPunch_NextMessage()`. In scenarios where you need to cache packet data, `memcpy` it into a static array of `NUTPUNCH_BUFFER_SIZE`[^kb] bytes.
 8. Come back to step 6 the next frame. You're all Gucci!
 
 [^kb]: `NUTPUNCH_BUFFER_SIZE` is currently `512000` as in 512 KB, which is the hard limit for the size of a single NutPunch packet. If you think this is a bit overkill, feel free to scold one of the developers on Discord.

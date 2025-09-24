@@ -128,11 +128,11 @@ void NutPunch_PeerSet(const char* name, int size, const void* data);
 /// Request metadata for a specific peer. Works the same way as `NutPunch_LobbyGet` otherwise.
 void* NutPunch_PeerGet(int peer, const char* name, int* size);
 
-/// Check if there is a packet waiting in the receiving queue. Retrieve it with `NutPunch_NextPacket()`.
-bool NutPunch_HasNext();
+/// Check if there is a packet waiting in the receiving queue. Retrieve it with `NutPunch_NextMessage()`.
+bool NutPunch_HasMessage();
 
 /// Retrieve the next packet in the receiving queue. Return the index of the peer who sent it.
-int NutPunch_NextPacket(void* out, int* size);
+int NutPunch_NextMessage(void* out, int* size);
 
 /// Send data to specified peer. For reliable packet delivery, use `NutPunch_SendReliably`.
 void NutPunch_Send(int peer, const void* data, int size);
@@ -258,16 +258,16 @@ struct NP_Addr {
 	NP_IPv ipv;
 };
 
-struct NP_Packet {
+struct NP_DataMessage {
 	char* data;
-	struct NP_Packet* next;
+	struct NP_DataMessage* next;
 	NP_PacketIdx index;
 	uint32_t size;
 	uint8_t peer, dead;
 	int16_t bounce;
 };
 
-struct NP_ServicePacket {
+struct NP_Message {
 	const char identifier[NUTPUNCH_HEADER_SIZE];
 	int packetSize;
 	void (*const handler)(struct NP_Addr, int, const uint8_t*);
@@ -286,7 +286,7 @@ NP_MakeHandler(NP_HandleList);
 NP_MakeHandler(NP_HandleAcky);
 NP_MakeHandler(NP_HandleData);
 
-static const struct NP_ServicePacket NP_ServiceTable[] = {
+static const struct NP_Message NP_Messages[] = {
 	{'I', 'N', 'T', 'R', 1,           NP_HandleIntro     },
 	{'D', 'I', 'S', 'C', 0,           NP_HandleDisconnect},
 	{'G', 'T', 'F', 'O', 1,           NP_HandleGTFO      },
@@ -310,7 +310,7 @@ static NP_Socket NP_Sock4 = NUTPUNCH_INVALID_SOCKET, NP_Sock6 = NUTPUNCH_INVALID
 static struct NP_Addr NP_PuncherPeer = {0};
 static char NP_ServerHost[128] = {0};
 
-static struct NP_Packet *NP_QueueIn = NULL, *NP_QueueOut = NULL;
+static struct NP_DataMessage *NP_QueueIn = NULL, *NP_QueueOut = NULL;
 static struct NutPunch_Field NP_LobbyMetadata[NUTPUNCH_MAX_FIELDS] = {0},
 			     NP_PeerMetadata[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0},
 			     NP_MetadataOut[NP_MetaCount][NUTPUNCH_MAX_FIELDS] = {0};
@@ -328,9 +328,9 @@ enum {
 	NP_Beat_Host = 1 << 1,
 };
 
-static void NP_CleanupPackets(struct NP_Packet** queue) {
+static void NP_CleanupPackets(struct NP_DataMessage** queue) {
 	while (*queue != NULL) {
-		struct NP_Packet* ptr = *queue;
+		struct NP_DataMessage* ptr = *queue;
 		*queue = ptr->next;
 		NutPunch_Free(ptr->data);
 		NutPunch_Free(ptr);
@@ -678,8 +678,8 @@ static void NP_SendEx(int peer, const void* data, int size, NP_PacketIdx index) 
 		return;
 	}
 
-	struct NP_Packet* next = NP_QueueOut;
-	NP_QueueOut = (struct NP_Packet*)NutPunch_Malloc(sizeof(*next));
+	struct NP_DataMessage* next = NP_QueueOut;
+	NP_QueueOut = (struct NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
 	NP_QueueOut->next = next;
 	NP_QueueOut->peer = peer;
 	NP_QueueOut->size = size;
@@ -801,8 +801,8 @@ NP_MakeHandler(NP_HandleData) {
 		NP_SendEx(peerIdx, ack, sizeof(ack), 0);
 	}
 
-	struct NP_Packet* next = NP_QueueIn;
-	NP_QueueIn = (struct NP_Packet*)NutPunch_Malloc(sizeof(*next));
+	struct NP_DataMessage* next = NP_QueueIn;
+	NP_QueueIn = (struct NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
 	NP_QueueIn->data = (char*)NutPunch_Malloc(size);
 	NutPunch_Memcpy(NP_QueueIn->data, data, size);
 	NP_QueueIn->peer = peerIdx;
@@ -812,7 +812,7 @@ NP_MakeHandler(NP_HandleData) {
 
 NP_MakeHandler(NP_HandleAcky) {
 	NP_PacketIdx index = *(NP_PacketIdx*)data;
-	for (struct NP_Packet* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next)
+	for (struct NP_DataMessage* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next)
 		if (ptr->index == index) {
 			ptr->dead = true;
 			return;
@@ -895,13 +895,13 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 		return 0;
 	size -= NUTPUNCH_HEADER_SIZE;
 
-	for (int i = 0; i < sizeof(NP_ServiceTable) / sizeof(*NP_ServiceTable); i++) {
-		const struct NP_ServicePacket entry = NP_ServiceTable[i];
-		if (!NutPunch_Memcmp(buf, entry.identifier, NUTPUNCH_HEADER_SIZE)
-			&& (entry.packetSize < 0 || size == entry.packetSize))
+	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
+		const struct NP_Message msg = NP_Messages[i];
+		if (!NutPunch_Memcmp(buf, msg.identifier, NUTPUNCH_HEADER_SIZE)
+			&& (msg.packetSize < 0 || size == msg.packetSize))
 		{
 			struct NP_Addr peer = {.value = addr, .ipv = ipv};
-			entry.handler(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
+			msg.handler(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
 			return 0;
 		}
 	}
@@ -911,11 +911,11 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 
 static void NP_PruneOutQueue() {
 findNext:
-	for (struct NP_Packet* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next) {
+	for (struct NP_DataMessage* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next) {
 		if (!ptr->dead)
 			continue;
 
-		for (struct NP_Packet* other = NP_QueueOut; other != NULL; other = other->next)
+		for (struct NP_DataMessage* other = NP_QueueOut; other != NULL; other = other->next)
 			if (other->next == ptr) {
 				other->next = ptr->next;
 				NutPunch_Free(ptr->data);
@@ -936,7 +936,7 @@ findNext:
 static void NP_FlushOutQueue() {
 	NP_PruneOutQueue();
 
-	for (struct NP_Packet* cur = NP_QueueOut; cur != NULL; cur = cur->next) {
+	for (struct NP_DataMessage* cur = NP_QueueOut; cur != NULL; cur = cur->next) {
 		if (!NutPunch_PeerAlive(cur->peer)) {
 			cur->dead = true;
 			continue;
@@ -1028,11 +1028,11 @@ int NutPunch_Update() {
 	return NP_LastStatus;
 }
 
-bool NutPunch_HasNext() {
+bool NutPunch_HasMessage() {
 	return NP_QueueIn != NULL;
 }
 
-int NutPunch_NextPacket(void* out, int* size) {
+int NutPunch_NextMessage(void* out, int* size) {
 	if (*size < NP_QueueIn->size) {
 		NP_Log("WARN: not enough memory allocated to copy the next packet");
 		return NUTPUNCH_MAX_PLAYERS;
@@ -1044,7 +1044,7 @@ int NutPunch_NextPacket(void* out, int* size) {
 	NutPunch_Free(NP_QueueIn->data);
 
 	int sourcePeer = NP_QueueIn->peer;
-	struct NP_Packet* next = NP_QueueIn->next;
+	struct NP_DataMessage* next = NP_QueueIn->next;
 	NutPunch_Free(NP_QueueIn);
 
 	NP_QueueIn = next;
