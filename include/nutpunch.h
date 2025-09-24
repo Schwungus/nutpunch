@@ -20,7 +20,7 @@ extern "C" {
 #define _WIN32_WINNT 0x0501
 #endif
 
-/// The default NutPuncher instance. It's public, so feel free to use it.
+/// The default NutPuncher instance. It's public, so feel free to [ab]use it.
 #define NUTPUNCH_DEFAULT_SERVER "nutpunch.schwung.us"
 
 /// Maximum amount of players in a lobby. Not intended to be customizable.
