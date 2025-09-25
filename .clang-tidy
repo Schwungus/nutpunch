@@ -2,7 +2,6 @@ Checks: |
   clang-diagnostic-*,
   clang-analyzer-*,
   bugprone-*,
-  -bugprone-narrowing-conversions,
   -bugprone-assignment-in-if-condition,
   -bugprone-suspicious-string-compare,
   -bugprone-reserved-identifier,
@@ -10,6 +9,5 @@ Checks: |
   -bugprone-easily-swappable-parameters,
   -bugprone-suspicious-memory-comparison,
   performance-*,
-  -performance-no-int-to-ptr,
   -performance-enum-size,
   portability-*

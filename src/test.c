@@ -142,7 +142,7 @@ int main(int argc, char* argv[]) {
 
 			NutPunch_LobbySet("PLAYERS", sizeof(waitingForPlayers), &waitingForPlayers);
 			const char* name = randomNames[GetRandomValue(1, nameCount) - 1];
-			NutPunch_PeerSet("NAME", strlen(name) + 1, name);
+			NutPunch_PeerSet("NAME", (int)strlen(name) + 1, name);
 		}
 
 	skip_network:

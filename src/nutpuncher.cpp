@@ -78,7 +78,7 @@ struct Field : NutPunch_Field {
 	bool nameMatches(const char* name) const {
 		if (isDead())
 			return false;
-		int nameLen = NUTPUNCH_FIELD_NAME_MAX, inputLen = std::strlen(name);
+		int nameLen = NUTPUNCH_FIELD_NAME_MAX, inputLen = static_cast<int>(std::strlen(name));
 		if (inputLen > NUTPUNCH_FIELD_NAME_MAX)
 			inputLen = NUTPUNCH_FIELD_NAME_MAX;
 		for (int i = 0; i < inputLen; i++)
@@ -128,7 +128,7 @@ struct Metadata {
 		int idx = find(name);
 		if (NUTPUNCH_MAX_FIELDS == idx)
 			return;
-		int count = std::strlen(name);
+		int count = static_cast<int>(std::strlen(name));
 		if (count > NUTPUNCH_FIELD_NAME_MAX)
 			count = NUTPUNCH_FIELD_NAME_MAX;
 		std::memcpy(fields[idx].name, name, count);
@@ -170,14 +170,17 @@ struct Addr : NP_Addr {
 	}
 
 	template <typename T> int send(const T buf[], size_t size) const {
-		return sendto(ipv == NP_IPv6 ? sock6 : sock4, reinterpret_cast<const char*>(buf), size, 0,
-			reinterpret_cast<const sockaddr*>(&value), sizeof(value));
+		return sendto(ipv == NP_IPv6 ? sock6 : sock4, reinterpret_cast<const char*>(buf),
+			static_cast<int>(size), 0, reinterpret_cast<const sockaddr*>(&value), sizeof(value));
 	}
 
 	int sendError(uint8_t code) const {
+		int status = 0;
 		static uint8_t buf[NUTPUNCH_HEADER_SIZE + 1] = "GTFO";
 		buf[NUTPUNCH_HEADER_SIZE] = code;
-		return send(buf, sizeof(buf));
+		for (int i = 0; i < 5; i++)
+			status |= send(buf, sizeof(buf));
+		return status;
 	}
 };
 
@@ -238,10 +241,14 @@ struct Lobby {
 	}
 
 	bool isDead() const {
+		return !playerCount();
+	}
+
+	int playerCount() const {
+		int count = 0;
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (!players[i].isDead())
-				return false;
-		return true;
+			count += !players[i].isDead();
+		return count;
 	}
 
 	void processRequest(const int playerIdx, const char* meta) {
@@ -306,15 +313,12 @@ struct Lobby {
 	}
 
 	int getMasterIdx() {
-		if (NUTPUNCH_MAX_PLAYERS == masterIdx || players[masterIdx].isDead()) {
-			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-				if (!players[i].isDead()) {
-					masterIdx = i;
-					return masterIdx;
-				}
-			masterIdx = NUTPUNCH_MAX_PLAYERS;
-		}
-		return masterIdx;
+		if (NUTPUNCH_MAX_PLAYERS != masterIdx && !players[masterIdx].isDead())
+			return masterIdx;
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+			if (!players[i].isDead())
+				return (masterIdx = i);
+		return (masterIdx = NUTPUNCH_MAX_PLAYERS);
 	}
 
 private:
@@ -372,7 +376,7 @@ static void bindSock(NP_IPv ipv) {
 static void sendLobbyList(Addr addr, const NutPunch_Filter* filters) {
 	static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {'L', 'I', 'S', 'T', 0};
 	uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
-	int resultCount = 0, filterCount = 0;
+	size_t filterCount = 0;
 
 	for (; filterCount < NUTPUNCH_SEARCH_FILTERS_MAX; filterCount++) {
 		static constexpr const NutPunch_Filter nully = {0};
@@ -389,7 +393,6 @@ static void sendLobbyList(Addr addr, const NutPunch_Filter* filters) {
 				if (lobby.metadata.fields[m].filterMatches(filters[f]))
 					goto nextFilter;
 			goto nextLobby; // no field matched the filter
-
 		nextFilter:
 			continue;
 		}
@@ -398,7 +401,6 @@ static void sendLobbyList(Addr addr, const NutPunch_Filter* filters) {
 		std::memset(ptr, 0, NUTPUNCH_ID_MAX);
 		std::memcpy(ptr, id.data(), std::strlen(lobby.fmtId()));
 		ptr += NUTPUNCH_ID_MAX;
-		resultCount++;
 
 	nextLobby:
 		continue;
@@ -412,6 +414,7 @@ static int receiveShit(NP_IPv ipv) {
 	auto& sock = ipv == NP_IPv6 ? sock6 : sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return -1;
+	Player* players = nullptr;
 
 	char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
 	Addr addr(ipv);
@@ -445,31 +448,24 @@ static int receiveShit(NP_IPv ipv) {
 	if (!flags) // wtf do you want??
 		return 0;
 
-	bool justCreated = false;
+	if ((lobbies.count(id) && !(flags & NP_Beat_Join)) || (!lobbies.count(id) && !(flags & NP_Beat_Create)))
+		goto exists;
+	if (!lobbies.count(id) && lobbies.size() >= maxLobbies) {
+		addr.sendError(NP_Err_NoSuchLobby); // TODO: update this error code
+		NP_Log("WARN: Reached lobby limit...");
+		return 0;
+	}
 	if (!lobbies.count(id)) {
-		if (!(flags & NP_Beat_Host)) {
-			addr.sendError(NP_Err_NoSuchLobby);
-			return 0;
-		}
-
-		if (lobbies.size() >= maxLobbies) {
-			addr.sendError(NP_Err_NoSuchLobby); // TODO: update this error code
-			NP_Log("WARN: Reached lobby limit...");
-			return 0;
-		}
-
 		// Match against existing peers to prevent creating multiple lobbies with the same master.
 		for (const auto& [lobbyId, lobby] : lobbies)
 			for (const auto& player : lobby.players)
 				if (!player.isDead() && !std::memcmp(&player.addr, &addr, sizeof(addr)))
 					return 0; // fuck you...
-
 		lobbies.insert({id, Lobby(id)});
 		NP_Log("Created lobby '%s'", fmtLobbyId(id));
-		justCreated = true;
 	}
 
-	auto* players = lobbies[id].players;
+	players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (!players[i].isDead() && !std::memcmp(&players[i].addr.value, &addr.value, sizeof(addr.value))) {
 			lobbies[id].processRequest(i, ptr);
@@ -477,20 +473,25 @@ static int receiveShit(NP_IPv ipv) {
 		}
 	}
 
+	if ((flags & NP_Beat_Create) && lobbies[id].playerCount() > 0)
+		goto exists;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (!players[i].isDead())
 			continue;
-		if ((justCreated && !(flags & NP_Beat_Host)) || (!justCreated && !(flags & NP_Beat_Join))) {
-			addr.sendError(NP_Err_LobbyExists);
-			return 0;
-		}
-		std::memcpy(&players[i], &addr, sizeof(addr));
+
+		players[i].addr = addr;
 		lobbies[id].processRequest(i, ptr);
-		NP_Log("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id), ipv == NP_IPv6 ? "IPv6" : "IPv4");
+
+		const char* ipv_s = ipv == NP_IPv6 ? "IPv6" : "IPv4";
+		NP_Log("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id), ipv_s);
 		return 0;
 	}
 
 	NP_Log("Lobby '%s' is full!", fmtLobbyId(id));
+	return 0;
+
+exists:
+	addr.sendError(NP_Err_LobbyExists);
 	return 0;
 }
 
@@ -509,10 +510,8 @@ int main(int, char**) {
 	cleanup __cleanup;
 
 #ifdef NUTPUNCH_WINDOSE
-	{
-		WSADATA bitch = {0};
-		WSAStartup(MAKEWORD(2, 2), &bitch);
-	}
+	WSADATA __bitch = {0};
+	WSAStartup(MAKEWORD(2, 2), &__bitch);
 #endif
 
 	try {
@@ -531,7 +530,7 @@ int main(int, char**) {
 		if (sock4 == NUTPUNCH_INVALID_SOCKET && sock6 == NUTPUNCH_INVALID_SOCKET)
 			return EXIT_FAILURE;
 
-		static const NP_IPv ipvs[2] = {NP_IPv6, NP_IPv4};
+		static constexpr const NP_IPv ipvs[2] = {NP_IPv6, NP_IPv4};
 		for (const auto ipv : ipvs) {
 			int result;
 			while (!(result = receiveShit(ipv))) {

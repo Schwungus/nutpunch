@@ -47,9 +47,7 @@ int main(int argc, char* argv[]) {
 		printf("'%s' ", NutPunch_GetLobby(i));
 	if (lobbyCount)
 		printf("\n");
-
 	return EXIT_SUCCESS;
-
 fail:
 	printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
 	return EXIT_FAILURE;
