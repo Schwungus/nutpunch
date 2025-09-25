@@ -627,13 +627,17 @@ static bool NutPunch_Connect(const char* lobbyId) {
 	NP_NukeLobbyData();
 	NP_ExpectNutpuncher();
 
-	if (NP_BindSocket(NP_IPv6) && NP_BindSocket(NP_IPv4)) {
-		NP_LastStatus = NP_Status_Online;
+	if (!NP_BindSocket(NP_IPv6) || !NP_BindSocket(NP_IPv4))
+		goto fail;
+
+	NP_LastStatus = NP_Status_Online;
+	if (lobbyId != NULL) {
 		NutPunch_Memset(NP_LobbyId, 0, sizeof(NP_LobbyId));
 		snprintf(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobbyId);
-		return true;
 	}
+	return true;
 
+fail:
 	NutPunch_Reset();
 	NP_LastStatus = NP_Status_Error;
 	return false;
@@ -1081,25 +1085,14 @@ void NutPunch_SendReliably(int peer, const void* data, int size) {
 }
 
 void NutPunch_FindLobbies(int filterCount, const struct NutPunch_Filter* filters) {
-	NP_LazyInit();
-	NP_ExpectNutpuncher();
-
 	if (filterCount < 1)
 		return;
 	else if (filterCount > NUTPUNCH_SEARCH_FILTERS_MAX)
 		filterCount = NUTPUNCH_SEARCH_FILTERS_MAX;
-
-	if (!NP_BindSocket(NP_IPv6) || !NP_BindSocket(NP_IPv4))
-		goto fail;
+	if (!NutPunch_Connect(NULL))
+		return;
 	NP_Querying = true;
 	NutPunch_Memcpy(NP_Filters, filters, filterCount * sizeof(*filters));
-	return;
-
-fail:
-	NP_PrintError();
-	NutPunch_Reset();
-	NP_LastStatus = NP_Status_Error;
-	return;
 }
 
 const char* NutPunch_GetLobby(int index) {
