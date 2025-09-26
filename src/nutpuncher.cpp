@@ -11,7 +11,7 @@
 #undef NP_Log
 #endif
 
-// Just strip the damn <NP> prefix...
+// Just strip the damn [NP] prefix...
 #define NP_Log(...)                                                                                                    \
 	do {                                                                                                           \
 		fprintf(stdout, __VA_ARGS__);                                                                          \
@@ -170,8 +170,9 @@ struct Addr : NP_Addr {
 	}
 
 	template <typename T> int send(const T buf[], size_t size) const {
-		return sendto(ipv == NP_IPv6 ? sock6 : sock4, reinterpret_cast<const char*>(buf),
-			static_cast<int>(size), 0, reinterpret_cast<const sockaddr*>(&value), sizeof(value));
+		const auto sock = ipv == NP_IPv6 ? sock6 : sock4;
+		return sendto(sock, reinterpret_cast<const char*>(buf), static_cast<int>(size), 0,
+			reinterpret_cast<const sockaddr*>(&value), sizeof(value));
 	}
 
 	int sendError(uint8_t code) const {
@@ -270,7 +271,7 @@ struct Lobby {
 	}
 
 	void sendTo(const int playerIdx) {
-		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {'J', 'O', 'I', 'N', 0};
+		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = "JOIN";
 		if (players[playerIdx].isDead())
 			return;
 
@@ -374,7 +375,7 @@ static void bindSock(NP_IPv ipv) {
 }
 
 static void sendLobbyList(Addr addr, const NutPunch_Filter* filters) {
-	static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = {'L', 'I', 'S', 'T', 0};
+	static uint8_t buf[NUTPUNCH_HEADER_SIZE + NP_LIST_LEN] = "LIST";
 	uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
 	size_t filterCount = 0;
 
@@ -386,7 +387,7 @@ static void sendLobbyList(Addr addr, const NutPunch_Filter* filters) {
 	if (!filterCount)
 		return;
 
-	std::memset(ptr, 0, (size_t)(NUTPUNCH_ID_MAX * NUTPUNCH_SEARCH_RESULTS_MAX));
+	std::memset(ptr, 0, (size_t)NP_LIST_LEN);
 	for (const auto& [id, lobby] : lobbies) {
 		for (int f = 0; f < filterCount; f++) {
 			for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++)
@@ -407,7 +408,7 @@ static void sendLobbyList(Addr addr, const NutPunch_Filter* filters) {
 	}
 
 	for (int i = 0; i < 5; i++)
-		addr.send(buf, NUTPUNCH_HEADER_SIZE + NP_LIST_LEN);
+		addr.send(buf, sizeof(buf));
 }
 
 static int receiveShit(NP_IPv ipv) {
@@ -537,7 +538,7 @@ int main(int, char**) {
 			}
 			if (result > 0) {
 				NP_Log("Failed to receive data (code %d)", result);
-				(ipv ? sock6 : sock4) = NUTPUNCH_INVALID_SOCKET;
+				(ipv == NP_IPv6 ? sock6 : sock4) = NUTPUNCH_INVALID_SOCKET;
 			}
 		}
 

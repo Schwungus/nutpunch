@@ -274,7 +274,7 @@ struct NP_Message {
 };
 
 #define NP_JOIN_LEN (NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
-#define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (NUTPUNCH_ID_MAX + 1))
+#define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * NUTPUNCH_ID_MAX)
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
 #define NP_MakeHandler(name) static void name(struct NP_Addr peer, int size, const uint8_t* data)
@@ -749,7 +749,7 @@ NP_MakeHandler(NP_HandleJoin) {
 	if (NP_LocalPeer == NUTPUNCH_MAX_PLAYERS)
 		return;
 
-	static uint8_t hello[] = {'I', 'N', 'T', 'R', 0};
+	static uint8_t hello[] = "INTR";
 	hello[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
@@ -1054,6 +1054,7 @@ int NutPunch_NextMessage(void* out, int* size) {
 static void NP_SendData(int peer, const void* data, int dataSize, bool reliable) {
 	static char buf[NUTPUNCH_BUFFER_SIZE] = "DATA";
 	static NP_PacketIdx packetIdx = 1;
+	NP_LazyInit();
 
 	if (dataSize > NUTPUNCH_BUFFER_SIZE - 32) {
 		NP_Log("Ignoring a huge packet");
@@ -1086,12 +1087,11 @@ const char* NutPunch_GetLobby(int index) {
 }
 
 int NutPunch_LobbyCount() {
-	NP_LazyInit();
-
 	static const char nully[NUTPUNCH_ID_MAX + 1] = {0};
-	for (int count = 0; count < NUTPUNCH_SEARCH_RESULTS_MAX; count++)
-		if (!NutPunch_Memcmp(NP_Lobbies[count], nully, sizeof(nully)))
-			return count;
+	NP_LazyInit();
+	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++)
+		if (!NutPunch_Memcmp(NP_Lobbies[i], nully, sizeof(nully)))
+			return i;
 	return NUTPUNCH_SEARCH_RESULTS_MAX;
 }
 
