@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
 	else if (!len)
 		goto fail;
 
-	struct NutPunch_Filter filter = {0};
+	NutPunch_Filter filter = {0};
 	memcpy(filter.name, argv[1], len);
 	memcpy(filter.value, &data, sizeof(data));
 	filter.comparison = 0;

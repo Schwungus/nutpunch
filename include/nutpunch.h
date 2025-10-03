@@ -57,10 +57,10 @@ extern "C" {
 
 #define NUTPUNCH_RESPONSE_SIZE                                                                                         \
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_MAX_PLAYERS * 19                                                              \
-		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
+		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
-		+ NP_MetaCount * NUTPUNCH_MAX_FIELDS * (int)sizeof(struct NutPunch_Field))
+		+ NP_MetaCount * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -73,15 +73,15 @@ enum {
 	NP_Status_Online,
 };
 
-struct NutPunch_Field {
+typedef struct {
 	char name[NUTPUNCH_FIELD_NAME_MAX], data[NUTPUNCH_FIELD_DATA_MAX];
 	uint8_t size;
-};
+} NutPunch_Field;
 
-struct NutPunch_Filter {
+typedef struct {
 	char name[NUTPUNCH_FIELD_NAME_MAX], value[NUTPUNCH_FIELD_DATA_MAX];
 	int8_t comparison;
-};
+} NutPunch_Filter;
 
 enum {
 	NP_MetaPeer,
@@ -162,7 +162,7 @@ void NutPunch_Disconnect();
 /// For `comparison`, use `0` for an exact value match, `-1` for "less than the server's", and `1` vice versa.
 ///
 /// The lobby list is queried every call to `NutPunch_Update`, so make sure you aren't skipping it.
-void NutPunch_FindLobbies(int filterCount, const struct NutPunch_Filter* filters);
+void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters);
 
 /// Reap the fruits of `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
 const char* NutPunch_GetLobby(int index);
@@ -253,31 +253,31 @@ typedef uint64_t NP_PacketIdx;
 #define NP_AddrPort(addr)                                                                                              \
 	((addr).ipv == NP_IPv6 ? &((struct sockaddr_in6*)&(addr))->sin6_port                                           \
 			       : &((struct sockaddr_in*)&(addr))->sin_port)
-struct NP_Addr {
+typedef struct {
 	struct sockaddr_storage value;
 	NP_IPv ipv;
-};
+} NP_Addr;
 
-struct NP_DataMessage {
+typedef struct NP_DataMessage {
 	char* data;
 	struct NP_DataMessage* next;
 	NP_PacketIdx index;
 	uint32_t size;
 	uint8_t peer, dead;
 	int16_t bounce;
-};
+} NP_DataMessage;
 
-struct NP_Message {
+typedef struct {
 	const char identifier[NUTPUNCH_HEADER_SIZE];
 	int packetSize;
-	void (*const handler)(struct NP_Addr, int, const uint8_t*);
-};
+	void (*const handler)(NP_Addr, int, const uint8_t*);
+} NP_MessageTable;
 
 #define NP_JOIN_LEN (NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
 #define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * NUTPUNCH_ID_MAX)
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
-#define NP_MakeHandler(name) static void name(struct NP_Addr peer, int size, const uint8_t* data)
+#define NP_MakeHandler(name) static void name(NP_Addr peer, int size, const uint8_t* data)
 NP_MakeHandler(NP_HandleIntro);
 NP_MakeHandler(NP_HandleDisconnect);
 NP_MakeHandler(NP_HandleGTFO);
@@ -286,7 +286,7 @@ NP_MakeHandler(NP_HandleList);
 NP_MakeHandler(NP_HandleAcky);
 NP_MakeHandler(NP_HandleData);
 
-static const struct NP_Message NP_Messages[] = {
+static const NP_MessageTable NP_Messages[] = {
 	{'I', 'N', 'T', 'R', 1,           NP_HandleIntro     },
 	{'D', 'I', 'S', 'C', 0,           NP_HandleDisconnect},
 	{'G', 'T', 'F', 'O', 1,           NP_HandleGTFO      },
@@ -303,20 +303,20 @@ static bool NP_InitDone = false, NP_Closing = false;
 static int NP_LastStatus = NP_Status_Idle;
 
 static char NP_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
-static struct NP_Addr NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
+static NP_Addr NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static uint8_t NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
 
 static NP_Socket NP_Sock4 = NUTPUNCH_INVALID_SOCKET, NP_Sock6 = NUTPUNCH_INVALID_SOCKET;
-static struct NP_Addr NP_PuncherPeer = {0};
+static NP_Addr NP_PuncherPeer = {0};
 static char NP_ServerHost[128] = {0};
 
-static struct NP_DataMessage *NP_QueueIn = NULL, *NP_QueueOut = NULL;
-static struct NutPunch_Field NP_LobbyMetadata[NUTPUNCH_MAX_FIELDS] = {0},
-			     NP_PeerMetadata[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0},
-			     NP_MetadataOut[NP_MetaCount][NUTPUNCH_MAX_FIELDS] = {0};
+static NP_DataMessage *NP_QueueIn = NULL, *NP_QueueOut = NULL;
+static NutPunch_Field NP_LobbyMetadata[NUTPUNCH_MAX_FIELDS] = {0},
+		      NP_PeerMetadata[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0},
+		      NP_MetadataOut[NP_MetaCount][NUTPUNCH_MAX_FIELDS] = {0};
 
 static bool NP_Querying = false;
-static struct NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
+static NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
 
 static char NP_LobbyNames[NUTPUNCH_SEARCH_RESULTS_MAX][NUTPUNCH_ID_MAX + 1] = {0};
 static char* NP_Lobbies[NUTPUNCH_SEARCH_RESULTS_MAX] = {0};
@@ -328,9 +328,9 @@ enum {
 	NP_Beat_Create = 1 << 1,
 };
 
-static void NP_CleanupPackets(struct NP_DataMessage** queue) {
+static void NP_CleanupPackets(NP_DataMessage** queue) {
 	while (*queue != NULL) {
-		struct NP_DataMessage* ptr = *queue;
+		NP_DataMessage* ptr = *queue;
 		*queue = ptr->next;
 		NutPunch_Free(ptr->data);
 		NutPunch_Free(ptr);
@@ -399,7 +399,7 @@ static void NP_PrintError() {
 		NP_Log("WARN: %s", NP_LastError);
 }
 
-static bool NP_GetAddrInfo(struct NP_Addr* out, const char* host, uint16_t port, NP_IPv ipv) {
+static bool NP_GetAddrInfo(NP_Addr* out, const char* host, uint16_t port, NP_IPv ipv) {
 	NP_LazyInit();
 
 	out->ipv = ipv;
@@ -441,8 +441,8 @@ static bool NP_GetAddrInfo(struct NP_Addr* out, const char* host, uint16_t port,
 	return true;
 }
 
-static struct NP_Addr NP_ResolveAddr(const char* host, uint16_t port) {
-	struct NP_Addr out = {0};
+static NP_Addr NP_ResolveAddr(const char* host, uint16_t port) {
+	NP_Addr out = {0};
 	if (!NP_GetAddrInfo(&out, host, port, NP_IPv6))
 		NP_GetAddrInfo(&out, host, port, NP_IPv4);
 	return out;
@@ -470,7 +470,7 @@ static int NP_FieldNameSize(const char* name) {
 	return NUTPUNCH_FIELD_NAME_MAX;
 }
 
-static void* NP_GetMetadataFrom(struct NutPunch_Field fields[NUTPUNCH_MAX_FIELDS], const char* name, int* size) {
+static void* NP_GetMetadataFrom(NutPunch_Field fields[NUTPUNCH_MAX_FIELDS], const char* name, int* size) {
 	static char buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
 	NutPunch_Memset(buf, 0, sizeof(buf));
 
@@ -479,7 +479,7 @@ static void* NP_GetMetadataFrom(struct NutPunch_Field fields[NUTPUNCH_MAX_FIELDS
 		goto none;
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		struct NutPunch_Field* ptr = &fields[i];
+		NutPunch_Field* ptr = &fields[i];
 		if (!NutPunch_Memcmp(ptr->name, name, nameSize)) {
 			NutPunch_Memcpy(buf, ptr->data, ptr->size);
 			if (size != NULL)
@@ -526,9 +526,9 @@ static void NP_SetMetadataOut(int type, const char* name, int dataSize, const vo
 		dataSize = NUTPUNCH_FIELD_DATA_MAX;
 	}
 
-	static const struct NutPunch_Field nullfield = {0};
+	static const NutPunch_Field nullfield = {0};
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		struct NutPunch_Field* ptr = &NP_MetadataOut[type][i];
+		NutPunch_Field* ptr = &NP_MetadataOut[type][i];
 
 		if (!NutPunch_Memcmp(ptr, &nullfield, sizeof(nullfield)))
 			goto set;
@@ -566,7 +566,7 @@ static void NP_ExpectNutpuncher() {
 static bool NP_BindSocket(NP_IPv ipv) {
 	NP_LazyInit();
 
-	struct NP_Addr local = {0};
+	NP_Addr local = {0};
 #ifdef NUTPUNCH_WINDOSE
 	u_long argp = 1;
 #endif
@@ -649,7 +649,7 @@ bool NutPunch_Join(const char* lobbyId) {
 	return NutPunch_Connect(lobbyId);
 }
 
-void NutPunch_FindLobbies(int filterCount, const struct NutPunch_Filter* filters) {
+void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters) {
 	if (filterCount < 1)
 		return;
 	else if (filterCount > NUTPUNCH_SEARCH_FILTERS_MAX)
@@ -687,8 +687,8 @@ static void NP_SendEx(int peer, const void* data, int size, NP_PacketIdx index) 
 		return;
 	}
 
-	struct NP_DataMessage* next = NP_QueueOut;
-	NP_QueueOut = (struct NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
+	NP_DataMessage* next = NP_QueueOut;
+	NP_QueueOut = (NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
 	NP_QueueOut->next = next;
 	NP_QueueOut->peer = peer;
 	NP_QueueOut->size = size;
@@ -737,7 +737,7 @@ NP_MakeHandler(NP_HandleJoin) {
 		return;
 
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
-	const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(struct NutPunch_Field);
+	const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 
 	for (uint8_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		const uint8_t *ptr = data + i * (ptrdiff_t)(19 + metaSize), nulladdr[16] = {0};
@@ -810,8 +810,8 @@ NP_MakeHandler(NP_HandleData) {
 		NP_SendEx(peerIdx, ack, sizeof(ack), 0);
 	}
 
-	struct NP_DataMessage* next = NP_QueueIn;
-	NP_QueueIn = (struct NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
+	NP_DataMessage* next = NP_QueueIn;
+	NP_QueueIn = (NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
 	NP_QueueIn->data = (char*)NutPunch_Malloc(size);
 	NutPunch_Memcpy(NP_QueueIn->data, data, size);
 	NP_QueueIn->peer = peerIdx;
@@ -821,7 +821,7 @@ NP_MakeHandler(NP_HandleData) {
 
 NP_MakeHandler(NP_HandleAcky) {
 	NP_PacketIdx index = *(NP_PacketIdx*)data;
-	for (struct NP_DataMessage* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next)
+	for (NP_DataMessage* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next)
 		if (ptr->index == index) {
 			ptr->dead = true;
 			return;
@@ -903,11 +903,11 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 	size -= NUTPUNCH_HEADER_SIZE;
 
 	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
-		const struct NP_Message msg = NP_Messages[i];
+		const NP_MessageTable msg = NP_Messages[i];
 		if (!NutPunch_Memcmp(buf, msg.identifier, NUTPUNCH_HEADER_SIZE)
 			&& (msg.packetSize < 0 || size == msg.packetSize))
 		{
-			struct NP_Addr peer = {.value = addr, .ipv = ipv};
+			NP_Addr peer = {.value = addr, .ipv = ipv};
 			msg.handler(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
 			return 0;
 		}
@@ -918,11 +918,11 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 
 static void NP_PruneOutQueue() {
 findNext:
-	for (struct NP_DataMessage* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next) {
+	for (NP_DataMessage* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next) {
 		if (!ptr->dead)
 			continue;
 
-		for (struct NP_DataMessage* other = NP_QueueOut; other != NULL; other = other->next)
+		for (NP_DataMessage* other = NP_QueueOut; other != NULL; other = other->next)
 			if (other->next == ptr) {
 				other->next = ptr->next;
 				NutPunch_Free(ptr->data);
@@ -943,7 +943,7 @@ findNext:
 static void NP_FlushOutQueue() {
 	NP_PruneOutQueue();
 
-	for (struct NP_DataMessage* cur = NP_QueueOut; cur != NULL; cur = cur->next) {
+	for (NP_DataMessage* cur = NP_QueueOut; cur != NULL; cur = cur->next) {
 		if (!NutPunch_PeerAlive(cur->peer)) {
 			cur->dead = true;
 			continue;
@@ -962,7 +962,7 @@ static void NP_FlushOutQueue() {
 			cur->bounce = NUTPUNCH_BOUNCE_TICKS;
 
 	send:
-		const struct NP_Addr peer = NP_Peers[cur->peer];
+		const NP_Addr peer = NP_Peers[cur->peer];
 		const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 		int result
 			= sendto(sock, cur->data, (int)cur->size, 0, (struct sockaddr*)&peer.value, sizeof(peer.value));
@@ -1044,7 +1044,7 @@ int NutPunch_NextMessage(void* out, int* size) {
 	NutPunch_Free(NP_QueueIn->data);
 
 	int sourcePeer = NP_QueueIn->peer;
-	struct NP_DataMessage* next = NP_QueueIn->next;
+	NP_DataMessage* next = NP_QueueIn->next;
 	NutPunch_Free(NP_QueueIn);
 
 	NP_QueueIn = next;
