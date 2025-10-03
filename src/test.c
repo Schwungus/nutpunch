@@ -126,6 +126,8 @@ int main(int argc, char* argv[]) {
 				DrawText(name, players[i].x + sqr / 2 - width / 2, players[i].y - fs, fs, BLACK);
 			}
 			DrawText("GAMING!!!", 240, 5, fs, GREEN);
+			if (NutPunch_IsMaster())
+				DrawText("MASTERFULLY!!!", 240, 5 + fs, fs, GREEN);
 		} else {
 			waitingForPlayers = _waitingForPlayers;
 			DrawText("DISCONNECTED", 5, 5, fs, RED);

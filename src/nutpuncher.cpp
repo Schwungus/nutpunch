@@ -276,6 +276,8 @@ struct Lobby {
 			return;
 
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
+		*ptr++ = static_cast<NP_ResponseFlagsStorage>(playerIdx == getMasterIdx()) * NP_Resp_Master;
+
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& cur = players[i];
 
@@ -534,8 +536,7 @@ int main(int, char**) {
 		static constexpr const NP_IPv ipvs[2] = {NP_IPv6, NP_IPv4};
 		for (const auto ipv : ipvs) {
 			int result;
-			while (!(result = receiveShit(ipv))) {
-			}
+			while (!(result = receiveShit(ipv))) {}
 			if (result > 0) {
 				NP_Log("Failed to receive data (code %d)", result);
 				(ipv == NP_IPv6 ? sock6 : sock4) = NUTPUNCH_INVALID_SOCKET;

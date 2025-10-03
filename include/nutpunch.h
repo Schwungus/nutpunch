@@ -56,7 +56,7 @@ extern "C" {
 #define NUTPUNCH_HEADER_SIZE (4)
 
 #define NUTPUNCH_RESPONSE_SIZE                                                                                         \
-	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_MAX_PLAYERS * 19                                                              \
+	(NUTPUNCH_HEADER_SIZE + 1 + NUTPUNCH_MAX_PLAYERS * 19                                                          \
 		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
@@ -153,6 +153,9 @@ bool NutPunch_PeerAlive(int peer);
 
 /// Get the local peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
 int NutPunch_LocalPeer();
+
+/// Check if we're the lobby's master.
+bool NutPunch_IsMaster();
 
 /// Call this to gracefully disconnect from the lobby.
 void NutPunch_Disconnect();
@@ -328,6 +331,12 @@ enum {
 	NP_Beat_Create = 1 << 1,
 };
 
+typedef uint8_t NP_ResponseFlagsStorage;
+static NP_ResponseFlagsStorage NP_ResponseFlags = 0;
+enum {
+	NP_Resp_Master = 1 << 0,
+};
+
 static void NP_CleanupPackets(NP_DataMessage** queue) {
 	while (*queue != NULL) {
 		NP_DataMessage* ptr = *queue;
@@ -340,6 +349,7 @@ static void NP_CleanupPackets(NP_DataMessage** queue) {
 static void NP_NukeLobbyData() {
 	NP_Closing = NP_Querying = false;
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
+	NP_ResponseFlags = 0;
 	NutPunch_Memset(NP_LobbyMetadata, 0, sizeof(NP_LobbyMetadata));
 	NutPunch_Memset(NP_PeerMetadata, 0, sizeof(NP_PeerMetadata));
 	NutPunch_Memset(NP_MetadataOut, 0, sizeof(NP_MetadataOut));
@@ -739,6 +749,7 @@ NP_MakeHandler(NP_HandleJoin) {
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
 	const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 
+	NP_ResponseFlags = *data++;
 	for (uint8_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		const uint8_t *ptr = data + i * (ptrdiff_t)(19 + metaSize), nulladdr[16] = {0};
 		if (!NutPunch_Memcmp(ptr + 1, nulladdr, 16) && *(uint16_t*)(ptr + 17)) {
@@ -1112,6 +1123,10 @@ bool NutPunch_PeerAlive(int peer) {
 
 int NutPunch_LocalPeer() {
 	return NP_LocalPeer;
+}
+
+bool NutPunch_IsMaster() {
+	return 0 != NP_ResponseFlags & NP_Resp_Master;
 }
 
 #endif
