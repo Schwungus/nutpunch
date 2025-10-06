@@ -251,7 +251,7 @@ typedef uint8_t NP_IPv;
 #define NP_IPv4 (0)
 #define NP_IPv6 (1)
 
-typedef uint64_t NP_PacketIdx;
+typedef uint32_t NP_PacketIdx;
 
 #define NP_AddrPort(addr)                                                                                              \
 	((addr).ipv == NP_IPv6 ? &((struct sockaddr_in6*)&(addr))->sin6_port                                           \
@@ -490,12 +490,12 @@ static void* NP_GetMetadataFrom(NutPunch_Field fields[NUTPUNCH_MAX_FIELDS], cons
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		NutPunch_Field* ptr = &fields[i];
-		if (!NutPunch_Memcmp(ptr->name, name, nameSize)) {
-			NutPunch_Memcpy(buf, ptr->data, ptr->size);
-			if (size != NULL)
-				*size = ptr->size;
-			return buf;
-		}
+		if (NutPunch_Memcmp(ptr->name, name, nameSize))
+			continue;
+		NutPunch_Memcpy(buf, ptr->data, ptr->size);
+		if (size != NULL)
+			*size = ptr->size;
+		return buf;
 	}
 none:
 	if (size != NULL)
@@ -689,7 +689,7 @@ static void NP_KillPeer(int peer) {
 	NutPunch_Memset(NP_Peers + peer, 0, sizeof(*NP_Peers));
 }
 
-static void NP_SendEx(int peer, const void* data, int size, NP_PacketIdx index) {
+static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx index) {
 	if (!NutPunch_PeerAlive(peer) || NutPunch_LocalPeer() == peer)
 		return;
 	if (size > NUTPUNCH_BUFFER_SIZE - 512) {
@@ -811,14 +811,14 @@ NP_MakeHandler(NP_HandleData) {
 	if (peerIdx == NUTPUNCH_MAX_PLAYERS)
 		return;
 
-	NP_PacketIdx index = *(NP_PacketIdx*)data;
+	NP_PacketIdx index = ntohl(*(NP_PacketIdx*)data), netIndex = htonl(index);
 	size -= sizeof(index);
 	data += sizeof(index);
 
 	if (index) {
-		static char ack[NUTPUNCH_HEADER_SIZE + sizeof(index)] = "ACKY";
-		NutPunch_Memcpy(ack + NUTPUNCH_HEADER_SIZE, &index, sizeof(index));
-		NP_SendEx(peerIdx, ack, sizeof(ack), 0);
+		static char ack[NUTPUNCH_HEADER_SIZE + sizeof(netIndex)] = "ACKY";
+		NutPunch_Memcpy(ack + NUTPUNCH_HEADER_SIZE, &netIndex, sizeof(netIndex));
+		NP_QueueSend(peerIdx, ack, sizeof(ack), 0);
 	}
 
 	NP_DataMessage* next = NP_QueueIn;
@@ -1018,7 +1018,7 @@ static int NP_RealUpdate() {
 		goto flush;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 		for (int kkk = 0; kkk < 10; kkk++)
-			NP_SendEx(i, bye, sizeof(bye), 0);
+			NP_QueueSend(i, bye, sizeof(bye), 0);
 
 flush:
 	NP_FlushOutQueue();
@@ -1062,7 +1062,7 @@ int NutPunch_NextMessage(void* out, int* size) {
 	return sourcePeer;
 }
 
-static void NP_SendData(int peer, const void* data, int dataSize, bool reliable) {
+static void NP_SendEx(int peer, const void* data, int dataSize, bool reliable) {
 	static char buf[NUTPUNCH_BUFFER_SIZE] = "DATA";
 	static NP_PacketIdx packetIdx = 1;
 	NP_LazyInit();
@@ -1072,24 +1072,22 @@ static void NP_SendData(int peer, const void* data, int dataSize, bool reliable)
 		return;
 	}
 
-	const NP_PacketIdx index = reliable ? packetIdx : 0;
-	if (reliable)
-		packetIdx++;
+	const NP_PacketIdx index = reliable ? packetIdx++ : 0, netIndex = htonl(index);
 
 	char* ptr = buf + NUTPUNCH_HEADER_SIZE;
-	NutPunch_Memcpy(ptr, &index, sizeof(index));
-	ptr += sizeof(index);
+	NutPunch_Memcpy(ptr, &netIndex, sizeof(netIndex));
+	ptr += sizeof(netIndex);
 
 	NutPunch_Memcpy(ptr, data, dataSize);
-	NP_SendEx(peer, buf, NUTPUNCH_HEADER_SIZE + sizeof(index) + dataSize, index);
+	NP_QueueSend(peer, buf, NUTPUNCH_HEADER_SIZE + sizeof(index) + dataSize, index);
 }
 
 void NutPunch_Send(int peer, const void* data, int size) {
-	NP_SendData(peer, data, size, false);
+	NP_SendEx(peer, data, size, false);
 }
 
 void NutPunch_SendReliably(int peer, const void* data, int size) {
-	NP_SendData(peer, data, size, true);
+	NP_SendEx(peer, data, size, true);
 }
 
 const char* NutPunch_GetLobby(int index) {
