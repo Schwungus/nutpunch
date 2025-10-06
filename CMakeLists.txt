@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
 project(nutpunch LANGUAGES C CXX)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 set(BUILD_SHARED_LIBS OFF)
 
 include(FetchContent)
