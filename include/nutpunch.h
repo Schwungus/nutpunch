@@ -959,7 +959,7 @@ static void NP_FlushOutQueue() {
 			continue;
 		}
 
-		if (cur->bounce < 0) {
+		if (cur->bounce < 1) {
 			cur->dead = 1;
 			goto send;
 		}
@@ -968,8 +968,7 @@ static void NP_FlushOutQueue() {
 			cur->bounce--;
 		if (cur->bounce > 0)
 			continue;
-		else
-			cur->bounce = NUTPUNCH_BOUNCE_TICKS;
+		cur->bounce = NUTPUNCH_BOUNCE_TICKS;
 
 	send:
 		const NP_Addr peer = NP_Peers[cur->peer];
