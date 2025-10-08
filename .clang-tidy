@@ -10,4 +10,9 @@ Checks: |
   -bugprone-suspicious-memory-comparison,
   performance-*,
   -performance-enum-size,
-  portability-*
+  portability-*,
+  misc-*,
+  -misc-definitions-in-headers,
+  -misc-unused-parameters,
+  -misc-use-anonymous-namespace,
+  -misc-non-private-member-variables-in-classes

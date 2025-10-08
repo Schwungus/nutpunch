@@ -379,6 +379,13 @@ static void NP_NukeSocket(NP_Socket* sock) {
 	*sock = NUTPUNCH_INVALID_SOCKET;
 }
 
+static void NP_ResetImpl() {
+	NP_NukeRemote();
+	NP_NukeLobbyData();
+	NP_NukeSocket(&NP_Sock4);
+	NP_NukeSocket(&NP_Sock6);
+}
+
 static void NP_LazyInit() {
 	if (NP_InitDone)
 		return;
@@ -393,12 +400,17 @@ static void NP_LazyInit() {
 
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++)
 		NP_Lobbies[i] = NP_LobbyNames[i];
-	NutPunch_Reset();
+	NP_ResetImpl();
 
 	NP_Log(".-------------------------------------------------------------.");
 	NP_Log("| For troubleshooting multiplayer connectivity, please visit: |");
 	NP_Log("|    https://github.com/Schwungus/nutpunch#troubleshooting    |");
 	NP_Log("'-------------------------------------------------------------'");
+}
+
+void NutPunch_Reset() {
+	NP_LazyInit();
+	NP_ResetImpl();
 }
 
 static void NP_PrintError() {
@@ -462,14 +474,6 @@ void NutPunch_SetServerAddr(const char* hostname) {
 		NP_ServerHost[0] = 0;
 	else
 		snprintf(NP_ServerHost, sizeof(NP_ServerHost), "%s", hostname);
-}
-
-void NutPunch_Reset() {
-	NP_LazyInit();
-	NP_NukeRemote();
-	NP_NukeLobbyData();
-	NP_NukeSocket(&NP_Sock4);
-	NP_NukeSocket(&NP_Sock6);
 }
 
 static int NP_FieldNameSize(const char* name) {
