@@ -959,18 +959,15 @@ static void NP_FlushOutQueue() {
 			continue;
 		}
 
-		if (cur->bounce < 1) {
+		// Send & pop normally since a bounce of -1 makes it an unreliable packet.
+		if (cur->bounce < 0)
 			cur->dead = 1;
-			goto send;
-		}
-
-		if (cur->bounce > 0)
-			cur->bounce--;
-		if (cur->bounce > 0)
-			continue;
+		// Otherwise, check if it's about to bounce, in order to resend it.
+		else if (cur->bounce > 0)
+			if (--cur->bounce > 0)
+				continue;
 		cur->bounce = NUTPUNCH_BOUNCE_TICKS;
 
-	send:
 		const NP_Addr peer = NP_Peers[cur->peer];
 		const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 		int result
