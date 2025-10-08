@@ -857,7 +857,7 @@ static int NP_SendHeartbeat() {
 		ptr += NUTPUNCH_HEADER_SIZE;
 		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX);
 		ptr += NUTPUNCH_ID_MAX;
-		// TODO: correct endianness in case of multibyte flags...
+		// NOTE: make sure to correct endianness when multibyte flags become a thing.
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags;
 		ptr += sizeof(NP_HeartbeatFlags);
 		NutPunch_Memcpy(ptr, NP_MetadataOut, sizeof(NP_MetadataOut));
