@@ -1119,7 +1119,7 @@ int NutPunch_LocalPeer() {
 }
 
 int NutPunch_IsMaster() {
-	return 0 != NP_ResponseFlags & NP_Resp_Master;
+	return 0 != (NP_ResponseFlags & NP_Resp_Master);
 }
 
 #endif
