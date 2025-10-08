@@ -814,7 +814,7 @@ NP_MakeHandler(NP_HandleData) {
 	if (peerIdx == NUTPUNCH_MAX_PLAYERS)
 		return;
 
-	NP_PacketIdx index = ntohl(*(NP_PacketIdx*)data), netIndex = htonl(index);
+	const NP_PacketIdx netIndex = *(NP_PacketIdx*)data, index = ntohl(netIndex);
 	size -= sizeof(index);
 	data += sizeof(index);
 
@@ -834,7 +834,7 @@ NP_MakeHandler(NP_HandleData) {
 }
 
 NP_MakeHandler(NP_HandleAcky) {
-	NP_PacketIdx index = *(NP_PacketIdx*)data;
+	NP_PacketIdx index = ntohl(*(NP_PacketIdx*)data);
 	for (NP_DataMessage* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next)
 		if (ptr->index == index) {
 			ptr->dead = 1;
@@ -1063,7 +1063,6 @@ int NutPunch_NextMessage(void* out, int* size) {
 
 static void NP_SendEx(int peer, const void* data, int dataSize, int reliable) {
 	static char buf[NUTPUNCH_BUFFER_SIZE] = "DATA";
-	static NP_PacketIdx packetIdx = 1;
 	NP_LazyInit();
 
 	if (dataSize > NUTPUNCH_BUFFER_SIZE - 32) {
@@ -1071,7 +1070,8 @@ static void NP_SendEx(int peer, const void* data, int dataSize, int reliable) {
 		return;
 	}
 
-	const NP_PacketIdx index = reliable ? packetIdx++ : 0, netIndex = htonl(index);
+	static NP_PacketIdx packetIdx = 0;
+	const NP_PacketIdx index = reliable ? ++packetIdx : 0, netIndex = htonl(index);
 
 	char* ptr = buf + NUTPUNCH_HEADER_SIZE;
 	NutPunch_Memcpy(ptr, &netIndex, sizeof(netIndex));
