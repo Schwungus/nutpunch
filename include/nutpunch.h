@@ -734,14 +734,14 @@ NP_MakeHandler(NP_HandleGTFO) {
 	NP_LastErrorCode = *data;
 
 	switch (NP_LastErrorCode) {
-		case NP_Err_NoSuchLobby:
-			NP_LastError = "Lobby doesn't exist";
-			break;
-		case NP_Err_LobbyExists:
-			NP_LastError = "Lobby already exists";
-			break;
-		default:
-			break;
+	case NP_Err_NoSuchLobby:
+		NP_LastError = "Lobby doesn't exist";
+		break;
+	case NP_Err_LobbyExists:
+		NP_LastError = "Lobby already exists";
+		break;
+	default:
+		break;
 	}
 }
 
@@ -999,17 +999,14 @@ static int NP_RealUpdate() {
 		goto sockFail;
 
 	while (*ipVer >= 0) {
-		for (;;)
-			switch (NP_ReceiveShit(*ipVer)) {
-				case 1:
-					goto recvDone;
-				case -1:
-					goto sockFail;
-				default:
-					break;
-			}
-	recvDone:
-		ipVer++;
+		switch (NP_ReceiveShit(*ipVer)) {
+		case -1:
+			goto sockFail;
+		case 1:
+			ipVer++;
+		default:
+			break;
+		}
 	}
 
 	static char bye[4] = {'D', 'I', 'S', 'C'};
