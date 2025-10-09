@@ -15,7 +15,8 @@
 #include <unistd.h>
 #endif
 
-static const char* const lobbyName = "Ligma";
+static const char *const magicKey = "NUTPUNCH", *const lobbyName = "Ligma";
+static const uint8_t magicValue = 66;
 
 struct Player {
 	int32_t x, y;
@@ -142,6 +143,7 @@ int main(int argc, char* argv[]) {
 			else
 				goto skip_network;
 
+			NutPunch_LobbySet(magicKey, sizeof(magicValue), &magicValue);
 			NutPunch_LobbySet("PLAYERS", sizeof(waitingForPlayers), &waitingForPlayers);
 			const char* name = randomNames[GetRandomValue(1, nameCount) - 1];
 			NutPunch_PeerSet("NAME", (int)strlen(name) + 1, name);

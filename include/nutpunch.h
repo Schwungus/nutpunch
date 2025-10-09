@@ -271,8 +271,8 @@ typedef struct NP_DataMessage {
 
 typedef struct {
 	const char identifier[NUTPUNCH_HEADER_SIZE];
-	int packetSize;
 	void (*const handler)(NP_Addr, int, const uint8_t*);
+	int packetSize;
 } NP_MessageTable;
 
 #define NP_JOIN_LEN (NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
@@ -289,13 +289,13 @@ NP_MakeHandler(NP_HandleAcky);
 NP_MakeHandler(NP_HandleData);
 
 static const NP_MessageTable NP_Messages[] = {
-	{'I', 'N', 'T', 'R', 1,           NP_HandleIntro     },
-	{'D', 'I', 'S', 'C', 0,           NP_HandleDisconnect},
-	{'G', 'T', 'F', 'O', 1,           NP_HandleGTFO      },
-	{'J', 'O', 'I', 'N', NP_JOIN_LEN, NP_HandleJoin      },
-	{'L', 'I', 'S', 'T', NP_LIST_LEN, NP_HandleList      },
-	{'A', 'C', 'K', 'Y', NP_ACKY_LEN, NP_HandleAcky      },
-	{'D', 'A', 'T', 'A', -1,          NP_HandleData      },
+	{{'I', 'N', 'T', 'R'}, NP_HandleIntro,      1          },
+	{{'D', 'I', 'S', 'C'}, NP_HandleDisconnect, 0          },
+	{{'G', 'T', 'F', 'O'}, NP_HandleGTFO,       1          },
+	{{'J', 'O', 'I', 'N'}, NP_HandleJoin,       NP_JOIN_LEN},
+	{{'L', 'I', 'S', 'T'}, NP_HandleList,       NP_LIST_LEN},
+	{{'A', 'C', 'K', 'Y'}, NP_HandleAcky,       NP_ACKY_LEN},
+	{{'D', 'A', 'T', 'A'}, NP_HandleData,       -1         },
 };
 
 static const char* NP_LastError = NULL;
@@ -483,7 +483,7 @@ static int NP_FieldNameSize(const char* name) {
 	return NUTPUNCH_FIELD_NAME_MAX;
 }
 
-static void* NP_GetMetadataFrom(NutPunch_Field fields[NUTPUNCH_MAX_FIELDS], const char* name, int* size) {
+static void* NP_GetMetadataFrom(NutPunch_Field* fields, const char* name, int* size) {
 	static char buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
 	NutPunch_Memset(buf, 0, sizeof(buf));
 
@@ -493,7 +493,7 @@ static void* NP_GetMetadataFrom(NutPunch_Field fields[NUTPUNCH_MAX_FIELDS], cons
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		NutPunch_Field* ptr = &fields[i];
-		if (NutPunch_Memcmp(ptr->name, name, nameSize))
+		if (nameSize != NP_FieldNameSize(ptr->name) || NutPunch_Memcmp(ptr->name, name, nameSize))
 			continue;
 		NutPunch_Memcpy(buf, ptr->data, ptr->size);
 		if (size != NULL)
