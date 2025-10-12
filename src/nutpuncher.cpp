@@ -63,25 +63,21 @@ struct Field : NutPunch_Field {
 	}
 
 	bool named(const char* name) const {
-		if (dead() || !name)
+		if (!name || !*name || dead())
 			return false;
 
-		int targetLen = static_cast<int>(std::strlen(name));
-		if (targetLen > NUTPUNCH_FIELD_NAME_MAX)
-			targetLen = NUTPUNCH_FIELD_NAME_MAX;
+		int argLen = static_cast<int>(std::strlen(name));
+		if (argLen > NUTPUNCH_FIELD_NAME_MAX)
+			argLen = NUTPUNCH_FIELD_NAME_MAX;
 
 		int ourLen = NUTPUNCH_FIELD_NAME_MAX;
-		for (int i = 0; i < targetLen; i++)
-			if (!name[i]) {
+		for (int i = 1; i < NUTPUNCH_FIELD_NAME_MAX; i++)
+			if (!this->name[i]) {
 				ourLen = i;
 				break;
 			}
 
-		if (!ourLen)
-			return false;
-		if (ourLen != targetLen)
-			return false;
-		return !std::memcmp(this->name, name, ourLen);
+		return ourLen == argLen && !std::memcmp(this->name, name, ourLen);
 	}
 
 	bool matches(const NutPunch_Filter& filter) const {
@@ -97,7 +93,7 @@ struct Field : NutPunch_Field {
 				result |= eq;
 		} else if (flags & NPF_Eq)
 			result &= eq;
-		else
+		else // junk
 			return false;
 		return (flags & NPF_Not) ? !result : result;
 	}
@@ -116,27 +112,31 @@ struct Metadata {
 		reset();
 	}
 
-	Field* get(const char* name) {
-		int idx = find(name);
-		if (NUTPUNCH_MAX_FIELDS == idx)
-			return nullptr;
-		return &fields[idx];
+	Field* find(const char* name) {
+		const int idx = indexOf(name);
+		return NUTPUNCH_MAX_FIELDS == idx ? nullptr : &fields[idx];
 	}
 
-	void set(const char* name, int dataSize, const void* value) {
-		if (!dataSize)
+	void insert(const Field& field) {
+		if (!field.size)
 			return;
-		int idx = find(name);
+
+		const int idx = indexOf(field.name);
 		if (NUTPUNCH_MAX_FIELDS == idx)
 			return;
-		int nameSize = static_cast<int>(std::strlen(name));
+
+		int nameSize = static_cast<int>(std::strlen(field.name));
 		if (nameSize > NUTPUNCH_FIELD_NAME_MAX)
 			nameSize = NUTPUNCH_FIELD_NAME_MAX;
+
+		int dataSize = field.size;
 		if (dataSize > NUTPUNCH_FIELD_DATA_MAX)
 			dataSize = NUTPUNCH_FIELD_DATA_MAX;
-		std::memcpy(fields[idx].name, name, nameSize);
-		fields[idx].size = dataSize;
-		std::memcpy(fields[idx].data, value, dataSize);
+
+		auto& target = fields[idx];
+		std::memcpy(target.name, field.name, nameSize);
+		std::memcpy(target.data, field.data, dataSize);
+		target.size = dataSize;
 	}
 
 	void reset() {
@@ -144,13 +144,13 @@ struct Metadata {
 	}
 
 private:
-	int find(const char* name) {
+	int indexOf(const char* name) {
 		if (!name || !*name)
 			return NUTPUNCH_MAX_FIELDS;
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // first matching
 			if (fields[i].named(name))
 				return i;
-		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // or first empty
+		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // or first uninitialized
 			if (fields[i].dead())
 				return i;
 		return NUTPUNCH_MAX_FIELDS; // or bust
@@ -158,7 +158,7 @@ private:
 };
 
 struct Addr : NP_Addr {
-	Addr() : Addr(false) {}
+	Addr() : Addr(NP_IPv4) {}
 	Addr(NP_IPv ipv) {
 		std::memset(&value, 0, sizeof(value));
 		this->ipv = ipv;
@@ -194,14 +194,11 @@ struct Player {
 	Metadata metadata;
 
 	Player(const Addr& addr) : addr(addr), countdown(keepAliveBeats) {}
-
-	Player() : countdown(0) {
-		std::memset(&addr, 0, sizeof(addr));
-	}
+	Player() : countdown(0) {}
 
 	bool dead() const {
-		static constexpr const char zeroAddr[sizeof(addr)] = {0};
-		return !countdown || !std::memcmp(&addr, zeroAddr, sizeof(addr));
+		static constexpr const char zero[sizeof(addr)] = {0};
+		return countdown < 1 || !std::memcmp(&addr, zero, sizeof(addr));
 	}
 
 	void reset() {
@@ -232,7 +229,7 @@ struct Lobby {
 	void update() {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& plr = players[i];
-			if (plr.countdown <= 0)
+			if (plr.dead())
 				continue;
 			plr.countdown--;
 			if (!plr.dead())
@@ -241,7 +238,8 @@ struct Lobby {
 			plr.reset();
 		}
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			sendTo(i);
+			if (!players[i].dead())
+				sendTo(i);
 	}
 
 	bool dead() const {
@@ -255,61 +253,60 @@ struct Lobby {
 		return count;
 	}
 
-	void accept(const int player, const char* meta) {
-		players[player].countdown = keepAliveBeats;
+	void accept(const int idx, const char* meta) {
+		auto& player = players[idx];
+		player.countdown = keepAliveBeats;
 
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 			const auto* fields = reinterpret_cast<const Field*>(meta);
-			players[player].metadata.set(fields[i].name, fields[i].size, fields[i].data);
+			player.metadata.insert(fields[i]);
 		}
 
-		if (player != master())
+		if (idx != master())
 			return;
 		meta += sizeof(Metadata);
 
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 			const auto* fields = reinterpret_cast<const Field*>(meta);
-			metadata.set(fields[i].name, fields[i].size, fields[i].data);
+			metadata.insert(fields[i]);
 		}
 	}
 
 	void sendTo(const int playerIdx) {
 		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = "JOIN";
-		if (players[playerIdx].dead())
-			return;
-
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
 		*ptr++ = static_cast<NP_ResponseFlagsStorage>(playerIdx == master()) * NP_R_Master;
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			auto& cur = players[i];
+			auto& player = players[i];
 
 			std::memset(ptr, 0, 19 + sizeof(Metadata));
-			if (cur.dead()) {
+			if (player.dead()) {
 				ptr += 19 + sizeof(Metadata);
 				continue;
 			}
 
-			*ptr++ = cur.addr.ipv;
+			*ptr++ = player.addr.ipv;
 
-			if (playerIdx != i) {
-				if (cur.addr.ipv == NP_IPv6)
-					std::memcpy(ptr, &cur.addr.v6()->sin6_addr, 16);
-				else
-					std::memcpy(ptr, &cur.addr.v4()->sin_addr, 4);
-			}
+			if (playerIdx == i)
+				goto zeroIP;
+			if (player.addr.ipv == NP_IPv6)
+				std::memcpy(ptr, &player.addr.v6()->sin6_addr, 16);
+			else
+				std::memcpy(ptr, &player.addr.v4()->sin_addr, 4);
+		zeroIP:
 			ptr += 16;
 
-			if (cur.addr.ipv == NP_IPv6)
-				std::memcpy(ptr, &cur.addr.v6()->sin6_port, 2);
+			if (player.addr.ipv == NP_IPv6)
+				std::memcpy(ptr, &player.addr.v6()->sin6_port, 2);
 			else
-				std::memcpy(ptr, &cur.addr.v4()->sin_port, 2);
+				std::memcpy(ptr, &player.addr.v4()->sin_port, 2);
 			ptr += 2;
 
-			std::memcpy(ptr, cur.metadata.fields, sizeof(Metadata));
+			std::memcpy(ptr, &player.metadata, sizeof(Metadata));
 			ptr += sizeof(Metadata);
 		}
-		std::memcpy(ptr, metadata.fields, sizeof(Metadata));
+		std::memcpy(ptr, &metadata, sizeof(Metadata));
 
 		auto& player = players[playerIdx];
 		if (player.addr.send(buf, sizeof(buf)) < 0 && NP_SockError() != NP_WouldBlock) {
