@@ -1,8 +1,11 @@
 cmake_minimum_required(VERSION 3.27 FATAL_ERROR)
 
 project(nutpunch LANGUAGES C CXX)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS ON)
+
 set(BUILD_SHARED_LIBS OFF)
 
 include(FetchContent)
@@ -19,13 +22,13 @@ endif()
 option(NUTPUNCH_BUILD_TESTS "Build nutpunch test binary?" ON)
 if(NUTPUNCH_BUILD_TESTS)
     FetchContent_Declare(
-        raylib
-        GIT_REPOSITORY https://github.com/raysan5/raylib.git
-        GIT_TAG 5.5)
-    FetchContent_MakeAvailable(raylib)
+        poormans
+        GIT_REPOSITORY https://github.com/nonk123/poormans.git
+        GIT_TAG 732eb2d7a34524f4cb6ccaba593a7ae09dd6762e)
+    FetchContent_MakeAvailable(poormans)
 
     add_executable(nutpunchTest ${CMAKE_CURRENT_SOURCE_DIR}/src/test.c ${CMAKE_CURRENT_SOURCE_DIR}/src/static.c)
-    target_link_libraries(nutpunchTest PRIVATE nutpunch raylib)
+    target_link_libraries(nutpunchTest PRIVATE nutpunch poormans)
 endif()
 
 option(NUTPUNCH_BUILD_SERVER "Build nutpuncher?" ON)

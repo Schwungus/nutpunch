@@ -1,35 +1,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define POOR_IMPLEMENTATION
 #include <nutpunch.h>
-#include <raylib.h>
-
-#ifdef NUTPUNCH_WINDOSE
-#define _AMD64_
-#define _INC_WINDOWS
-#include <windef.h>
-#include <winsock2.h>
-#else
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <unistd.h>
-#endif
+#include <poormans.h>
 
 static const char *const magicKey = "NUTPUNCH", *const lobbyName = "Ligma";
 static const uint8_t magicValue = 66;
 
 struct Player {
 	int32_t x, y;
-	struct sockaddr addr;
 };
 
 static const char* randomNames[] = {"Fimon", "Trollga", "Marsoyob", "Ficus", "Caccus", "Skibidi69er", "Caulksucker"};
 static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
 
 static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
-
 #define PAYLOAD_SIZE ((size_t)(2))
-#define SCALE (3)
 
 int main(int argc, char* argv[]) {
 	if (argc != 2 && argc != 3) {
@@ -45,13 +32,16 @@ int main(int argc, char* argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	InitWindow(400, 300, "nutpunch test");
-	SetExitKey(KEY_Q);
-	SetTargetFPS(60);
+	srand(time(NULL));
+	for (poor_init(); poor_running(); poor_tick()) {
+		poor_title("nutpunch test");
+		if (poor_key_pressed(POOR_ESC) || poor_key_pressed(POOR_Q))
+			poor_exit();
 
-	const int fs = 20, sqr = 30;
-	while (!WindowShouldClose()) {
-		int status = NutPunch_Update();
+		int status = NutPunch_Update(), statusX = 0;
+		poor_at(statusX++, 0)->chr = 'F';
+		poor_at(statusX++, 0)->chr = '0' + (NP_Status_Online == status);
+		poor_at(statusX++, 0)->chr = '0' + NutPunch_IsMaster();
 
 		static uint8_t data[512] = {0};
 		while (NutPunch_HasMessage()) {
@@ -59,39 +49,29 @@ int main(int argc, char* argv[]) {
 			if (peer >= NUTPUNCH_MAX_PLAYERS)
 				continue;
 			if (size == PAYLOAD_SIZE) {
-				players[peer].x = ((int32_t)(data[0])) * SCALE;
-				players[peer].y = ((int32_t)(data[1])) * SCALE;
+				players[peer].x = ((int32_t)(data[0]));
+				players[peer].y = ((int32_t)(data[1]));
 			} else
 				printf("%s\n", data);
 		}
-
-		BeginDrawing();
-		ClearBackground(RAYWHITE);
 
 		if (waitingForPlayers && NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS) {
 			int size = 0, *ptr = NutPunch_LobbyGet("PLAYERS", &size);
 			if (sizeof(int) == size && *ptr && NutPunch_PeerCount() >= *ptr) {
 				memset(players, 0, sizeof(players));
-				players[NutPunch_LocalPeer()].x = 200 - sqr / 2;
-				players[NutPunch_LocalPeer()].y = 150 - sqr / 2;
+				players[NutPunch_LocalPeer()].x = poor_width() / 2;
+				players[NutPunch_LocalPeer()].y = poor_height() / 2;
 				waitingForPlayers = 0;
 			}
 		}
 
 		if (NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS) {
-			const int32_t spd = 5;
-			if (IsKeyDown(KEY_A))
-				players[NutPunch_LocalPeer()].x -= spd;
-			if (IsKeyDown(KEY_D))
-				players[NutPunch_LocalPeer()].x += spd;
-			if (IsKeyDown(KEY_W))
-				players[NutPunch_LocalPeer()].y -= spd;
-			if (IsKeyDown(KEY_S))
-				players[NutPunch_LocalPeer()].y += spd;
+			players[NutPunch_LocalPeer()].x += poor_key_down(POOR_D) - poor_key_down(POOR_A);
+			players[NutPunch_LocalPeer()].y += poor_key_down(POOR_S) - poor_key_down(POOR_W);
 		}
 
-		data[0] = (uint8_t)(players[NutPunch_LocalPeer()].x / SCALE);
-		data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y / SCALE);
+		data[0] = (uint8_t)(players[NutPunch_LocalPeer()].x);
+		data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y);
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			NutPunch_Send(i, data, PAYLOAD_SIZE);
 			char name1[32] = {0}, name2[32] = {0};
@@ -108,56 +88,46 @@ int main(int argc, char* argv[]) {
 
 			static char buf[96] = {0};
 			snprintf(buf, sizeof(buf), "[%s]: Hi, %s!", name2, name1);
-			if (IsKeyPressed(KEY_T))
+			if (poor_key_pressed(POOR_T))
 				NutPunch_SendReliably(i, buf, sizeof(buf));
 		}
 
-		if (NP_Status_Error == status)
+		if (NP_Status_Error == status) {
 			NP_Log("ERROR: %s", NutPunch_GetLastError());
-		else if (NP_Status_Online == status) {
+			continue;
+		} else if (NP_Status_Online == status) {
 			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-				if (NutPunch_LocalPeer() == i)
-					DrawRectangle(players[i].x, players[i].y, sqr, sqr, RED);
-				else if (NutPunch_PeerAlive(i))
-					DrawRectangle(players[i].x, players[i].y, sqr, sqr, GREEN);
-				else
-					continue;
-				const char* name = NutPunch_PeerGet(i, "NAME", NULL);
-				int fs = 20, width = MeasureText(name, fs);
-				DrawText(name, players[i].x + sqr / 2 - width / 2, players[i].y - fs, fs, BLACK);
+				const int x = players[i].x, y = players[i].y;
+				if (NutPunch_LocalPeer() == i) {
+					poor_at(x, y)->chr = ' ';
+					poor_at(x, y)->bg = POOR_GREEN;
+				} else if (NutPunch_PeerAlive(i)) {
+					poor_at(x, y)->chr = ' ';
+					poor_at(x, y)->bg = POOR_RED;
+				}
 			}
-			DrawText("GAMING!!!", 240, 5, fs, GREEN);
-			if (NutPunch_IsMaster())
-				DrawText("MASTERFULLY!!!", 240, 5 + fs, fs, GREEN);
-		} else {
-			waitingForPlayers = _waitingForPlayers;
-			DrawText("DISCONNECTED", 5, 5, fs, RED);
-			DrawText("Press J to join", 5, 5 + fs, fs, BLACK);
-			DrawText("Press H to host", 5, 5 + fs * 2, fs, BLACK);
-			DrawText("Press K to reset", 5, 5 + fs * 3, fs, BLACK);
-
-			if (IsKeyPressed(KEY_J))
-				NutPunch_Join(lobbyName);
-			else if (IsKeyPressed(KEY_H))
-				NutPunch_Host(lobbyName);
-			else
-				goto skip_network;
-
-			NutPunch_LobbySet(magicKey, sizeof(magicValue), &magicValue);
-			NutPunch_LobbySet("PLAYERS", sizeof(waitingForPlayers), &waitingForPlayers);
-			const char* name = randomNames[GetRandomValue(1, nameCount) - 1];
-			NutPunch_PeerSet("NAME", (int)strlen(name) + 1, name);
+			continue;
 		}
 
-	skip_network:
-		if (IsKeyPressed(KEY_K))
-			NutPunch_Reset();
+		waitingForPlayers = _waitingForPlayers;
+		if (poor_key_pressed(POOR_J))
+			NutPunch_Join(lobbyName);
+		else if (poor_key_pressed(POOR_H))
+			NutPunch_Host(lobbyName);
+		else
+			goto skip_network;
 
-		EndDrawing();
+		NutPunch_LobbySet(magicKey, sizeof(magicValue), &magicValue);
+		NutPunch_LobbySet("PLAYERS", sizeof(waitingForPlayers), &waitingForPlayers);
+		const char* name = randomNames[rand() % nameCount];
+		NutPunch_PeerSet("NAME", (int)strlen(name) + 1, name);
+
+	skip_network:
+		if (poor_key_pressed(POOR_K))
+			NutPunch_Reset();
 	}
 
 cleanup:
-	CloseWindow();
 	NutPunch_Cleanup();
 	return EXIT_SUCCESS;
 }
