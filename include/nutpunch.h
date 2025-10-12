@@ -1056,6 +1056,9 @@ int NutPunch_NextMessage(void* out, int* size) {
 	NutPunch_Free(NP_QueueIn->data);
 
 	int sourcePeer = NP_QueueIn->peer;
+	if (sourcePeer > NUTPUNCH_MAX_PLAYERS)
+		sourcePeer = NUTPUNCH_MAX_PLAYERS;
+
 	NP_DataMessage* next = NP_QueueIn->next;
 	NutPunch_Free(NP_QueueIn);
 
