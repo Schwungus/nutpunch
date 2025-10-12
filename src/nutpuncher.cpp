@@ -131,6 +131,8 @@ struct Metadata {
 		int count = static_cast<int>(std::strlen(name));
 		if (count > NUTPUNCH_FIELD_NAME_MAX)
 			count = NUTPUNCH_FIELD_NAME_MAX;
+		if (size > NUTPUNCH_FIELD_DATA_MAX)
+			size = NUTPUNCH_FIELD_DATA_MAX;
 		std::memcpy(fields[idx].name, name, count);
 		fields[idx].size = size;
 		std::memcpy(fields[idx].data, value, size);
@@ -256,16 +258,16 @@ struct Lobby {
 		players[playerIdx].countdown = keepAliveBeats;
 
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-			const auto* fields = (Field*)meta;
+			const auto* fields = reinterpret_cast<const Field*>(meta);
 			players[playerIdx].metadata.set(fields[i].name, fields[i].size, fields[i].data);
 		}
 
 		if (playerIdx != getMasterIdx())
 			return;
-
 		meta += sizeof(Metadata);
+
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-			const auto* fields = (Field*)meta;
+			const auto* fields = reinterpret_cast<const Field*>(meta);
 			metadata.set(fields[i].name, fields[i].size, fields[i].data);
 		}
 	}

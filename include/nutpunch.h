@@ -790,7 +790,7 @@ NP_MakeHandler(NP_HandleJoin) {
 			sendto(sock, (char*)hello, sizeof(hello), 0, (struct sockaddr*)&peer.value, sizeof(peer.value));
 		}
 	}
-	NutPunch_Memcpy(NP_LobbyMetadata, data, sizeof(NP_LobbyMetadata));
+	NutPunch_Memcpy(NP_LobbyMetadata, data, metaSize);
 }
 
 NP_MakeHandler(NP_HandleList) {
@@ -861,11 +861,16 @@ static int NP_SendHeartbeat() {
 		ptr += NUTPUNCH_HEADER_SIZE;
 		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX);
 		ptr += NUTPUNCH_ID_MAX;
+
 		// NOTE: make sure to correct endianness when multibyte flags become a thing.
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags;
 		ptr += sizeof(NP_HeartbeatFlags);
-		NutPunch_Memcpy(ptr, NP_MetadataOut, sizeof(NP_MetadataOut));
-		ptr += sizeof(NP_MetadataOut);
+
+		const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
+		NutPunch_Memcpy(ptr, NP_MetadataOut[NP_MetaPeer], metaSize);
+		ptr += metaSize;
+		NutPunch_Memcpy(ptr, NP_MetadataOut[NP_MetaLobby], metaSize);
+		ptr += metaSize;
 	}
 
 	size_t length = ptr - heartbeat;
