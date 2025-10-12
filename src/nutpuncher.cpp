@@ -7,32 +7,21 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include "nutpunch.h"
 
-#ifdef NP_Log
-#undef NP_Log
-#endif
-
-// Just strip the damn [NP] prefix...
-#define NP_Log(...)                                                                                                    \
-	do {                                                                                                           \
-		fprintf(stdout, __VA_ARGS__);                                                                          \
-		fprintf(stdout, "\n");                                                                                 \
-		fflush(stdout);                                                                                        \
-	} while (0)
-
 #ifdef NUTPUNCH_WINDOSE
 #define SleepMs(ms) Sleep(ms)
 #else
-#include <time.h> // stolen from: <https://stackoverflow.com/a/1157217>
-#define SleepMs(ms)                                                                                                    \
-	do {                                                                                                           \
-		struct timespec ts;                                                                                    \
-		int res;                                                                                               \
-		ts.tv_sec = (ms) / 1000;                                                                               \
-		ts.tv_nsec = ((ms) % 1000) * 1000000;                                                                  \
-		do                                                                                                     \
-			res = nanosleep(&ts, &ts);                                                                     \
-		while (res && errno == EINTR);                                                                         \
-	} while (0)
+#include <time.h>
+#define SleepMs(ms) sleepUnix(ms)
+static void sleepUnix(int ms) {
+	// Stolen from: <https://stackoverflow.com/a/1157217>
+	struct timespec ts;
+	ts.tv_sec = (ms) / 1000;
+	ts.tv_nsec = ((ms) % 1000) * 1000000;
+	int res;
+	do
+		res = nanosleep(&ts, &ts);
+	while (res && errno == EINTR);
+}
 #endif
 
 struct Lobby;
@@ -69,28 +58,30 @@ struct Field : NutPunch_Field {
 	}
 
 	bool isDead() const {
-		static const Field nully;
-		if (!size)
-			return true;
-		return !std::memcmp(name, nully.name, sizeof(name));
+		static constexpr const char nullname[sizeof(name)] = {0};
+		return !size || !std::memcmp(name, nullname, sizeof(name));
 	}
 
 	bool nameMatches(const char* name) const {
-		if (isDead())
+		if (isDead() || !name)
 			return false;
-		int nameLen = NUTPUNCH_FIELD_NAME_MAX, inputLen = static_cast<int>(std::strlen(name));
-		if (inputLen > NUTPUNCH_FIELD_NAME_MAX)
-			inputLen = NUTPUNCH_FIELD_NAME_MAX;
-		for (int i = 0; i < inputLen; i++)
+
+		int targetLen = static_cast<int>(std::strlen(name));
+		if (targetLen > NUTPUNCH_FIELD_NAME_MAX)
+			targetLen = NUTPUNCH_FIELD_NAME_MAX;
+
+		int ourLen = NUTPUNCH_FIELD_NAME_MAX;
+		for (int i = 0; i < targetLen; i++)
 			if (!name[i]) {
-				nameLen = i;
+				ourLen = i;
 				break;
 			}
-		if (!nameLen)
+
+		if (!ourLen)
 			return false;
-		if (nameLen != inputLen)
+		if (ourLen != targetLen)
 			return false;
-		return !std::memcmp(this->name, name, nameLen);
+		return !std::memcmp(this->name, name, ourLen);
 	}
 
 	bool filterMatches(const NutPunch_Filter& filter) const {
@@ -124,18 +115,20 @@ struct Metadata {
 		return &fields[idx];
 	}
 
-	void set(const char* name, int size, const void* value) {
+	void set(const char* name, int dataSize, const void* value) {
+		if (!dataSize)
+			return;
 		int idx = find(name);
 		if (NUTPUNCH_MAX_FIELDS == idx)
 			return;
-		int count = static_cast<int>(std::strlen(name));
-		if (count > NUTPUNCH_FIELD_NAME_MAX)
-			count = NUTPUNCH_FIELD_NAME_MAX;
-		if (size > NUTPUNCH_FIELD_DATA_MAX)
-			size = NUTPUNCH_FIELD_DATA_MAX;
-		std::memcpy(fields[idx].name, name, count);
-		fields[idx].size = size;
-		std::memcpy(fields[idx].data, value, size);
+		int nameSize = static_cast<int>(std::strlen(name));
+		if (nameSize > NUTPUNCH_FIELD_NAME_MAX)
+			nameSize = NUTPUNCH_FIELD_NAME_MAX;
+		if (dataSize > NUTPUNCH_FIELD_DATA_MAX)
+			dataSize = NUTPUNCH_FIELD_DATA_MAX;
+		std::memcpy(fields[idx].name, name, nameSize);
+		fields[idx].size = dataSize;
+		std::memcpy(fields[idx].data, value, dataSize);
 	}
 
 	void reset() {
@@ -144,7 +137,7 @@ struct Metadata {
 
 private:
 	int find(const char* name) {
-		if (!*name)
+		if (!name || !*name)
 			return NUTPUNCH_MAX_FIELDS;
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // first matching
 			if (fields[i].nameMatches(name))
