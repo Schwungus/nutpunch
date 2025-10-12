@@ -60,17 +60,11 @@ extern "C" {
 		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
-		+ NPM_Count * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
+		+ NP_MD_Count * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-
-enum {
-	NPS_Error,
-	NPS_Idle,
-	NPS_Online,
-};
 
 typedef struct {
 	char name[NUTPUNCH_FIELD_NAME_MAX], data[NUTPUNCH_FIELD_DATA_MAX];
@@ -83,16 +77,16 @@ typedef struct {
 } NutPunch_Filter;
 
 enum {
+	NPS_Error,
+	NPS_Idle,
+	NPS_Online,
+};
+
+enum {
 	NPF_Not = 1 << 0,
 	NPF_Eq = 1 << 1,
 	NPF_Less = 1 << 2,
 	NPF_Greater = 1 << 3,
-};
-
-enum {
-	NPM_Peer,
-	NPM_Lobby,
-	NPM_Count,
 };
 
 enum {
@@ -272,6 +266,12 @@ typedef struct {
 	NP_IPv ipv;
 } NP_Addr;
 
+enum {
+	NP_MD_Peer,
+	NP_MD_Lobby,
+	NP_MD_Count,
+};
+
 typedef struct NP_DataMessage {
 	char* data;
 	struct NP_DataMessage* next;
@@ -327,7 +327,7 @@ static char NP_ServerHost[128] = {0};
 static NP_DataMessage *NP_QueueIn = NULL, *NP_QueueOut = NULL;
 static NutPunch_Field NP_LobbyMetadata[NUTPUNCH_MAX_FIELDS] = {0},
 		      NP_PeerMetadata[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0},
-		      NP_MetadataOut[NPM_Count][NUTPUNCH_MAX_FIELDS] = {0};
+		      NP_MetadataOut[NP_MD_Count][NUTPUNCH_MAX_FIELDS] = {0};
 
 static int NP_Querying = 0;
 static NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
@@ -535,50 +535,46 @@ none:
 }
 
 static void NP_SetMetadataOut(int type, const char* name, int dataSize, const void* data) {
-	if (!dataSize)
-		return; // safe to skip e.g. 0-length strings entirely
-	if (dataSize < 0) {
-		NP_Log("Invalid metadata field size!");
-		return;
-	}
-
 	int nameSize = NP_FieldNameSize(name);
 	if (!nameSize)
 		return;
 
-	if (dataSize > NUTPUNCH_FIELD_DATA_MAX) {
+	if (dataSize < 1) {
+		NP_Log("Invalid metadata field size!");
+		return;
+	} else if (dataSize > NUTPUNCH_FIELD_DATA_MAX) {
 		NP_Log("WARN: trimming metadata field from %d to %d bytes", dataSize, NUTPUNCH_FIELD_DATA_MAX);
 		dataSize = NUTPUNCH_FIELD_DATA_MAX;
 	}
 
 	static const NutPunch_Field nullfield = {0};
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		NutPunch_Field* ptr = &NP_MetadataOut[type][i];
+		NutPunch_Field* field = &NP_MetadataOut[type][i];
 
-		if (!NutPunch_Memcmp(ptr, &nullfield, sizeof(nullfield)))
+		if (!NutPunch_Memcmp(field, &nullfield, sizeof(nullfield)))
 			goto set;
-		if (NP_FieldNameSize(ptr->name) == nameSize && !NutPunch_Memcmp(ptr->name, name, nameSize))
+		if (NP_FieldNameSize(field->name) == nameSize && !NutPunch_Memcmp(field->name, name, nameSize))
 			goto set;
 		continue;
 
 	set:
-		NutPunch_Memset(ptr->name, 0, sizeof(ptr->name));
-		NutPunch_Memcpy(ptr->name, name, nameSize);
+		NutPunch_Memset(field->name, 0, sizeof(field->name));
+		NutPunch_Memcpy(field->name, name, nameSize);
 
-		NutPunch_Memset(ptr->data, 0, sizeof(ptr->data));
-		NutPunch_Memcpy(ptr->data, data, dataSize);
+		NutPunch_Memset(field->data, 0, sizeof(field->data));
+		NutPunch_Memcpy(field->data, data, dataSize);
 
-		ptr->size = dataSize;
+		field->size = dataSize;
 		return;
 	}
 }
 
 void NutPunch_PeerSet(const char* name, int size, const void* data) {
-	NP_SetMetadataOut(NPM_Peer, name, size, data);
+	NP_SetMetadataOut(NP_MD_Peer, name, size, data);
 }
 
 void NutPunch_LobbySet(const char* name, int size, const void* data) {
-	NP_SetMetadataOut(NPM_Lobby, name, size, data);
+	NP_SetMetadataOut(NP_MD_Lobby, name, size, data);
 }
 
 static void NP_ExpectNutpuncher() {
@@ -879,9 +875,9 @@ static int NP_SendHeartbeat() {
 		ptr += sizeof(NP_HeartbeatFlags);
 
 		const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
-		NutPunch_Memcpy(ptr, NP_MetadataOut[NPM_Peer], metaSize);
+		NutPunch_Memcpy(ptr, NP_MetadataOut[NP_MD_Peer], metaSize);
 		ptr += metaSize;
-		NutPunch_Memcpy(ptr, NP_MetadataOut[NPM_Lobby], metaSize);
+		NutPunch_Memcpy(ptr, NP_MetadataOut[NP_MD_Lobby], metaSize);
 		ptr += metaSize;
 	}
 
