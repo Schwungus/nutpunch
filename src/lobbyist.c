@@ -29,17 +29,17 @@ int main(int argc, char* argv[]) {
 	memcpy(filter.name, argv[1], len);
 	memcpy(filter.value, &data, sizeof(data));
 	filter.comparison = NPF_Eq;
-
 	NutPunch_FindLobbies(1, &filter);
 
 	int rate = 20, ms = 1000;
 	for (int i = 0; i < ms / rate; i++) {
-		NutPunch_Update();
+		if (NPS_Error == NutPunch_Update())
+			goto shit;
 		SleepMs(ms / rate);
 	}
 
 	int lobbyCount = NutPunch_LobbyCount();
-	printf("%d lobbies", lobbyCount);
+	printf("%d %s", lobbyCount, lobbyCount == 1 ? "lobby" : "lobbies");
 	if (lobbyCount)
 		printf(":");
 	printf("\n");
@@ -48,7 +48,12 @@ int main(int argc, char* argv[]) {
 	if (lobbyCount)
 		printf("\n");
 	return EXIT_SUCCESS;
+
 fail:
 	printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
+	return EXIT_FAILURE;
+
+shit:
+	printf("failed to connect or smth\n");
 	return EXIT_FAILURE;
 }
