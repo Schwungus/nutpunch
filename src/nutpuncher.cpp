@@ -271,7 +271,7 @@ struct Lobby {
 			return;
 
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
-		*ptr++ = static_cast<NP_ResponseFlagsStorage>(playerIdx == getMasterIdx()) * NP_Resp_Master;
+		*ptr++ = static_cast<NP_ResponseFlagsStorage>(playerIdx == getMasterIdx()) * NP_R_Master;
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& cur = players[i];
@@ -446,10 +446,10 @@ static int receiveShit(NP_IPv ipv) {
 	if (!flags) // wtf do you want??
 		return 0;
 
-	if ((lobbies.count(id) && !(flags & NP_Beat_Join)) || (!lobbies.count(id) && !(flags & NP_Beat_Create)))
+	if ((lobbies.count(id) && !(flags & NP_HB_Join)) || (!lobbies.count(id) && !(flags & NP_HB_Create)))
 		goto exists;
 	if (!lobbies.count(id) && lobbies.size() >= maxLobbies) {
-		addr.sendError(NP_Err_NoSuchLobby); // TODO: update this error code
+		addr.sendError(NPE_NoSuchLobby); // TODO: update this error code
 		NP_Log("WARN: Reached lobby limit...");
 		return 0;
 	}
@@ -471,7 +471,7 @@ static int receiveShit(NP_IPv ipv) {
 		}
 	}
 
-	if ((flags & NP_Beat_Create) && lobbies[id].playerCount() > 0)
+	if ((flags & NP_HB_Create) && lobbies[id].playerCount() > 0)
 		goto exists;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (!players[i].isDead())
@@ -489,7 +489,7 @@ static int receiveShit(NP_IPv ipv) {
 	return 0;
 
 exists:
-	addr.sendError(NP_Err_LobbyExists);
+	addr.sendError(NPE_LobbyExists);
 	return 0;
 }
 

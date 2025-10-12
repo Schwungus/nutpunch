@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
 
 		int status = NutPunch_Update(), statusX = 0;
 		poor_at(statusX++, 0)->chr = 'F';
-		poor_at(statusX++, 0)->chr = '0' + (NP_Status_Online == status);
+		poor_at(statusX++, 0)->chr = '0' + (NPS_Online == status);
 		poor_at(statusX++, 0)->chr = '0' + NutPunch_IsMaster();
 
 		static uint8_t data[512] = {0};
@@ -92,10 +92,10 @@ int main(int argc, char* argv[]) {
 				NutPunch_SendReliably(i, buf, sizeof(buf));
 		}
 
-		if (NP_Status_Error == status) {
+		if (NPS_Error == status) {
 			NP_Log("ERROR: %s", NutPunch_GetLastError());
 			continue;
-		} else if (NP_Status_Online == status) {
+		} else if (NPS_Online == status) {
 			for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 				const int x = players[i].x, y = players[i].y;
 				if (NutPunch_LocalPeer() == i) {

@@ -60,16 +60,16 @@ extern "C" {
 		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
-		+ NP_MetaCount * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
+		+ NPM_Count * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
 enum {
-	NP_Status_Error,
-	NP_Status_Idle,
-	NP_Status_Online,
+	NPS_Error,
+	NPS_Idle,
+	NPS_Online,
 };
 
 typedef struct {
@@ -79,19 +79,26 @@ typedef struct {
 
 typedef struct {
 	char name[NUTPUNCH_FIELD_NAME_MAX], value[NUTPUNCH_FIELD_DATA_MAX];
-	int8_t comparison;
+	uint8_t comparison;
 } NutPunch_Filter;
 
 enum {
-	NP_MetaPeer,
-	NP_MetaLobby,
-	NP_MetaCount,
+	NPF_Not = 1 << 0,
+	NPF_Eq = 1 << 1,
+	NPF_Less = 1 << 2,
+	NPF_Greater = 1 << 3,
 };
 
 enum {
-	NP_Err_Ok,
-	NP_Err_NoSuchLobby,
-	NP_Err_LobbyExists,
+	NPM_Peer,
+	NPM_Lobby,
+	NPM_Count,
+};
+
+enum {
+	NPE_Ok,
+	NPE_NoSuchLobby,
+	NPE_LobbyExists,
 };
 
 /// Set a custom NutPuncher server address.
@@ -106,7 +113,7 @@ int NutPunch_Host(const char*);
 /// Call this at the end of your program to run semi-important cleanup.
 void NutPunch_Cleanup();
 
-/// Call this every frame to update nutpunch. Returns one of the `NP_Status_*` constants.
+/// Call this every frame to update nutpunch. Returns one of the `NPS_*` constants.
 int NutPunch_Update();
 
 /// Request lobby metadata to be set. Can be called multiple times in a row. Will send out metadata changes on
@@ -159,14 +166,19 @@ int NutPunch_IsMaster();
 /// Call this to gracefully disconnect from the lobby.
 void NutPunch_Disconnect();
 
-/// Query the lobbies given a set of filters. Make sure to call `NutPunch_SetServerAddr` beforehand.
+/// Query the lobbies list given a set of filters.
 ///
-/// For `comparison`, use `0` for an exact value match, `-1` for "less than the server's", and `1` vice versa.
+/// Each filter consists of a name of a field, a target value, and a comparison operator against the target value. At
+/// least one filter is required; if you have nothing to compare, set a named "magic byte" in your lobby to distinguish
+/// it from other games' lobbies.
 ///
-/// The lobby list is queried every call to `NutPunch_Update`, so make sure you aren't skipping it.
+/// For `comparison`, bitwise OR the `NPF_*` constants. For example, `NPF_Not | NPF_Eq` means "not equal to the target
+/// value". Comparison is performed bytewise in a fashion similar to `memcmp`.
+///
+/// The lobby list is queried every call to `NutPunch_Update`, so make sure you are calling that.
 void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters);
 
-/// Reap the fruits of `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
+/// Extract the lobby IDs resulting from `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
 const char* NutPunch_GetLobby(int index);
 
 /// Count how many lobbies were found after `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
@@ -302,7 +314,7 @@ static const char* NP_LastError = NULL;
 static int NP_LastErrorCode = 0;
 
 static int NP_InitDone = 0, NP_Closing = 0;
-static int NP_LastStatus = NP_Status_Idle;
+static int NP_LastStatus = NPS_Idle;
 
 static char NP_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
 static NP_Addr NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
@@ -315,7 +327,7 @@ static char NP_ServerHost[128] = {0};
 static NP_DataMessage *NP_QueueIn = NULL, *NP_QueueOut = NULL;
 static NutPunch_Field NP_LobbyMetadata[NUTPUNCH_MAX_FIELDS] = {0},
 		      NP_PeerMetadata[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0},
-		      NP_MetadataOut[NP_MetaCount][NUTPUNCH_MAX_FIELDS] = {0};
+		      NP_MetadataOut[NPM_Count][NUTPUNCH_MAX_FIELDS] = {0};
 
 static int NP_Querying = 0;
 static NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
@@ -326,14 +338,14 @@ static char* NP_Lobbies[NUTPUNCH_SEARCH_RESULTS_MAX] = {0};
 typedef uint8_t NP_HeartbeatFlagsStorage;
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
-	NP_Beat_Join = 1 << 0,
-	NP_Beat_Create = 1 << 1,
+	NP_HB_Join = 1 << 0,
+	NP_HB_Create = 1 << 1,
 };
 
 typedef uint8_t NP_ResponseFlagsStorage;
 static NP_ResponseFlagsStorage NP_ResponseFlags = 0;
 enum {
-	NP_Resp_Master = 1 << 0,
+	NP_R_Master = 1 << 0,
 };
 
 static void NP_CleanupPackets(NP_DataMessage** queue) {
@@ -365,7 +377,7 @@ static void NP_NukeRemote() {
 	NutPunch_Memset(NP_Peers, 0, sizeof(NP_Peers));
 	NutPunch_Memset(NP_PeerMetadata, 0, sizeof(NP_PeerMetadata));
 	NutPunch_Memset(NP_Filters, 0, sizeof(NP_Filters));
-	NP_LastStatus = NP_Status_Idle;
+	NP_LastStatus = NPS_Idle;
 }
 
 static void NP_NukeSocket(NP_Socket* sock) {
@@ -562,11 +574,11 @@ static void NP_SetMetadataOut(int type, const char* name, int dataSize, const vo
 }
 
 void NutPunch_PeerSet(const char* name, int size, const void* data) {
-	NP_SetMetadataOut(NP_MetaPeer, name, size, data);
+	NP_SetMetadataOut(NPM_Peer, name, size, data);
 }
 
 void NutPunch_LobbySet(const char* name, int size, const void* data) {
-	NP_SetMetadataOut(NP_MetaLobby, name, size, data);
+	NP_SetMetadataOut(NPM_Lobby, name, size, data);
 }
 
 static void NP_ExpectNutpuncher() {
@@ -624,7 +636,7 @@ static int NP_BindSocket(NP_IPv ipv) {
 
 	NP_LastError = "Failed to bind the UDP socket";
 fail:
-	NP_LastStatus = NP_Status_Error;
+	NP_LastStatus = NPS_Error;
 	NP_LastErrorCode = NP_SockError();
 	NP_PrintError();
 	NutPunch_Reset();
@@ -639,7 +651,7 @@ static int NutPunch_Connect(const char* lobbyId) {
 	if (!NP_BindSocket(NP_IPv6) || !NP_BindSocket(NP_IPv4))
 		goto fail;
 
-	NP_LastStatus = NP_Status_Online;
+	NP_LastStatus = NPS_Online;
 	if (lobbyId != NULL) {
 		NutPunch_Memset(NP_LobbyId, 0, sizeof(NP_LobbyId));
 		snprintf(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobbyId);
@@ -648,17 +660,17 @@ static int NutPunch_Connect(const char* lobbyId) {
 
 fail:
 	NutPunch_Reset();
-	NP_LastStatus = NP_Status_Error;
+	NP_LastStatus = NPS_Error;
 	return 0;
 }
 
 int NutPunch_Host(const char* lobbyId) {
-	NP_HeartbeatFlags = NP_Beat_Join | NP_Beat_Create;
+	NP_HeartbeatFlags = NP_HB_Join | NP_HB_Create;
 	return NutPunch_Connect(lobbyId);
 }
 
 int NutPunch_Join(const char* lobbyId) {
-	NP_HeartbeatFlags = NP_Beat_Join;
+	NP_HeartbeatFlags = NP_HB_Join;
 	return NutPunch_Connect(lobbyId);
 }
 
@@ -730,14 +742,14 @@ NP_MakeHandler(NP_HandleGTFO) {
 		return;
 
 	NutPunch_Reset();
-	NP_LastStatus = NP_Status_Error;
+	NP_LastStatus = NPS_Error;
 	NP_LastErrorCode = *data;
 
 	switch (NP_LastErrorCode) {
-	case NP_Err_NoSuchLobby:
+	case NPE_NoSuchLobby:
 		NP_LastError = "Lobby doesn't exist";
 		break;
-	case NP_Err_LobbyExists:
+	case NPE_LobbyExists:
 		NP_LastError = "Lobby already exists";
 		break;
 	default:
@@ -867,9 +879,9 @@ static int NP_SendHeartbeat() {
 		ptr += sizeof(NP_HeartbeatFlags);
 
 		const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
-		NutPunch_Memcpy(ptr, NP_MetadataOut[NP_MetaPeer], metaSize);
+		NutPunch_Memcpy(ptr, NP_MetadataOut[NPM_Peer], metaSize);
 		ptr += metaSize;
-		NutPunch_Memcpy(ptr, NP_MetadataOut[NP_MetaLobby], metaSize);
+		NutPunch_Memcpy(ptr, NP_MetadataOut[NPM_Lobby], metaSize);
 		ptr += metaSize;
 	}
 
@@ -1023,19 +1035,19 @@ static int NP_RealUpdate() {
 
 flush:
 	NP_FlushOutQueue();
-	return NP_Status_Online;
+	return NPS_Online;
 
 sockFail:
 	NP_LastErrorCode = NP_SockError();
 	NP_NukeLobbyData();
-	return NP_Status_Error;
+	return NPS_Error;
 }
 
 int NutPunch_Update() {
 	NP_LazyInit();
 	if (NP_Sock4 == NUTPUNCH_INVALID_SOCKET && NP_Sock6 == NUTPUNCH_INVALID_SOCKET)
-		return NP_Status_Idle;
-	if (NP_LastStatus == NP_Status_Error)
+		return NPS_Idle;
+	if (NP_LastStatus == NPS_Error)
 		NutPunch_Reset();
 	return (NP_LastStatus = NP_RealUpdate());
 }
@@ -1116,7 +1128,7 @@ int NutPunch_PeerCount() {
 }
 
 int NutPunch_PeerAlive(int peer) {
-	if (NP_LastStatus != NP_Status_Online)
+	if (NP_LastStatus != NPS_Online)
 		return 0;
 	if (NutPunch_LocalPeer() == peer)
 		return 1;
@@ -1128,7 +1140,7 @@ int NutPunch_LocalPeer() {
 }
 
 int NutPunch_IsMaster() {
-	return 0 != (NP_ResponseFlags & NP_Resp_Master);
+	return 0 != (NP_ResponseFlags & NP_R_Master);
 }
 
 #endif
