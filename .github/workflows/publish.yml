@@ -1,4 +1,4 @@
-name: Publish nutpuncher for major platforms
+name: Publish NutPuncher for major platforms
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
     needs: binary
     env:
       REGISTRY: ghcr.io
-      IMAGE_NAME: Schwungus/nutpuncher
+      IMAGE_NAME: schwungus/nutpuncher
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
