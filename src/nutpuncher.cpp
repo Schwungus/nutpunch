@@ -418,10 +418,15 @@ static void sendLobbies(Addr addr, const NutPunch_Filter* filters) {
 		addr.send(buf, sizeof(buf));
 }
 
+enum {
+	RecvKeepGoing = 0,
+	RecvDone = -1,
+};
+
 static int receive(NP_IPv ipv) {
 	auto& sock = ipv == NP_IPv6 ? sock6 : sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
-		return -1;
+		return RecvDone;
 	Player* players = nullptr;
 
 	char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
@@ -436,15 +441,15 @@ static int receive(NP_IPv ipv) {
 
 	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.value), &addrSize);
 	if (rcv < 0 && NP_SockError() != NP_ConnReset)
-		return NP_SockError() == NP_WouldBlock ? -1 : NP_SockError();
+		return NP_SockError() == NP_WouldBlock ? RecvDone : NP_SockError();
 
 	const char* ptr = heartbeat + NUTPUNCH_HEADER_SIZE;
 	if (!std::memcmp(heartbeat, "LIST", NUTPUNCH_HEADER_SIZE) && rcv == NUTPUNCH_HEADER_SIZE + sizeof(NP_Filters)) {
 		sendLobbies(addr, reinterpret_cast<const NutPunch_Filter*>(ptr));
-		return 0;
+		return RecvKeepGoing;
 	}
 	if (std::memcmp(heartbeat, "JOIN", NUTPUNCH_HEADER_SIZE) || rcv != NUTPUNCH_HEARTBEAT_SIZE)
-		return 0; // most likely junk...
+		return RecvKeepGoing; // most likely junk...
 
 	static char id[NUTPUNCH_ID_MAX + 1] = {0};
 	std::memcpy(id, ptr, NUTPUNCH_ID_MAX);
@@ -454,21 +459,21 @@ static int receive(NP_IPv ipv) {
 	ptr += sizeof(flags);
 
 	if (!flags) // wtf do you want??
-		return 0;
+		return RecvKeepGoing;
 
 	if ((lobbies.count(id) && !(flags & NP_HB_Join)) || (!lobbies.count(id) && !(flags & NP_HB_Create)))
 		goto exists;
 	if (!lobbies.count(id) && lobbies.size() >= maxLobbies) {
 		addr.gtfo(NPE_NoSuchLobby); // TODO: update this error code
 		NP_Log("WARN: Reached lobby limit");
-		return 0;
+		return RecvKeepGoing;
 	}
 	if (!lobbies.count(id)) {
 		// Match against existing peers to prevent creating multiple lobbies with the same master.
 		for (const auto& [lobbyId, lobby] : lobbies)
 			for (const auto& player : lobby.players)
 				if (!player.dead() && !std::memcmp(&player.addr, &addr, sizeof(addr)))
-					return 0; // fuck you...
+					return RecvKeepGoing; // fuck you...
 		lobbies.insert({id, Lobby(id)});
 		NP_Log("Created lobby '%s'", fmtLobbyId(id));
 	}
@@ -477,7 +482,7 @@ static int receive(NP_IPv ipv) {
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (!players[i].dead() && !std::memcmp(&players[i].addr.value, &addr.value, sizeof(addr.value))) {
 			lobbies[id].accept(i, ptr);
-			return 0;
+			return RecvKeepGoing;
 		}
 	}
 
@@ -492,15 +497,15 @@ static int receive(NP_IPv ipv) {
 
 		const char* ipv_s = ipv == NP_IPv6 ? "IPv6" : "IPv4";
 		NP_Log("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id), ipv_s);
-		return 0;
+		return RecvKeepGoing;
 	}
 
 	NP_Log("Lobby '%s' is full!", fmtLobbyId(id));
-	return 0;
+	return RecvKeepGoing;
 
 exists:
 	addr.gtfo(NPE_LobbyExists);
-	return 0;
+	return RecvKeepGoing;
 }
 
 struct cleanup {
@@ -530,6 +535,7 @@ int main(int, char**) {
 		return EXIT_FAILURE;
 	}
 
+	int result;
 	std::int64_t start = clock(), end, delta;
 	const std::int64_t minDelta = 1000 / beatsPerSecond;
 
@@ -540,8 +546,9 @@ int main(int, char**) {
 
 		static constexpr const NP_IPv ipvs[2] = {NP_IPv6, NP_IPv4};
 		for (const auto ipv : ipvs) {
-			int result;
-			while (!(result = receive(ipv))) {}
+			do
+				result = receive(ipv);
+			while (RecvKeepGoing == result);
 			if (result > 0) {
 				NP_Log("Failed to receive data (code %d)", result);
 				(ipv == NP_IPv6 ? sock6 : sock4) = NUTPUNCH_INVALID_SOCKET;
