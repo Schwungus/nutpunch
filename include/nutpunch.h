@@ -131,7 +131,12 @@ void* NutPunch_PeerGet(int peer, const char* name, int* size);
 /// Check if there is a packet waiting in the receiving queue. Retrieve it with `NutPunch_NextMessage()`.
 int NutPunch_HasMessage();
 
-/// Retrieve the next packet in the receiving queue. Return the index of the peer who sent it.
+/// Retrieve the next packet in the receiving queue. Returns the index of the peer who sent it.
+///
+/// In case of an error, logs it and returns `NUTPUNCH_MAX_PLAYERS`.
+///
+/// Size must be set to the output buffer's size. Passing an output buffer that is too small to contain the message data
+/// is considered an error.
 int NutPunch_NextMessage(void* out, int* size);
 
 /// Send data to specified peer. For reliable packet delivery, use `NutPunch_SendReliably`.
