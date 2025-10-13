@@ -258,13 +258,13 @@ typedef uint8_t NP_IPv;
 
 typedef uint32_t NP_PacketIdx;
 
-#define NP_AddrPort(addr)                                                                                              \
-	((addr).ipv == NP_IPv6 ? &((struct sockaddr_in6*)&(addr))->sin6_port                                           \
-			       : &((struct sockaddr_in*)&(addr))->sin_port)
 typedef struct {
 	struct sockaddr_storage value;
 	NP_IPv ipv;
 } NP_Addr;
+static uint16_t* NP_AddrPort(NP_Addr* addr) {
+	return addr->ipv == NP_IPv6 ? &((struct sockaddr_in6*)addr)->sin6_port : &((struct sockaddr_in*)addr)->sin_port;
+}
 
 typedef struct NP_DataMessage {
 	char* data;
@@ -781,7 +781,7 @@ NP_MakeHandler(NP_HandleJoin) {
 		}
 		data += 16;
 
-		uint16_t* port = NP_AddrPort(peer);
+		uint16_t* port = NP_AddrPort(&peer);
 		NutPunch_Memcpy(port, data, 2);
 		data += 2;
 
@@ -1123,7 +1123,7 @@ int NutPunch_PeerAlive(int peer) {
 		return 0;
 	if (NutPunch_LocalPeer() == peer)
 		return 1;
-	return *NP_AddrPort(NP_Peers[peer]) != 0;
+	return *NP_AddrPort(&NP_Peers[peer]) != 0;
 }
 
 int NutPunch_LocalPeer() {
