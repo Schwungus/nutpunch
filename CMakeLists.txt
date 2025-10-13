@@ -23,6 +23,7 @@ endif()
 
 option(NUTPUNCH_BUILD_TESTS "Build nutpunch test binary?" ON)
 if(NUTPUNCH_BUILD_TESTS)
+    set(BUILD_TOYS OFF CACHE INTERNAL "Fuck poormans")
     FetchContent_Declare(
         poormans
         GIT_REPOSITORY https://github.com/nonk123/poormans.git
