@@ -147,7 +147,8 @@ void NutPunch_SendReliably(int peer, const void* data, int size);
 
 /// Count how many "live" peers we have a route to, including our local peer.
 ///
-/// Do not use this as an upper bound for iterating over peers. They can come in any order and with gaps in-between.
+/// Do not use this as an upper bound for iterating over peers; they can come in any order and with gaps in-between. For
+/// that, see `NutPunch_PeerAlive`.
 int NutPunch_PeerCount();
 
 /// Return 1 if you are connected to the peer with the specified index.
