@@ -343,7 +343,7 @@ static void bindSock(NP_IPv ipv) {
 		argp;
 
 	argp = 1;
-	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&argp, sizeof(argp)))
+	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&argp), sizeof(argp)))
 		throw "Failed to set socket reuseaddr option";
 
 	argp = 1;
@@ -519,7 +519,7 @@ struct cleanup {
 	}
 };
 
-int main(int, char**) {
+int main(int, char*[]) {
 	cleanup __cleanup;
 
 #ifdef NUTPUNCH_WINDOSE
