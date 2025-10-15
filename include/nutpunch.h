@@ -268,9 +268,6 @@ typedef struct {
 	struct sockaddr_storage value;
 	NP_IPv ipv;
 } NP_Addr;
-static uint16_t* NP_AddrPort(NP_Addr* addr) {
-	return addr->ipv == NP_IPv6 ? &((struct sockaddr_in6*)addr)->sin6_port : &((struct sockaddr_in*)addr)->sin_port;
-}
 
 typedef struct NP_DataMessage {
 	char* data;
@@ -347,6 +344,13 @@ static NP_ResponseFlagsStorage NP_ResponseFlags = 0;
 enum {
 	NP_R_Master = 1 << 0,
 };
+
+static uint16_t* NP_AddrPort(NP_Addr* addr) {
+	if (addr->ipv == NP_IPv6)
+		return &((struct sockaddr_in6*)&addr->value)->sin6_port;
+	else
+		return &((struct sockaddr_in*)&addr->value)->sin_port;
+}
 
 static void NP_CleanupPackets(NP_DataMessage** queue) {
 	while (*queue != NULL) {
