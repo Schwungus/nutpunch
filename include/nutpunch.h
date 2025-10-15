@@ -1133,7 +1133,7 @@ int NutPunch_PeerAlive(int peer) {
 		return 0;
 	if (NutPunch_LocalPeer() == peer)
 		return 1;
-	return *NP_AddrPort(&NP_Peers[peer]) != 0;
+	return 0 != *NP_AddrPort(NP_Peers + peer);
 }
 
 int NutPunch_LocalPeer() {

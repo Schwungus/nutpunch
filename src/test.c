@@ -69,8 +69,9 @@ static void receive_shit() {
 		if (size == PAYLOAD_SIZE) {
 			players[peer].x = ((int32_t)(data[0]));
 			players[peer].y = ((int32_t)(data[1]));
-		} else
+		} else {
 			printf("%s\n", data);
+		}
 	}
 }
 
@@ -121,9 +122,10 @@ static void draw_debug_bits(int status) {
 		'B',
 		'G',
 		'0' + (NPS_Online == status),
-		'0' + NutPunch_IsMaster(),
+		NutPunch_IsMaster() ? 'M' : '0',
 		'0' + waitingForPlayers,
 		'0' + NutPunch_PeerCount(),
+		'0' + NutPunch_LocalPeer(),
 	};
 
 	const int x = 0, y = 0;
