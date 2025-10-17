@@ -227,19 +227,10 @@ struct Lobby {
 	}
 
 	void update() {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			auto& plr = players[i];
-			if (plr.dead())
-				continue;
-			plr.countdown--;
-			if (!plr.dead())
-				continue;
-			NP_Log("Peer %d timed out in lobby '%s'", i + 1, fmtId());
-			plr.reset();
-		}
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (!players[i].dead())
-				sendTo(i);
+			tick(i);
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+			sendTo(i);
 	}
 
 	bool dead() const {
@@ -272,7 +263,21 @@ struct Lobby {
 		}
 	}
 
+	void tick(const int playerIdx) {
+		auto& plr = players[playerIdx];
+		if (plr.dead())
+			return;
+		plr.countdown--;
+		if (!plr.dead())
+			return;
+		NP_Log("Peer %d timed out in lobby '%s'", playerIdx + 1, fmtId());
+		plr.reset();
+	}
+
 	void sendTo(const int playerIdx) {
+		if (players[playerIdx].dead())
+			return;
+
 		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = "JOIN";
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
 		*ptr++ = static_cast<NP_ResponseFlagsStorage>(playerIdx == master()) * NP_R_Master;
