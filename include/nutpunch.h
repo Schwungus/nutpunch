@@ -378,6 +378,20 @@ enum {
 	NP_R_Master = 1 << 0,
 };
 
+static void* NP_AddrRaw(NP_Addr* addr) {
+	if (addr->ipv == NP_IPv6)
+		return &((struct sockaddr_in6*)&addr->raw)->sin6_addr;
+	else
+		return &((struct sockaddr_in*)&addr->raw)->sin_addr;
+}
+
+static uint16_t* NP_AddrFamily(NP_Addr* addr) {
+	if (addr->ipv == NP_IPv6)
+		return (uint16_t*)&((struct sockaddr_in6*)&addr->raw)->sin6_family;
+	else
+		return (uint16_t*)&((struct sockaddr_in*)&addr->raw)->sin_family;
+}
+
 static uint16_t* NP_AddrPort(NP_Addr* addr) {
 	if (addr->ipv == NP_IPv6)
 		return &((struct sockaddr_in6*)&addr->raw)->sin6_port;
@@ -735,13 +749,10 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 
 	NP_DataMessage* next = NP_QueueOut;
 	NP_QueueOut = (NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
-	NP_QueueOut->next = next;
-	NP_QueueOut->peer = peer;
-	NP_QueueOut->size = size;
+	NP_QueueOut->next = next, NP_QueueOut->peer = peer;
+	NP_QueueOut->size = size, NP_QueueOut->bounce = index ? 0 : -1;
+	NP_QueueOut->index = index, NP_QueueOut->dead = 0;
 	NP_QueueOut->data = (char*)NutPunch_Malloc(size);
-	NP_QueueOut->bounce = index ? 0 : -1;
-	NP_QueueOut->index = index;
-	NP_QueueOut->dead = 0;
 	NutPunch_Memcpy(NP_QueueOut->data, data, size);
 }
 
@@ -807,13 +818,8 @@ NP_MakeHandler(NP_HandleBeat) {
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		peer.ipv = *data++;
 
-		if (peer.ipv == NP_IPv6) {
-			((struct sockaddr_in6*)&peer.raw)->sin6_family = AF_INET6;
-			NutPunch_Memcpy(&((struct sockaddr_in6*)&peer.raw)->sin6_addr, data, 16);
-		} else {
-			((struct sockaddr_in*)&peer.raw)->sin_family = AF_INET;
-			NutPunch_Memcpy(&((struct sockaddr_in*)&peer.raw)->sin_addr, data, 4);
-		}
+		*NP_AddrFamily(&peer) = (peer.ipv == NP_IPv6 ? AF_INET6 : AF_INET);
+		NutPunch_Memcpy(NP_AddrRaw(&peer), data, (peer.ipv == NP_IPv6 ? 16 : 4));
 		data += 16;
 
 		uint16_t* port = NP_AddrPort(&peer);
@@ -865,8 +871,7 @@ NP_MakeHandler(NP_HandleData) {
 	NP_QueueIn = (NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
 	NP_QueueIn->data = (char*)NutPunch_Malloc(size);
 	NutPunch_Memcpy(NP_QueueIn->data, data, size);
-	NP_QueueIn->peer = peerIdx;
-	NP_QueueIn->size = size;
+	NP_QueueIn->peer = peerIdx, NP_QueueIn->size = size;
 	NP_QueueIn->next = next;
 }
 
@@ -889,25 +894,18 @@ static int NP_SendHeartbeat() {
 
 	char* ptr = heartbeat;
 	if (NP_Querying) {
-		NutPunch_Memcpy(ptr, "LIST", NUTPUNCH_HEADER_SIZE);
-		ptr += NUTPUNCH_HEADER_SIZE;
-		NutPunch_Memcpy(ptr, NP_Filters, sizeof(NP_Filters));
-		ptr += sizeof(NP_Filters);
+		NutPunch_Memcpy(ptr, "LIST", NUTPUNCH_HEADER_SIZE), ptr += NUTPUNCH_HEADER_SIZE;
+		NutPunch_Memcpy(ptr, NP_Filters, sizeof(NP_Filters)), ptr += sizeof(NP_Filters);
 	} else {
-		NutPunch_Memcpy(ptr, "JOIN", NUTPUNCH_HEADER_SIZE);
-		ptr += NUTPUNCH_HEADER_SIZE;
-		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX);
-		ptr += NUTPUNCH_ID_MAX;
+		NutPunch_Memcpy(ptr, "JOIN", NUTPUNCH_HEADER_SIZE), ptr += NUTPUNCH_HEADER_SIZE;
+		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX), ptr += NUTPUNCH_ID_MAX;
 
 		// NOTE: make sure to correct endianness when multibyte flags become a thing.
-		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags;
-		ptr += sizeof(NP_HeartbeatFlags);
+		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags, ptr += sizeof(NP_HeartbeatFlags);
 
 		const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
-		NutPunch_Memcpy(ptr, NP_PeerMetadataOut, metaSize);
-		ptr += metaSize;
-		NutPunch_Memcpy(ptr, NP_LobbyMetadataOut, metaSize);
-		ptr += metaSize;
+		NutPunch_Memcpy(ptr, NP_PeerMetadataOut, metaSize), ptr += metaSize;
+		NutPunch_Memcpy(ptr, NP_LobbyMetadataOut, metaSize), ptr += metaSize;
 	}
 
 	size_t length = ptr - heartbeat;
@@ -933,8 +931,7 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 		addrSize;
 
 	struct sockaddr_storage addr = {0};
-	addrSize = sizeof(addr);
-	NutPunch_Memset(&addr, 0, addrSize);
+	addrSize = sizeof(addr), NP_Memzero2(&addr);
 
 	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
 	int size = recvfrom(*sock, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &addrSize);
@@ -990,8 +987,7 @@ findNext:
 			NP_QueueOut = ptr->next;
 		else
 			NP_QueueOut->next = ptr->next;
-		NutPunch_Free(ptr->data);
-		NutPunch_Free(ptr);
+		NutPunch_Free(ptr->data), NutPunch_Free(ptr);
 		goto findNext;
 	}
 }
@@ -1056,8 +1052,7 @@ static int NP_RealUpdate() {
 			NP_QueueSend(i, bye, sizeof(bye), 0);
 
 flush:
-	NP_PruneOutQueue();
-	NP_FlushOutQueue();
+	NP_PruneOutQueue(), NP_FlushOutQueue();
 	return NPS_Online;
 
 sockFail:
