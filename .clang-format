@@ -3,14 +3,14 @@ IndentWidth: 8
 ContinuationIndentWidth: 8
 UseTab: AlignWithSpaces
 AlignArrayOfStructures: Left
-IndentGotoLabels: true
 BreakBeforeBinaryOperators: All
 BreakBeforeBraces: Custom
 BraceWrapping:
   AfterControlStatement: MultiLine
+SpaceAfterCStyleCast: false
 DerivePointerAlignment: false
 PointerAlignment: Left
-AllowShortBlocksOnASingleLine: Empty
+AllowShortBlocksOnASingleLine: Always
 AllowShortCaseLabelsOnASingleLine: false
 AllowShortEnumsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: Empty
@@ -18,8 +18,8 @@ AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
 AlwaysBreakAfterReturnType: None
 AccessModifierOffset: -8
+IndentCaseBlocks: false
 IndentCaseLabels: false
 AlignAfterOpenBracket: DontAlign
-SortIncludes: CaseSensitive
-InsertNewlineAtEOF: true
-InsertBraces: false
+RemoveBracesLLVM: true
+ReflowComments: Always
