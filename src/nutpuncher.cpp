@@ -230,7 +230,7 @@ struct Lobby {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			tick(i);
 			if (!players[i].dead())
-				sendTo(i);
+				beat(i);
 		}
 	}
 
@@ -275,8 +275,8 @@ struct Lobby {
 		plr.reset();
 	}
 
-	void sendTo(const int playerIdx) {
-		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = "JOIN";
+	void beat(const int playerIdx) {
+		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = "BEAT";
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
 		*ptr++ = static_cast<NP_ResponseFlagsStorage>(playerIdx == master()) * NP_R_Master;
 

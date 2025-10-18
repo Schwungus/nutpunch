@@ -315,7 +315,7 @@ typedef struct {
 	const int packetSize;
 } NP_MessageTable;
 
-#define NP_JOIN_LEN (NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
+#define NP_BEAT_LEN (NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
 #define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * NUTPUNCH_ID_MAX)
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
@@ -323,7 +323,7 @@ typedef struct {
 NP_MakeHandler(NP_HandleIntro);
 NP_MakeHandler(NP_HandleDisconnect);
 NP_MakeHandler(NP_HandleGTFO);
-NP_MakeHandler(NP_HandleJoin);
+NP_MakeHandler(NP_HandleBeat);
 NP_MakeHandler(NP_HandleList);
 NP_MakeHandler(NP_HandleAcky);
 NP_MakeHandler(NP_HandleData);
@@ -332,7 +332,7 @@ static const NP_MessageTable NP_Messages[] = {
 	{{'I', 'N', 'T', 'R'}, NP_HandleIntro,      1          },
 	{{'D', 'I', 'S', 'C'}, NP_HandleDisconnect, 0          },
 	{{'G', 'T', 'F', 'O'}, NP_HandleGTFO,       1          },
-	{{'J', 'O', 'I', 'N'}, NP_HandleJoin,       NP_JOIN_LEN},
+	{{'B', 'E', 'A', 'T'}, NP_HandleBeat,       NP_BEAT_LEN},
 	{{'L', 'I', 'S', 'T'}, NP_HandleList,       NP_LIST_LEN},
 	{{'A', 'C', 'K', 'Y'}, NP_HandleAcky,       NP_ACKY_LEN},
 	{{'D', 'A', 'T', 'A'}, NP_HandleData,       -1         },
@@ -780,7 +780,7 @@ NP_MakeHandler(NP_HandleGTFO) {
 	}
 }
 
-NP_MakeHandler(NP_HandleJoin) {
+NP_MakeHandler(NP_HandleBeat) {
 	if (NutPunch_Memcmp(&peer.raw, &NP_PuncherPeer.raw, sizeof(peer.raw)))
 		return;
 
