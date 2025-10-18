@@ -286,6 +286,9 @@ typedef int64_t NP_Socket;
 #define NutPunch_Memcmp memcmp
 #endif
 
+#define NP_Memzero(array) NutPunch_Memset(array, 0, sizeof(array))
+#define NP_Memzero2(ptr) NutPunch_Memset(ptr, 0, sizeof(*(ptr)))
+
 typedef uint8_t NP_IPv;
 #define NP_IPv4 (0)
 #define NP_IPv6 (1)
@@ -390,26 +393,18 @@ static void NP_CleanupPackets(NP_DataMessage** queue) {
 }
 
 static void NP_NukeLobbyData() {
-	NP_Closing = NP_Querying = 0;
+	NP_Closing = NP_Querying = 0, NP_ResponseFlags = 0;
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
-	NP_ResponseFlags = 0;
-	NutPunch_Memset(NP_LobbyMetadataIn, 0, sizeof(NP_LobbyMetadataIn));
-	NutPunch_Memset(NP_PeerMetadataIn, 0, sizeof(NP_PeerMetadataIn));
-	NutPunch_Memset(NP_LobbyMetadataOut, 0, sizeof(NP_LobbyMetadataOut));
-	NutPunch_Memset(NP_PeerMetadataOut, 0, sizeof(NP_PeerMetadataOut));
-	NutPunch_Memset(NP_Peers, 0, sizeof(NP_Peers));
-	NutPunch_Memset(NP_Filters, 0, sizeof(NP_Filters));
-	NP_CleanupPackets(&NP_QueueIn);
-	NP_CleanupPackets(&NP_QueueOut);
+	NP_Memzero(NP_LobbyMetadataIn), NP_Memzero(NP_PeerMetadataIn);
+	NP_Memzero(NP_LobbyMetadataOut), NP_Memzero(NP_PeerMetadataOut);
+	NP_Memzero(NP_Peers), NP_Memzero(NP_Filters);
+	NP_CleanupPackets(&NP_QueueIn), NP_CleanupPackets(&NP_QueueOut);
 }
 
 static void NP_NukeRemote() {
-	NP_LobbyId[0] = 0;
-	NP_HeartbeatFlags = 0;
-	NutPunch_Memset(&NP_PuncherPeer, 0, sizeof(NP_PuncherPeer));
-	NutPunch_Memset(NP_Peers, 0, sizeof(NP_Peers));
-	NutPunch_Memset(NP_PeerMetadataIn, 0, sizeof(NP_PeerMetadataIn));
-	NutPunch_Memset(NP_Filters, 0, sizeof(NP_Filters));
+	NP_LobbyId[0] = 0, NP_HeartbeatFlags = 0;
+	NP_Memzero2(&NP_PuncherPeer), NP_Memzero(NP_Peers);
+	NP_Memzero(NP_PeerMetadataIn), NP_Memzero(NP_Filters);
 	NP_LastStatus = NPS_Idle;
 }
 
@@ -469,7 +464,7 @@ static int NP_GetAddrInfo(NP_Addr* out, const char* host, uint16_t port, NP_IPv 
 	NP_LazyInit();
 
 	out->ipv = ipv;
-	NutPunch_Memset(&out->raw, 0, sizeof(out->raw));
+	NP_Memzero2(&out->raw);
 
 	if (ipv == NP_IPv6) {
 		((struct sockaddr_in6*)&out->raw)->sin6_family = AF_INET6;
@@ -489,8 +484,7 @@ static int NP_GetAddrInfo(NP_Addr* out, const char* host, uint16_t port, NP_IPv 
 	hints.ai_flags = AI_PASSIVE;
 
 	static char fmt[8] = {0};
-	NutPunch_Memset(fmt, 0, sizeof(fmt));
-	snprintf(fmt, sizeof(fmt), "%d", port);
+	NP_Memzero(fmt), snprintf(fmt, sizeof(fmt), "%d", port);
 
 	if (getaddrinfo(host, fmt, &hints, &result)) {
 		NP_LastError = "Failed to get NutPuncher server address info";
@@ -501,7 +495,7 @@ static int NP_GetAddrInfo(NP_Addr* out, const char* host, uint16_t port, NP_IPv 
 	if (result == NULL)
 		return 0;
 
-	NutPunch_Memset(&out->raw, 0, sizeof(out->raw));
+	NP_Memzero2(&out->raw);
 	NutPunch_Memcpy(&out->raw, result->ai_addr, result->ai_addrlen);
 	freeaddrinfo(result);
 	return 1;
@@ -530,7 +524,7 @@ static int NP_FieldNameSize(const char* name) {
 
 static void* NP_GetMetadataFrom(NutPunch_Field* fields, const char* name, int* size) {
 	static char buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
-	NutPunch_Memset(buf, 0, sizeof(buf));
+	NP_Memzero(buf);
 
 	int nameSize = NP_FieldNameSize(name);
 	if (!nameSize)
@@ -591,12 +585,8 @@ static void NP_SetMetadataIn(NutPunch_Field* fields, const char* name, int dataS
 		continue;
 
 	set:
-		NutPunch_Memset(field->name, 0, sizeof(field->name));
-		NutPunch_Memcpy(field->name, name, nameSize);
-
-		NutPunch_Memset(field->data, 0, sizeof(field->data));
-		NutPunch_Memcpy(field->data, data, dataSize);
-
+		NP_Memzero(field->name), NutPunch_Memcpy(field->name, name, nameSize);
+		NP_Memzero(field->data), NutPunch_Memcpy(field->data, data, dataSize);
 		field->size = dataSize;
 		return;
 	}
@@ -682,7 +672,7 @@ static int NutPunch_Connect(const char* lobbyId) {
 
 	NP_LastStatus = NPS_Online;
 	if (lobbyId != NULL) {
-		NutPunch_Memset(NP_LobbyId, 0, sizeof(NP_LobbyId));
+		NP_Memzero(NP_LobbyId);
 		snprintf(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobbyId);
 	}
 	return 1;
@@ -893,7 +883,7 @@ static int NP_SendHeartbeat() {
 		return 1;
 
 	static char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
-	NutPunch_Memset(heartbeat, 0, sizeof(heartbeat));
+	NP_Memzero(heartbeat);
 
 	char* ptr = heartbeat;
 	if (NP_Querying) {
