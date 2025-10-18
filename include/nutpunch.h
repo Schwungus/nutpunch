@@ -320,7 +320,7 @@ typedef struct {
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
 #define NP_MakeHandler(name) static void name(NP_Addr peer, int size, const uint8_t* data)
-NP_MakeHandler(NP_HandleIntro);
+NP_MakeHandler(NP_HandleShalom);
 NP_MakeHandler(NP_HandleDisconnect);
 NP_MakeHandler(NP_HandleGTFO);
 NP_MakeHandler(NP_HandleBeat);
@@ -329,7 +329,7 @@ NP_MakeHandler(NP_HandleAcky);
 NP_MakeHandler(NP_HandleData);
 
 static const NP_MessageTable NP_Messages[] = {
-	{{'I', 'N', 'T', 'R'}, NP_HandleIntro,      1          },
+	{{'S', 'H', 'L', 'M'}, NP_HandleShalom,     1          },
 	{{'D', 'I', 'S', 'C'}, NP_HandleDisconnect, 0          },
 	{{'G', 'T', 'F', 'O'}, NP_HandleGTFO,       1          },
 	{{'B', 'E', 'A', 'T'}, NP_HandleBeat,       NP_BEAT_LEN},
@@ -743,7 +743,7 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 	NutPunch_Memcpy(NP_QueueOut->data, data, size);
 }
 
-NP_MakeHandler(NP_HandleIntro) {
+NP_MakeHandler(NP_HandleShalom) {
 	if (!NutPunch_Memcmp(&peer.raw, &NP_PuncherPeer.raw, sizeof(peer.raw)))
 		return;
 	if (*data < NUTPUNCH_MAX_PLAYERS)
@@ -799,8 +799,8 @@ NP_MakeHandler(NP_HandleBeat) {
 	if (NP_LocalPeer == NUTPUNCH_MAX_PLAYERS)
 		return;
 
-	static uint8_t hello[] = "INTR";
-	hello[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
+	static uint8_t shalom[] = "SHLM";
+	shalom[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		peer.ipv = *data++;
@@ -823,7 +823,7 @@ NP_MakeHandler(NP_HandleBeat) {
 
 		if (i != NP_LocalPeer && *port) {
 			const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
-			sendto(sock, (char*)hello, sizeof(hello), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+			sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
 		}
 	}
 	NutPunch_Memcpy(NP_LobbyMetadataIn, data, metaSize);
