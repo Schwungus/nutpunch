@@ -160,22 +160,22 @@ private:
 struct Addr : NP_Addr {
 	Addr() : Addr(NP_IPv4) {}
 	Addr(NP_IPv ipv) {
-		std::memset(&value, 0, sizeof(value));
+		std::memset(&raw, 0, sizeof(raw));
 		this->ipv = ipv;
 	}
 
 	sockaddr_in* v4() {
-		return reinterpret_cast<sockaddr_in*>(&value);
+		return reinterpret_cast<sockaddr_in*>(&raw);
 	}
 
 	sockaddr_in6* v6() {
-		return reinterpret_cast<sockaddr_in6*>(&value);
+		return reinterpret_cast<sockaddr_in6*>(&raw);
 	}
 
 	template <typename T> int send(const T buf[], size_t size) const {
 		const auto sock = ipv == NP_IPv6 ? sock6 : sock4;
 		return sendto(sock, reinterpret_cast<const char*>(buf), static_cast<int>(size), 0,
-			reinterpret_cast<const sockaddr*>(&value), sizeof(value));
+			reinterpret_cast<const sockaddr*>(&raw), sizeof(raw));
 	}
 
 	int gtfo(uint8_t error) const {
@@ -440,9 +440,9 @@ static int receive(NP_IPv ipv) {
 	socklen_t
 #endif
 		addrSize;
-	addrSize = sizeof(addr.value);
+	addrSize = sizeof(addr.raw);
 
-	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.value), &addrSize);
+	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.raw), &addrSize);
 	if (rcv < 0 && NP_SockError() != NP_ConnReset)
 		return NP_SockError() == NP_WouldBlock ? RecvDone : NP_SockError();
 
@@ -483,7 +483,7 @@ static int receive(NP_IPv ipv) {
 
 	players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!players[i].dead() && !std::memcmp(&players[i].addr.value, &addr.value, sizeof(addr.value))) {
+		if (!players[i].dead() && !std::memcmp(&players[i].addr.raw, &addr.raw, sizeof(addr.raw))) {
 			lobbies[id].accept(i, ptr);
 			return RecvKeepGoing;
 		}
