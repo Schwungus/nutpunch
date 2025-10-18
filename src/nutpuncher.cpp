@@ -227,10 +227,11 @@ struct Lobby {
 	}
 
 	void update() {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			tick(i);
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			sendTo(i);
+			if (!players[i].dead())
+				sendTo(i);
+		}
 	}
 
 	bool dead() const {
@@ -275,9 +276,6 @@ struct Lobby {
 	}
 
 	void sendTo(const int playerIdx) {
-		if (players[playerIdx].dead())
-			return;
-
 		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = "JOIN";
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
 		*ptr++ = static_cast<NP_ResponseFlagsStorage>(playerIdx == master()) * NP_R_Master;
