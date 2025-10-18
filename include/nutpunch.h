@@ -218,10 +218,12 @@ void NutPunch_Reset();
 /// Get the human-readable description of the latest error in `NutPunch_Update()`.
 const char* NutPunch_GetLastError();
 
-#define NP_Log(...)                                                                                                    \
+/// Get a file's basename (the name without directory). Used internally in `NP_Log`.
+const char* NutPunch_Basename(const char*);
+
+#define NP_Log(msg, ...)                                                                                               \
 	do {                                                                                                           \
-		fprintf(stdout, "[NP] " __VA_ARGS__);                                                                  \
-		fprintf(stdout, "\n");                                                                                 \
+		fprintf(stdout, "(%s:%d) -> " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);         \
 		fflush(stdout);                                                                                        \
 	} while (0)
 
@@ -1162,6 +1164,14 @@ int NutPunch_LocalPeer() {
 
 int NutPunch_IsMaster() {
 	return 0 != (NP_ResponseFlags & NP_R_Master);
+}
+
+const char* NutPunch_Basename(const char* path) {
+	// https://github.com/toggins/Klawiatura/blob/b86d36d2b320bea87987a1a05a455e782c5a4e25/src/K_file.c#L71
+	const char* s = strrchr(path, '/');
+	if (!s)
+		s = strrchr(path, '\\');
+	return s ? s + 1 : path;
 }
 
 #endif
