@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef NUTPUNCH_H
+#define NUTPUNCH_H
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -1148,4 +1151,6 @@ int NutPunch_IsMaster() {
 
 #ifdef __cplusplus
 }
+#endif
+
 #endif
