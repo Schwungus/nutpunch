@@ -368,8 +368,10 @@ static void bindSock(NP_IPv ipv) {
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_family = AF_INET;
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
 	}
-	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)))
+	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
+		NP_Log("Bound %s socket", ipv == NP_IPv6 ? "IPv6" : "IPv4");
 		return;
+	}
 
 	if (ipv == NP_IPv6) {
 		// IPv6 is optional and skipped with a warning
@@ -427,7 +429,7 @@ enum {
 };
 
 static int receive(NP_IPv ipv) {
-	auto& sock = ipv == NP_IPv6 ? sock6 : sock4;
+	const auto sock = ipv == NP_IPv6 ? sock6 : sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return RecvDone;
 	Player* players = nullptr;
@@ -440,7 +442,7 @@ static int receive(NP_IPv ipv) {
 	socklen_t
 #endif
 		addrSize;
-	addrSize = sizeof(addr.raw);
+	addrSize = ipv == NP_IPv6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
 
 	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.raw), &addrSize);
 	if (rcv < 0 && NP_SockError() != NP_ConnReset)
@@ -531,8 +533,8 @@ int main(int, char*[]) {
 #endif
 
 	try {
-		bindSock(true);
-		bindSock(false);
+		bindSock(NP_IPv6);
+		bindSock(NP_IPv4);
 	} catch (const char* msg) {
 		NP_Log("CRITICAL: %s (code %d)", msg, NP_SockError());
 		return EXIT_FAILURE;

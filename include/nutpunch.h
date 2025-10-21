@@ -885,7 +885,7 @@ NP_MakeHandler(NP_HandleAcky) {
 }
 
 static int NP_SendHeartbeat() {
-	NP_Socket sock = NP_PuncherPeer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
+	const NP_Socket sock = NP_PuncherPeer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return 1;
 
