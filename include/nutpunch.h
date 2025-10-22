@@ -82,12 +82,13 @@ extern "C" {
 #define NUTPUNCH_BOUNCE_TICKS (60)
 
 #define NUTPUNCH_HEADER_SIZE (4)
+#define NUTPUNCH_ADDRESS_SIZE (19)
 
 #define NUTPUNCH_RESPONSE_SIZE                                                                                         \
-	(NUTPUNCH_HEADER_SIZE + 1 + NUTPUNCH_MAX_PLAYERS * 19                                                          \
+	(NUTPUNCH_HEADER_SIZE + 1 + NUTPUNCH_MAX_PLAYERS * 2 * NUTPUNCH_ADDRESS_SIZE                                   \
 		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
-	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
+	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage) + NUTPUNCH_ADDRESS_SIZE        \
 		+ 2 * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 
 #include <stddef.h>
@@ -759,8 +760,9 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 NP_MakeHandler(NP_HandleShalom) {
 	if (!NutPunch_Memcmp(&peer.raw, &NP_PuncherPeer.raw, sizeof(peer.raw)))
 		return;
-	if (*data < NUTPUNCH_MAX_PLAYERS)
-		NP_Peers[*data] = peer;
+	const uint8_t idx = *data;
+	if (idx < NUTPUNCH_MAX_PLAYERS)
+		NP_Peers[idx] = peer;
 }
 
 NP_MakeHandler(NP_HandleDisconnect) {
@@ -793,17 +795,43 @@ NP_MakeHandler(NP_HandleGTFO) {
 	}
 }
 
+static void NP_SayShalom(int idx, const uint8_t* data) {
+	NP_Addr peer = {0};
+	peer.ipv = *data++;
+
+	static const char nulladdr[16] = {0};
+	if (!NutPunch_Memcmp(data, nulladdr, sizeof(nulladdr)))
+		return;
+
+	*NP_AddrFamily(&peer) = (peer.ipv == NP_IPv6 ? AF_INET6 : AF_INET);
+	NutPunch_Memcpy(NP_AddrRaw(&peer), data, (peer.ipv == NP_IPv6 ? 16 : 4));
+	data += 16;
+
+	uint16_t* port = NP_AddrPort(&peer);
+	NutPunch_Memcpy(port, data, 2);
+	data += 2;
+
+	if (!*port)
+		return;
+
+	static uint8_t shalom[] = "SHLM";
+	shalom[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
+
+	const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
+	sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+}
+
 NP_MakeHandler(NP_HandleBeat) {
 	if (NutPunch_Memcmp(&peer.raw, &NP_PuncherPeer.raw, sizeof(peer.raw)))
 		return;
 
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
 	const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
-	const ptrdiff_t stride = 19 + metaSize;
+	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + NUTPUNCH_ADDRESS_SIZE + metaSize;
 
 	NP_ResponseFlags = *data++;
 	for (uint8_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		const uint8_t *ptr = data + i * stride, nulladdr[16] = {0};
+		const uint8_t *ptr = data + i * stride + NUTPUNCH_ADDRESS_SIZE, nulladdr[16] = {0};
 		if (!NutPunch_Memcmp(ptr + 1, nulladdr, 16) && *(uint16_t*)(ptr + 17)) {
 			NP_LocalPeer = i;
 			break;
@@ -811,28 +839,10 @@ NP_MakeHandler(NP_HandleBeat) {
 	}
 	if (NP_LocalPeer == NUTPUNCH_MAX_PLAYERS)
 		return;
-
-	static uint8_t shalom[] = "SHLM";
-	shalom[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
-
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		peer.ipv = *data++;
-
-		*NP_AddrFamily(&peer) = (peer.ipv == NP_IPv6 ? AF_INET6 : AF_INET);
-		NutPunch_Memcpy(NP_AddrRaw(&peer), data, (peer.ipv == NP_IPv6 ? 16 : 4));
-		data += 16;
-
-		uint16_t* port = NP_AddrPort(&peer);
-		NutPunch_Memcpy(port, data, 2);
-		data += 2;
-
-		NutPunch_Memcpy(NP_PeerMetadataIn[i], data, metaSize);
-		data += metaSize;
-
-		if (i != NP_LocalPeer && *port) {
-			const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
-			sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
-		}
+		NP_SayShalom(i, data), data += NUTPUNCH_ADDRESS_SIZE; // private addr
+		NP_SayShalom(i, data), data += NUTPUNCH_ADDRESS_SIZE; // public addr
+		NutPunch_Memcpy(NP_PeerMetadataIn[i], data, metaSize), data += metaSize;
 	}
 	NutPunch_Memcpy(NP_LobbyMetadataIn, data, metaSize);
 }
@@ -900,8 +910,20 @@ static int NP_SendHeartbeat() {
 		NutPunch_Memcpy(ptr, "JOIN", NUTPUNCH_HEADER_SIZE), ptr += NUTPUNCH_HEADER_SIZE;
 		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX), ptr += NUTPUNCH_ID_MAX;
 
-		// NOTE: make sure to correct endianness when multibyte flags become a thing.
+		// TODO: make sure to correct endianness when multibyte flags become a thing.
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags, ptr += sizeof(NP_HeartbeatFlags);
+
+		struct sockaddr_storage addr = {0};
+		int addr_size = sizeof(addr);
+		getsockname(sock, (struct sockaddr*)&addr, &addr_size);
+
+		NP_Addr np_addr;
+		np_addr.raw = addr;
+		np_addr.ipv = NP_PuncherPeer.ipv;
+
+		*ptr++ = *(char*)&np_addr.ipv;
+		NutPunch_Memcpy(ptr, NP_AddrRaw(&np_addr), sock == NP_Sock6 ? 16 : 4), ptr += 16;
+		NutPunch_Memcpy(ptr, NP_AddrPort(&np_addr), 2), ptr += 2; // TODO: `htons`?
 
 		const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 		NutPunch_Memcpy(ptr, NP_PeerMetadataOut, metaSize), ptr += metaSize;

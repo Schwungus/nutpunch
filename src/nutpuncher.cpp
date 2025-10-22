@@ -139,6 +139,11 @@ struct Metadata {
 		target.size = dataSize;
 	}
 
+	void read(const char* ptr) {
+		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
+			insert(reinterpret_cast<const Field*>(ptr)[i]);
+	}
+
 	void reset() {
 		std::memset(fields, 0, sizeof(fields));
 	}
@@ -168,8 +173,16 @@ struct Addr : NP_Addr {
 		return reinterpret_cast<sockaddr_in*>(&raw);
 	}
 
+	const sockaddr_in* v4() const {
+		return reinterpret_cast<const sockaddr_in*>(&raw);
+	}
+
 	sockaddr_in6* v6() {
 		return reinterpret_cast<sockaddr_in6*>(&raw);
+	}
+
+	const sockaddr_in6* v6() const {
+		return reinterpret_cast<const sockaddr_in6*>(&raw);
 	}
 
 	template <typename T> int send(const T buf[], size_t size) const {
@@ -186,23 +199,56 @@ struct Addr : NP_Addr {
 			status |= send(buf, sizeof(buf));
 		return status;
 	}
+
+	void load(const uint8_t* ptr) {
+		return load(reinterpret_cast<const char*>(ptr));
+	}
+
+	void load(const char* ptr) {
+		ipv = *ptr++;
+		if (NP_IPv4 == ipv) {
+			v4()->sin_family = AF_INET;
+			std::memcpy(&v4()->sin_addr, ptr, 4), ptr += 16;
+			std::memcpy(&v4()->sin_port, ptr, 2), ptr += 2;
+		} else {
+			v6()->sin6_family = AF_INET6;
+			std::memcpy(&v6()->sin6_addr, ptr, 16), ptr += 16;
+			std::memcpy(&v6()->sin6_port, ptr, 2), ptr += 2;
+		}
+	}
+
+	void dump(uint8_t* ptr) const {
+		return dump(reinterpret_cast<char*>(ptr));
+	}
+
+	void dump(char* ptr) const {
+		*ptr++ = *(char*)&ipv;
+		if (NP_IPv4 == ipv) {
+			std::memcpy(ptr, &v4()->sin_addr, 4), ptr += 16;
+			std::memcpy(ptr, &v4()->sin_port, 2), ptr += 2;
+		} else {
+			std::memcpy(ptr, &v6()->sin6_addr, 16), ptr += 16;
+			std::memcpy(ptr, &v6()->sin6_port, 2), ptr += 2;
+		}
+	}
 };
 
 struct Player {
-	Addr addr;
+	Addr priv, pub;
 	std::uint32_t countdown;
 	Metadata metadata;
 
-	Player(const Addr& addr) : addr(addr), countdown(keepAliveBeats) {}
 	Player() : countdown(0) {}
 
 	bool dead() const {
-		static constexpr const char zero[sizeof(addr)] = {0};
-		return countdown < 1 || !std::memcmp(&addr, zero, sizeof(addr));
+		static constexpr const char zero[sizeof(Addr)] = {0};
+		return countdown < 1 || !std::memcmp(&priv, zero, sizeof(priv))
+		       || !std::memcmp(&pub, zero, sizeof(pub));
 	}
 
 	void reset() {
-		std::memset(&addr, 0, sizeof(addr));
+		std::memset(&priv, 0, sizeof(priv));
+		std::memset(&pub, 0, sizeof(pub));
 		metadata.reset();
 		countdown = 0;
 	}
@@ -248,20 +294,10 @@ struct Lobby {
 	void accept(const int idx, const char* meta) {
 		auto& player = players[idx];
 		player.countdown = keepAliveBeats;
-
-		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-			const auto* fields = reinterpret_cast<const Field*>(meta);
-			player.metadata.insert(fields[i]);
-		}
-
-		if (idx != master())
-			return;
-		meta += sizeof(Metadata);
-
-		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-			const auto* fields = reinterpret_cast<const Field*>(meta);
-			metadata.insert(fields[i]);
-		}
+		player.priv.load(meta), meta += NUTPUNCH_ADDRESS_SIZE;
+		player.metadata.read(meta), meta += sizeof(Metadata);
+		if (idx == master())
+			metadata.read(meta);
 	}
 
 	void tick(const int playerIdx) {
@@ -282,37 +318,21 @@ struct Lobby {
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& player = players[i];
+			std::memset(ptr, 0, NUTPUNCH_ADDRESS_SIZE + NUTPUNCH_ADDRESS_SIZE + sizeof(Metadata));
 
-			std::memset(ptr, 0, 19 + sizeof(Metadata));
-			if (player.dead()) {
-				ptr += 19 + sizeof(Metadata);
-				continue;
-			}
+			player.priv.dump(ptr), ptr += NUTPUNCH_ADDRESS_SIZE;
 
-			*ptr++ = player.addr.ipv;
-
+			player.pub.dump(ptr);
 			if (playerIdx == i)
-				goto zeroIP;
-			if (player.addr.ipv == NP_IPv6)
-				std::memcpy(ptr, &player.addr.v6()->sin6_addr, 16);
-			else
-				std::memcpy(ptr, &player.addr.v4()->sin_addr, 4);
-		zeroIP:
-			ptr += 16;
+				NutPunch_Memset(ptr + 1, 0, 16);
+			ptr += NUTPUNCH_ADDRESS_SIZE;
 
-			if (player.addr.ipv == NP_IPv6)
-				std::memcpy(ptr, &player.addr.v6()->sin6_port, 2);
-			else
-				std::memcpy(ptr, &player.addr.v4()->sin_port, 2);
-			ptr += 2;
-
-			std::memcpy(ptr, &player.metadata, sizeof(Metadata));
-			ptr += sizeof(Metadata);
+			std::memcpy(ptr, &player.metadata, sizeof(Metadata)), ptr += sizeof(Metadata);
 		}
 		std::memcpy(ptr, &metadata, sizeof(Metadata));
 
 		auto& player = players[playerIdx];
-		if (player.addr.send(buf, sizeof(buf)) < 0 && NP_SockError() != NP_WouldBlock) {
+		if (player.pub.send(buf, sizeof(buf)) < 0 && NP_SockError() != NP_WouldBlock) {
 			NP_Log("Player %d aborted connection", playerIdx + 1);
 			player.reset();
 		}
@@ -457,8 +477,7 @@ static int receive(NP_IPv ipv) {
 		return RecvKeepGoing; // most likely junk...
 
 	static char id[NUTPUNCH_ID_MAX + 1] = {0};
-	std::memcpy(id, ptr, NUTPUNCH_ID_MAX);
-	ptr += NUTPUNCH_ID_MAX;
+	std::memcpy(id, ptr, NUTPUNCH_ID_MAX), ptr += NUTPUNCH_ID_MAX;
 
 	auto flags = *reinterpret_cast<const NP_HeartbeatFlagsStorage*>(ptr);
 	ptr += sizeof(flags);
@@ -469,7 +488,7 @@ static int receive(NP_IPv ipv) {
 	if ((lobbies.count(id) && !(flags & NP_HB_Join)) || (!lobbies.count(id) && !(flags & NP_HB_Create)))
 		goto exists;
 	if (!lobbies.count(id) && lobbies.size() >= maxLobbies) {
-		addr.gtfo(NPE_NoSuchLobby); // TODO: update this error code
+		addr.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
 		NP_Log("WARN: Reached lobby limit");
 		return RecvKeepGoing;
 	}
@@ -477,7 +496,7 @@ static int receive(NP_IPv ipv) {
 		// Match against existing peers to prevent creating multiple lobbies with the same master.
 		for (const auto& [lobbyId, lobby] : lobbies)
 			for (const auto& player : lobby.players)
-				if (!player.dead() && !std::memcmp(&player.addr, &addr, sizeof(addr)))
+				if (!player.dead() && !std::memcmp(&player.pub, &addr, sizeof(addr)))
 					return RecvKeepGoing; // fuck you...
 		lobbies.insert({id, Lobby(id)});
 		NP_Log("Created lobby '%s'", fmtLobbyId(id));
@@ -485,7 +504,7 @@ static int receive(NP_IPv ipv) {
 
 	players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!players[i].dead() && !std::memcmp(&players[i].addr.raw, &addr.raw, sizeof(addr.raw))) {
+		if (!players[i].dead() && !std::memcmp(&players[i].pub.raw, &addr.raw, sizeof(addr.raw))) {
 			lobbies[id].accept(i, ptr);
 			return RecvKeepGoing;
 		}
@@ -497,7 +516,7 @@ static int receive(NP_IPv ipv) {
 		if (!players[i].dead())
 			continue;
 
-		players[i].addr = addr;
+		players[i].pub = addr;
 		lobbies[id].accept(i, ptr);
 
 		const char* ipv_s = ipv == NP_IPv6 ? "IPv6" : "IPv4";
