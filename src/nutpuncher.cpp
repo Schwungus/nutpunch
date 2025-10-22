@@ -455,14 +455,8 @@ static int receive(NP_IPv ipv) {
 	Player* players = nullptr;
 
 	char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
+	socklen_t addrSize = ipv == NP_IPv6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
 	Addr addr(ipv);
-#ifdef NUTPUNCH_WINDOSE
-	int
-#else
-	socklen_t
-#endif
-		addrSize;
-	addrSize = ipv == NP_IPv6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
 
 	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.raw), &addrSize);
 	if (rcv < 0 && NP_SockError() != NP_ConnReset)

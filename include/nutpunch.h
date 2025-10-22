@@ -914,7 +914,7 @@ static int NP_SendHeartbeat() {
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags, ptr += sizeof(NP_HeartbeatFlags);
 
 		struct sockaddr_storage addr = {0};
-		int addr_size = sizeof(addr);
+		socklen_t addr_size = sizeof(addr);
 		getsockname(sock, (struct sockaddr*)&addr, &addr_size);
 
 		NP_Addr np_addr;
@@ -945,15 +945,9 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 	if (*sock == NUTPUNCH_INVALID_SOCKET)
 		return 1;
 
-#ifdef NUTPUNCH_WINDOSE
-	int
-#else
-	socklen_t
-#endif
-		addrSize;
-
 	struct sockaddr_storage addr = {0};
-	addrSize = sizeof(addr), NP_Memzero2(&addr);
+	socklen_t addrSize = sizeof(addr);
+	NP_Memzero2(&addr);
 
 	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
 	int size = recvfrom(*sock, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &addrSize);
