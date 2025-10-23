@@ -818,7 +818,8 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	shalom[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
 
 	const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
-	sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+	if (sock != NUTPUNCH_INVALID_SOCKET)
+		sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
 }
 
 NP_MakeHandler(NP_HandleBeat) {
@@ -1026,6 +1027,11 @@ static void NP_FlushOutQueue() {
 
 		const NP_Addr peer = NP_Peers[cur->peer];
 		const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
+		if (sock == NUTPUNCH_INVALID_SOCKET) {
+			cur->dead = 1;
+			continue;
+		}
+
 		int result = sendto(sock, cur->data, (int)cur->size, 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
 		if (result > 0 || NP_SockError() == NP_WouldBlock)
 			continue;
