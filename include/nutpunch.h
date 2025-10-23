@@ -1079,7 +1079,8 @@ sockFail:
 
 int NutPunch_Update() {
 	NP_LazyInit();
-	if (NP_Sock4 == NUTPUNCH_INVALID_SOCKET && NP_Sock6 == NUTPUNCH_INVALID_SOCKET)
+	int socks_dead = NP_Sock4 == NUTPUNCH_INVALID_SOCKET && NP_Sock6 == NUTPUNCH_INVALID_SOCKET;
+	if (NP_LastStatus == NPS_Idle || socks_dead)
 		return NPS_Idle;
 	if (NP_LastStatus == NPS_Error)
 		NutPunch_Reset();
