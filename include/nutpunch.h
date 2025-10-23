@@ -81,6 +81,9 @@ extern "C" {
 /// How many updates to wait before resending a reliable packet.
 #define NUTPUNCH_BOUNCE_TICKS (60)
 
+/// How many times to resend a reliable packet before discarding it.
+#define NUTPUNCH_MAX_BOUNCES (5)
+
 #define NUTPUNCH_HEADER_SIZE (4)
 #define NUTPUNCH_ADDRESS_SIZE (19)
 
@@ -308,8 +311,8 @@ typedef struct NP_DataMessage {
 	struct NP_DataMessage* next;
 	NP_PacketIdx index;
 	uint32_t size;
-	uint8_t peer, dead;
 	int16_t bounce;
+	uint8_t peer, dead, retries_left;
 } NP_DataMessage;
 
 typedef struct {
@@ -754,6 +757,7 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 	NP_QueueOut->size = size, NP_QueueOut->bounce = index ? 0 : -1;
 	NP_QueueOut->index = index, NP_QueueOut->dead = 0;
 	NP_QueueOut->data = (char*)NutPunch_Malloc(size);
+	NP_QueueOut->retries_left = NUTPUNCH_MAX_BOUNCES;
 	NutPunch_Memcpy(NP_QueueOut->data, data, size);
 }
 
@@ -1010,26 +1014,28 @@ findNext:
 
 static void NP_FlushOutQueue() {
 	for (NP_DataMessage* cur = NP_QueueOut; cur != NULL; cur = cur->next) {
-		if (!NutPunch_PeerAlive(cur->peer)) {
+		if (!NutPunch_PeerAlive(cur->peer))
 			cur->dead = 1;
-			continue;
-		}
 
 		// Send & pop normally since a bounce of -1 makes it an unreliable packet.
 		if (cur->bounce < 0)
 			cur->dead = 1;
+		if (cur->dead)
+			continue;
 		// Otherwise, check if it's about to bounce, in order to resend it.
 		else if (cur->bounce > 0)
 			if (--cur->bounce > 0)
 				continue;
+		// Bounce at most `NUTPUNCH_MAX_BOUNCES` times.
+		if (!cur->retries_left--) {
+			cur->dead = 1;
+			continue;
+		}
 		cur->bounce = NUTPUNCH_BOUNCE_TICKS;
 
 		const NP_Addr peer = NP_Peers[cur->peer];
 		const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 		int result = sendto(sock, cur->data, (int)cur->size, 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
-		if (result > 0 || NP_SockError() == NP_WouldBlock)
-			continue;
-
 		if (!result || NP_SockError() == NP_ConnReset)
 			NP_KillPeer(cur->peer);
 		else {
