@@ -400,6 +400,16 @@ static uint16_t* NP_AddrPort(NP_Addr* addr) {
 		return &((struct sockaddr_in*)&addr->raw)->sin_port;
 }
 
+static int NP_AddrEq(const NP_Addr a, const NP_Addr b) {
+	const int size = a.ipv == NP_IPv6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
+	return a.ipv == b.ipv && !NutPunch_Memcmp(&a.raw, &b.raw, size);
+}
+
+static int NP_AddrNull(const NP_Addr addr) {
+	static const char nulladdr[16] = {0};
+	return !NutPunch_Memcmp(&addr.raw, nulladdr, 16);
+}
+
 static void NP_CleanupPackets(NP_DataMessage** queue) {
 	while (*queue != NULL) {
 		NP_DataMessage* ptr = *queue;
@@ -624,13 +634,19 @@ static void NP_ExpectNutpuncher() {
 	}
 }
 
+static int NP_MakeNonblocking(NP_Socket sock) {
+#ifdef NUTPUNCH_WINDOSE
+	u_long argp = 1;
+	return ioctlsocket(sock, FIONBIO, &argp);
+#else
+	return fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK);
+#endif
+}
+
 static int NP_BindSocket(NP_IPv ipv) {
 	NP_LazyInit();
 
 	NP_Addr local = {0};
-#ifdef NUTPUNCH_WINDOSE
-	u_long argp = 1;
-#endif
 	NP_Socket* sock = ipv == NP_IPv6 ? &NP_Sock6 : &NP_Sock4;
 	NP_NukeSocket(sock);
 
@@ -644,14 +660,7 @@ static int NP_BindSocket(NP_IPv ipv) {
 		}
 	}
 
-	if (
-#ifdef NUTPUNCH_WINDOSE
-		ioctlsocket(*sock, FIONBIO, &argp)
-#else
-		fcntl(*sock, F_SETFL, fcntl(*sock, F_GETFL, 0) | O_NONBLOCK)
-#endif
-		< 0)
-	{
+	if (NP_MakeNonblocking(*sock) < 0) {
 		NP_LastError = "Failed to set socket to non-blocking mode";
 		goto fail;
 	}
@@ -758,7 +767,7 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 }
 
 NP_MakeHandler(NP_HandleShalom) {
-	if (!NutPunch_Memcmp(&peer.raw, &NP_PuncherPeer.raw, sizeof(peer.raw)))
+	if (NP_AddrEq(peer, NP_PuncherPeer))
 		return;
 	const uint8_t idx = *data;
 	if (idx < NUTPUNCH_MAX_PLAYERS)
@@ -767,12 +776,12 @@ NP_MakeHandler(NP_HandleShalom) {
 
 NP_MakeHandler(NP_HandleDisconnect) {
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (!NutPunch_Memcmp(&NP_Peers[i].raw, &peer.raw, sizeof(peer.raw)))
+		if (NP_AddrEq(peer, NP_Peers[i]))
 			NP_KillPeer(i);
 }
 
 NP_MakeHandler(NP_HandleGTFO) {
-	if (NutPunch_Memcmp(&peer.raw, &NP_PuncherPeer.raw, sizeof(peer.raw)))
+	if (!NP_AddrEq(peer, NP_PuncherPeer))
 		return;
 
 	NutPunch_Reset();
@@ -799,13 +808,12 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	NP_Addr peer = {0};
 	peer.ipv = *data++;
 
-	static const char nulladdr[16] = {0};
-	if (!NutPunch_Memcmp(data, nulladdr, sizeof(nulladdr)))
-		return;
-
 	*NP_AddrFamily(&peer) = (peer.ipv == NP_IPv6 ? AF_INET6 : AF_INET);
 	NutPunch_Memcpy(NP_AddrRaw(&peer), data, (peer.ipv == NP_IPv6 ? 16 : 4));
 	data += 16;
+
+	if (NP_AddrNull(peer))
+		return;
 
 	uint16_t* port = NP_AddrPort(&peer);
 	NutPunch_Memcpy(port, data, 2);
@@ -823,7 +831,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 }
 
 NP_MakeHandler(NP_HandleBeat) {
-	if (NutPunch_Memcmp(&peer.raw, &NP_PuncherPeer.raw, sizeof(peer.raw)))
+	if (!NP_AddrEq(peer, NP_PuncherPeer))
 		return;
 
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
@@ -849,7 +857,7 @@ NP_MakeHandler(NP_HandleBeat) {
 }
 
 NP_MakeHandler(NP_HandleList) {
-	if (NutPunch_Memcmp(&peer.raw, &NP_PuncherPeer.raw, sizeof(peer.raw)))
+	if (!NP_AddrEq(peer, NP_PuncherPeer))
 		return;
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++) {
 		NutPunch_Memcpy(NP_Lobbies[i], data, NUTPUNCH_ID_MAX);
@@ -861,7 +869,7 @@ NP_MakeHandler(NP_HandleList) {
 NP_MakeHandler(NP_HandleData) {
 	int peerIdx = NUTPUNCH_MAX_PLAYERS;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!NutPunch_Memcmp(&peer.raw, &NP_Peers[i].raw, sizeof(peer.raw))) {
+		if (NP_AddrEq(peer, NP_Peers[i])) {
 			peerIdx = i;
 			break;
 		}
