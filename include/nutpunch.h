@@ -804,7 +804,7 @@ NP_MakeHandler(NP_HandleGTFO) {
 	}
 }
 
-static void NP_SayShalom(int idx, const uint8_t* data) {
+static void NP_SayShalom(const uint8_t* data) {
 	NP_Addr peer = {0};
 	peer.ipv = *data++;
 
@@ -849,8 +849,8 @@ NP_MakeHandler(NP_HandleBeat) {
 	if (NP_LocalPeer == NUTPUNCH_MAX_PLAYERS)
 		return;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		NP_SayShalom(i, data), data += NUTPUNCH_ADDRESS_SIZE; // private addr
-		NP_SayShalom(i, data), data += NUTPUNCH_ADDRESS_SIZE; // public addr
+		NP_SayShalom(data), data += NUTPUNCH_ADDRESS_SIZE; // private addr
+		NP_SayShalom(data), data += NUTPUNCH_ADDRESS_SIZE; // public addr
 		NutPunch_Memcpy(NP_PeerMetadataIn[i], data, metaSize), data += metaSize;
 	}
 	NutPunch_Memcpy(NP_LobbyMetadataIn, data, metaSize);

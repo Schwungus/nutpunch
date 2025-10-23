@@ -332,7 +332,7 @@ struct Lobby {
 		std::memcpy(ptr, &metadata, sizeof(Metadata));
 
 		auto& player = players[playerIdx];
-		if (player.pub.send(buf, sizeof(buf)) < 0 && NP_SockError() != NP_WouldBlock) {
+		if (player.pub.send(buf, sizeof(buf)) < 0) {
 			NP_Log("Player %d aborted connection", playerIdx + 1);
 			player.reset();
 		}
