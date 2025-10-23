@@ -139,7 +139,7 @@ struct Metadata {
 		target.size = dataSize;
 	}
 
-	void read(const char* ptr) {
+	void load(const char* ptr) {
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
 			insert(reinterpret_cast<const Field*>(ptr)[i]);
 	}
@@ -295,9 +295,9 @@ struct Lobby {
 		auto& player = players[idx];
 		player.countdown = keepAliveBeats;
 		player.priv.load(meta), meta += NUTPUNCH_ADDRESS_SIZE;
-		player.metadata.read(meta), meta += sizeof(Metadata);
+		player.metadata.load(meta), meta += sizeof(Metadata);
 		if (idx == master())
-			metadata.read(meta);
+			metadata.load(meta);
 	}
 
 	void tick(const int playerIdx) {
