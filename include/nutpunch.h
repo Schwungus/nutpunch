@@ -243,6 +243,7 @@ typedef SOCKET NP_Socket;
 #define NP_SockError() WSAGetLastError()
 #define NP_WouldBlock WSAEWOULDBLOCK
 #define NP_ConnReset WSAECONNRESET
+#define NP_MessageSize WSAEMSGSIZE
 
 #else // everything non-winsoque comes from: <https://stackoverflow.com/a/28031039>
 
@@ -261,6 +262,7 @@ typedef int64_t NP_Socket;
 #define NP_SockError() errno
 #define NP_WouldBlock EWOULDBLOCK
 #define NP_ConnReset ECONNRESET
+#define NP_MessageSize EMSGSIZE
 
 #endif
 

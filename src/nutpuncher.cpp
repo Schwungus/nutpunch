@@ -459,8 +459,18 @@ static int receive(NP_IPv ipv) {
 	Addr addr(ipv);
 
 	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.raw), &addrSize);
-	if (rcv < 0 && NP_SockError() != NP_ConnReset)
-		return NP_SockError() == NP_WouldBlock ? RecvDone : NP_SockError();
+	if (rcv < 0)
+		switch (NP_SockError()) {
+		case NP_MessageSize:
+			NP_Log("Suspicious socket error: %d", NP_SockError());
+			// fallthrough
+		case NP_ConnReset:
+			return RecvKeepGoing;
+		case NP_WouldBlock:
+			return RecvDone;
+		default:
+			return NP_SockError();
+		}
 
 	const char* ptr = heartbeat + NUTPUNCH_HEADER_SIZE;
 	if (!std::memcmp(heartbeat, "LIST", NUTPUNCH_HEADER_SIZE) && rcv == NUTPUNCH_HEADER_SIZE + sizeof(NP_Filters)) {
