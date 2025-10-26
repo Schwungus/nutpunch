@@ -50,7 +50,7 @@ Not documented yet.
 
 > **TODO**: Add a [GekkoNet](https://github.com/HeatXD/GekkoNet) network adapter implementation. In the meantime, you can look into [the code of a real usecase](https://github.com/toggins/Klawiatura/blob/master/src/K_net.c).
 
-## Basic Usage
+## Installation
 
 If you're using CMake, you can include this library in your project by adding the following to your `CMakeLists.txt`:
 
@@ -67,12 +67,19 @@ target_link_libraries(MyGame PRIVATE nutpunch)
 
 For other build systems (or lack thereof), you only need to copy [`nutpunch.h`](include/nutpunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with scary linker errors related to Winsock.
 
-Once [`nutpunch.h`](include/nutpunch.h) is in your include-path, using it is straightforward:
+## Basic Usage
+
+Once [`nutpunch.h`](include/nutpunch.h) is in your include-path, using it is straightforward, just like any header-only library. Select a source file where the library's function definitions will reside (it could be your `main.c` as well), tell the compiler to add NutPunch implementation details with a `#define`, and `#include` the library's main header inside it:
+
+```c
+#define NUTPUNCH_IMPLEMENTATION
+#include <nutpunch.h>
+```
+
+Then `#include <nutpunch.h>` wherever you need to use it. Here's a really simple example:
 
 ```c
 #include <stdlib.h> // for EXIT_SUCCESS
-
-#define NUTPUNCH_IMPLEMENTATION
 #include <nutpunch.h>
 
 int main(int argc, char* argv[]) {
@@ -82,6 +89,8 @@ int main(int argc, char* argv[]) {
     return EXIT_SUCCESS;
 }
 ```
+
+If you want to see all the juicy APIs in action, try reading [`test.c`](src/test.c) from this repo.
 
 Take a look at [advanced usage](#advanced-usage) to discover things you can customize.
 
