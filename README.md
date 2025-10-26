@@ -42,7 +42,7 @@ Once you've figured out how the players are to connect to your hole-puncher serv
 7. Keep in sync with each peer: Send datagrams through `NutPunch_Send()` and poll for incoming datagrams by looping with `NutPunch_HasMessage()` and retrieving them with `NutPunch_NextMessage()`. In scenarios where you need to cache packet data, `memcpy` it into a static array of `NUTPUNCH_BUFFER_SIZE`[^kb] bytes in order to fit the whole packet without overflowing and/or segfaulting.
 8. Come back to step 6 the next frame. You're all Gucci!
 
-[^kb]: `NUTPUNCH_BUFFER_SIZE` is currently defined to be 1470 bytes. It is the WinSock maximum message size that doesn't return a `WSAEMSGSIZE` error upon send/receive.
+[^kb]: `NUTPUNCH_BUFFER_SIZE` is currently defined to be 8192 bytes. Should be small enough for WinSock not to signal a `WSAEMSGSIZE` error on send.
 
 ## Premade Integrations
 

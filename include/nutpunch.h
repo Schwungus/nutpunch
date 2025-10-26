@@ -61,7 +61,7 @@ extern "C" {
 #define NUTPUNCH_ID_MAX (32)
 
 /// How many bytes to reserve for every network packet.
-#define NUTPUNCH_BUFFER_SIZE (1470)
+#define NUTPUNCH_BUFFER_SIZE (8192)
 
 /// The maximum amount of results `NutPunch_LobbyList` can provide.
 #define NUTPUNCH_SEARCH_RESULTS_MAX (32)
