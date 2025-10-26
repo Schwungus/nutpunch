@@ -61,7 +61,7 @@ extern "C" {
 #define NUTPUNCH_ID_MAX (32)
 
 /// How many bytes to reserve for every network packet.
-#define NUTPUNCH_BUFFER_SIZE (512000)
+#define NUTPUNCH_BUFFER_SIZE (1470)
 
 /// The maximum amount of results `NutPunch_LobbyList` can provide.
 #define NUTPUNCH_SEARCH_RESULTS_MAX (32)
@@ -754,7 +754,7 @@ static void NP_KillPeer(int peer) {
 static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx index) {
 	if (!NutPunch_PeerAlive(peer) || NutPunch_LocalPeer() == peer)
 		return;
-	if (size > NUTPUNCH_BUFFER_SIZE - 512) {
+	if (size > NUTPUNCH_BUFFER_SIZE) {
 		NP_Log("Ignoring a huge packet");
 		return;
 	}
