@@ -222,11 +222,13 @@ const char* NutPunch_GetLastError();
 /// Get a file's basename (the name without directory). Used internally in `NP_Log`.
 const char* NutPunch_Basename(const char*);
 
+#ifndef NP_Log
 #define NP_Log(msg, ...)                                                                                               \
 	do {                                                                                                           \
 		fprintf(stdout, "(%s:%d) -> " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);         \
 		fflush(stdout);                                                                                        \
 	} while (0)
+#endif
 
 #ifdef NUTPUNCH_IMPLEMENTATION
 
