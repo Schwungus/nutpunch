@@ -222,12 +222,20 @@ const char* NutPunch_GetLastError();
 /// Get a file's basename (the name without directory). Used internally in `NP_Log`.
 const char* NutPunch_Basename(const char*);
 
-#ifndef NP_Log
-#define NP_Log(msg, ...)                                                                                               \
+#ifndef NP_LogImpl
+#define NP_LogImpl(msg, ...)                                                                                           \
 	do {                                                                                                           \
-		fprintf(stdout, "(%s:%d) -> " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);         \
+		fprintf(stdout, "(%s:%d) " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);            \
 		fflush(stdout);                                                                                        \
 	} while (0)
+#endif
+
+#ifndef NP_Info
+#define NP_Info(msg, ...) NP_LogImpl("INFO: " msg, ##__VA_ARGS__)
+#endif
+
+#ifndef NP_Warn
+#define NP_Warn(msg, ...) NP_LogImpl("WARN: " msg, ##__VA_ARGS__)
 #endif
 
 #ifdef NUTPUNCH_IMPLEMENTATION
@@ -473,10 +481,10 @@ static void NP_LazyInit() {
 		NP_Lobbies[i] = NP_LobbyNames[i];
 	NP_ResetImpl();
 
-	NP_Log(".-------------------------------------------------------------.");
-	NP_Log("| For troubleshooting multiplayer connectivity, please visit: |");
-	NP_Log("|    https://github.com/Schwungus/nutpunch#troubleshooting    |");
-	NP_Log("'-------------------------------------------------------------'");
+	NP_Info(".-------------------------------------------------------------.");
+	NP_Info("| For troubleshooting multiplayer connectivity, please visit: |");
+	NP_Info("|    https://github.com/Schwungus/nutpunch#troubleshooting    |");
+	NP_Info("'-------------------------------------------------------------'");
 }
 
 void NutPunch_Reset() {
@@ -484,12 +492,13 @@ void NutPunch_Reset() {
 	NP_ResetImpl();
 }
 
-static void NP_PrintError() {
-	if (NP_LastErrorCode)
-		NP_Log("WARN: %s (error code: %d)", NP_LastError, NP_LastErrorCode);
-	else
-		NP_Log("WARN: %s", NP_LastError);
-}
+#define NP_PrintError()                                                                                                \
+	do                                                                                                             \
+		if (NP_LastErrorCode)                                                                                  \
+			NP_Warn("WARN: %s (error code: %d)", NP_LastError, NP_LastErrorCode);                          \
+		else                                                                                                   \
+			NP_Warn("WARN: %s", NP_LastError);                                                             \
+	while (0)
 
 static int NP_GetAddrInfo(NP_Addr* out, const char* host, uint16_t port, NP_IPv ipv) {
 	NP_LazyInit();
@@ -598,10 +607,10 @@ static void NP_SetMetadataIn(NutPunch_Field* fields, const char* name, int dataS
 		return;
 
 	if (dataSize < 1) {
-		NP_Log("Invalid metadata field size!");
+		NP_Warn("Invalid metadata field size!");
 		return;
 	} else if (dataSize > NUTPUNCH_FIELD_DATA_MAX) {
-		NP_Log("WARN: trimming metadata field from %d to %d bytes", dataSize, NUTPUNCH_FIELD_DATA_MAX);
+		NP_Warn("Trimming metadata field from %d to %d bytes", dataSize, NUTPUNCH_FIELD_DATA_MAX);
 		dataSize = NUTPUNCH_FIELD_DATA_MAX;
 	}
 
@@ -634,7 +643,7 @@ void NutPunch_LobbySet(const char* name, int size, const void* data) {
 static void NP_ExpectNutpuncher() {
 	if (!NP_ServerHost[0]) {
 		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
-		NP_Log("Connecting to public NutPunch instance because no address was specified");
+		NP_Info("Connecting to public NutPunch instance because no address was specified");
 	}
 }
 
@@ -678,7 +687,7 @@ static int NP_BindSocket(NP_IPv ipv) {
 
 	if (ipv == NP_IPv6) {
 	v6_optional:
-		NP_Log("WARN: failed to bind an IPv6 socket");
+		NP_Warn("Failed to bind an IPv6 socket");
 		NP_NukeSocket(sock);
 		return 1;
 	}
@@ -757,7 +766,7 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 	if (!NutPunch_PeerAlive(peer) || NutPunch_LocalPeer() == peer)
 		return;
 	if (size > NUTPUNCH_BUFFER_SIZE) {
-		NP_Log("Ignoring a huge packet");
+		NP_Warn("Ignoring a huge packet");
 		return;
 	}
 
@@ -1111,7 +1120,7 @@ int NutPunch_HasMessage() {
 
 int NutPunch_NextMessage(void* out, int* size) {
 	if (*size < NP_QueueIn->size) {
-		NP_Log("WARN: not enough memory allocated to copy the next packet");
+		NP_Warn("Not enough memory allocated to copy the next packet");
 		return NUTPUNCH_MAX_PLAYERS;
 	}
 
@@ -1136,7 +1145,7 @@ static void NP_SendEx(int peer, const void* data, int dataSize, int reliable) {
 	NP_LazyInit();
 
 	if (dataSize > NUTPUNCH_BUFFER_SIZE - 32) {
-		NP_Log("Ignoring a huge packet");
+		NP_Warn("Ignoring a huge packet");
 		return;
 	}
 

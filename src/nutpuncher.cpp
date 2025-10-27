@@ -307,7 +307,7 @@ struct Lobby {
 		plr.countdown--;
 		if (!plr.dead())
 			return;
-		NP_Log("Peer %d timed out in lobby '%s'", playerIdx + 1, fmtId());
+		NP_Warn("Peer %d timed out in lobby '%s'", playerIdx + 1, fmtId());
 		plr.reset();
 	}
 
@@ -333,7 +333,7 @@ struct Lobby {
 
 		auto& player = players[playerIdx];
 		if (player.pub.send(buf, sizeof(buf)) < 0) {
-			NP_Log("Player %d aborted connection", playerIdx + 1);
+			NP_Warn("Player %d aborted connection", playerIdx + 1);
 			player.reset();
 		}
 	}
@@ -389,13 +389,13 @@ static void bindSock(NP_IPv ipv) {
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
 	}
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
-		NP_Log("Bound %s socket", ipv == NP_IPv6 ? "IPv6" : "IPv4");
+		NP_Info("Bound %s socket", ipv == NP_IPv6 ? "IPv6" : "IPv4");
 		return;
 	}
 
 	if (ipv == NP_IPv6) {
 		// IPv6 is optional and skipped with a warning
-		NP_Log("WARN: failed to bind IPv6 socket");
+		NP_Warn("Failed to bind IPv6 socket");
 		sock = NUTPUNCH_INVALID_SOCKET;
 	} else
 		throw "Failed to bind IPv4 socket, and IPv6-only mode is unsupported";
@@ -461,9 +461,6 @@ static int receive(NP_IPv ipv) {
 	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.raw), &addrSize);
 	if (rcv < 0)
 		switch (NP_SockError()) {
-		case NP_MessageSize:
-			NP_Log("Suspicious socket error: %d", NP_SockError());
-			// fallthrough
 		case NP_ConnReset:
 			return RecvKeepGoing;
 		case NP_WouldBlock:
@@ -493,7 +490,7 @@ static int receive(NP_IPv ipv) {
 		goto exists;
 	if (!lobbies.count(id) && lobbies.size() >= maxLobbies) {
 		addr.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
-		NP_Log("WARN: Reached lobby limit");
+		NP_Warn("Reached lobby limit");
 		return RecvKeepGoing;
 	}
 	if (!lobbies.count(id)) {
@@ -503,7 +500,7 @@ static int receive(NP_IPv ipv) {
 				if (!player.dead() && !std::memcmp(&player.pub, &addr, sizeof(addr)))
 					return RecvKeepGoing; // fuck you...
 		lobbies.insert({id, Lobby(id)});
-		NP_Log("Created lobby '%s'", fmtLobbyId(id));
+		NP_Info("Created lobby '%s'", fmtLobbyId(id));
 	}
 
 	players = lobbies[id].players;
@@ -524,11 +521,11 @@ static int receive(NP_IPv ipv) {
 		lobbies[id].accept(i, ptr);
 
 		const char* ipv_s = ipv == NP_IPv6 ? "IPv6" : "IPv4";
-		NP_Log("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id), ipv_s);
+		NP_Info("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id), ipv_s);
 		return RecvKeepGoing;
 	}
 
-	NP_Log("Lobby '%s' is full!", fmtLobbyId(id));
+	NP_Info("Lobby '%s' is full!", fmtLobbyId(id));
 	return RecvKeepGoing;
 
 exists:
@@ -559,7 +556,7 @@ int main(int, char*[]) {
 		bindSock(NP_IPv6);
 		bindSock(NP_IPv4);
 	} catch (const char* msg) {
-		NP_Log("CRITICAL: %s (code %d)", msg, NP_SockError());
+		NP_Info("CRITICAL: %s (code %d)", msg, NP_SockError());
 		return EXIT_FAILURE;
 	}
 
@@ -567,7 +564,7 @@ int main(int, char*[]) {
 	std::int64_t start = clock(), end, delta;
 	const std::int64_t minDelta = 1000 / beatsPerSecond;
 
-	NP_Log("Running!");
+	NP_Info("Running!");
 	for (;;) {
 		if (sock4 == NUTPUNCH_INVALID_SOCKET && sock6 == NUTPUNCH_INVALID_SOCKET)
 			return EXIT_FAILURE;
@@ -578,7 +575,7 @@ int main(int, char*[]) {
 				result = receive(ipv);
 			while (RecvKeepGoing == result);
 			if (result > 0) {
-				NP_Log("Failed to receive data (code %d)", result);
+				NP_Warn("Failed to receive data (code %d)", result);
 				(ipv == NP_IPv6 ? sock6 : sock4) = NUTPUNCH_INVALID_SOCKET;
 			}
 		}
@@ -589,7 +586,7 @@ int main(int, char*[]) {
 			const auto& lobby = kv.second;
 			bool dead = lobby.dead();
 			if (dead)
-				NP_Log("Deleted lobby '%s'", lobby.fmtId());
+				NP_Info("Deleted lobby '%s'", lobby.fmtId());
 			return dead;
 		});
 

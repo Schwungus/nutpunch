@@ -162,7 +162,7 @@ int main(int argc, char* argv[]) {
 		send_shit();
 
 		if (NPS_Error == status)
-			NP_Log("ERROR: %s", NutPunch_GetLastError());
+			NP_Warn("%s", NutPunch_GetLastError());
 		else if (NPS_Online == status)
 			draw_players();
 		else
