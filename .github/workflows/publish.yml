@@ -49,14 +49,14 @@ jobs:
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
   binary:
-    name: Upload binaries for ${{ matrix.cfg.os-name }}
-    runs-on: ${{ matrix.cfg.runner-os }}
+    name: Upload binaries for ${{ matrix.os-name }}
+    runs-on: ${{ matrix.runner-os }}
     if: github.ref_type == 'tag'
     env:
-      BINARY: nutpuncher-${{ matrix.cfg.os-name }}-${{ github.ref_name }}${{ matrix.cfg.bin-ext }}
+      BINARY: nutpuncher-${{ matrix.os-name }}-${{ github.ref_name }}${{ matrix.bin-ext }}
     strategy:
       matrix:
-        cfg:
+        include:
           - os-name: Windows
             runner-os: windows-2022
             bin-ext: .exe
@@ -74,7 +74,7 @@ jobs:
           cmake --build build --target nutpuncher
       - name: Rename binary artifact
         run: |
-          cp build/nutpuncher${{ matrix.cfg.bin-ext }} ${{ env.BINARY }}
+          cp build/nutpuncher${{ matrix.bin-ext }} ${{ env.BINARY }}
       - name: Release binary
         uses: softprops/action-gh-release@v2
         with:
