@@ -375,23 +375,21 @@ static void bindSock(NP_IPv ipv) {
 		< 0)
 		throw "Failed to set socket to non-blocking mode";
 
-	sockaddr_storage addr;
-	std::memset(&addr, 0, sizeof(addr));
+	sockaddr_storage addr = {0};
 	if (ipv == NP_IPv6) {
 		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_family = AF_INET6;
 		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port = htons(NUTPUNCH_SERVER_PORT);
+		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_addr = in6addr_any;
 	} else {
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_family = AF_INET;
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
-	}
-	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
-		NP_Info("Bound %s socket", ipv == NP_IPv6 ? "IPv6" : "IPv4");
-		return;
+		reinterpret_cast<sockaddr_in*>(&addr)->sin_addr.S_un.S_addr = INADDR_ANY;
 	}
 
-	if (ipv == NP_IPv6) {
-		// IPv6 is optional and skipped with a warning
-		NP_Warn("Failed to bind IPv6 socket");
+	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)))
+		NP_Info("Bound IPv%s socket", ipv == NP_IPv6 ? "6" : "4");
+	else if (ipv == NP_IPv6) { // IPv6 is optional and skipped with a warning
+		NP_Warn("Failed to bind IPv6 socket (%d)", NP_SockError());
 		sock = NUTPUNCH_INVALID_SOCKET;
 	} else
 		throw "Failed to bind IPv4 socket, and IPv6-only mode is unsupported";

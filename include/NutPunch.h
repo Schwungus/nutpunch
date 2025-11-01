@@ -236,14 +236,6 @@ const char* NutPunch_Basename(const char*);
 
 #ifdef NUTPUNCH_IMPLEMENTATION
 
-#ifndef NP_Info
-#define NP_Info(...) NutPunch_Log("INFO: " __VA_ARGS__)
-#endif
-
-#ifndef NP_Warn
-#define NP_Warn(...) NutPunch_Log("WARN: " __VA_ARGS__)
-#endif
-
 #ifdef NUTPUNCH_WINDOSE
 
 #define _UNICODE
@@ -280,6 +272,11 @@ typedef int64_t NP_Socket;
 
 #endif
 
+#ifndef NutPunch_SNPrintF
+#include <stdio.h>
+#define NutPunch_SNPrintF snprintf
+#endif
+
 #ifndef NutPunch_Malloc
 #include <stdlib.h>
 #define NutPunch_Malloc malloc
@@ -307,6 +304,13 @@ typedef int64_t NP_Socket;
 
 #define NP_Memzero(array) NutPunch_Memset(array, 0, sizeof(array))
 #define NP_Memzero2(ptr) NutPunch_Memset(ptr, 0, sizeof(*(ptr)))
+
+#define NP_Info(...) NutPunch_Log("INFO: " __VA_ARGS__)
+#define NP_Warn(...)                                                                                                   \
+	do {                                                                                                           \
+		NutPunch_Log("WARN: " __VA_ARGS__);                                                                    \
+		NutPunch_SNPrintF(NP_LastError, sizeof(NP_LastError), __VA_ARGS__);                                    \
+	} while (0)
 
 typedef uint8_t NP_IPv;
 #define NP_IPv4 (0)
@@ -357,9 +361,7 @@ static const NP_MessageTable NP_Messages[] = {
 	{{'D', 'A', 'T', 'A'}, NP_HandleData,       -1         },
 };
 
-static const char* NP_LastError = NULL;
-static int NP_LastErrorCode = NPE_Ok;
-
+static char NP_LastError[512] = "";
 static int NP_InitDone = 0, NP_Closing = 0;
 static int NP_LastStatus = NPS_Idle;
 
@@ -368,7 +370,7 @@ static NP_Addr NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static uint8_t NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
 
 static NP_Socket NP_Sock4 = NUTPUNCH_INVALID_SOCKET, NP_Sock6 = NUTPUNCH_INVALID_SOCKET;
-static NP_Addr NP_PuncherPeer = {0};
+static NP_Addr NP_PuncherAddr = {0};
 static char NP_ServerHost[128] = {0};
 
 static NP_DataMessage *NP_QueueIn = NULL, *NP_QueueOut = NULL;
@@ -446,7 +448,7 @@ static void NP_NukeLobbyData() {
 
 static void NP_NukeRemote() {
 	NP_LobbyId[0] = 0, NP_HeartbeatFlags = 0;
-	NP_Memzero2(&NP_PuncherPeer), NP_Memzero(NP_Peers);
+	NP_Memzero2(&NP_PuncherAddr), NP_Memzero(NP_Peers);
 	NP_Memzero(NP_PeerMetadataIn), NP_Memzero(NP_Filters);
 	NP_LastStatus = NPS_Idle;
 }
@@ -454,6 +456,7 @@ static void NP_NukeRemote() {
 static void NP_NukeSocket(NP_Socket* sock) {
 	if (*sock == NUTPUNCH_INVALID_SOCKET)
 		return;
+	shutdown(*sock, SD_BOTH);
 #ifdef NUTPUNCH_WINDOSE
 	closesocket(*sock);
 #else
@@ -463,18 +466,15 @@ static void NP_NukeSocket(NP_Socket* sock) {
 }
 
 static void NP_ResetImpl() {
-	NP_NukeRemote();
-	NP_NukeLobbyData();
-	NP_NukeSocket(&NP_Sock4);
-	NP_NukeSocket(&NP_Sock6);
+	NP_NukeRemote(), NP_NukeLobbyData();
+	NP_NukeSocket(&NP_Sock4), NP_NukeSocket(&NP_Sock6);
+	NP_Memzero(NP_LastError);
 }
 
 static void NP_LazyInit() {
 	if (NP_InitDone)
 		return;
 	NP_InitDone = 1;
-
-	srand(time(NULL));
 
 #ifdef NUTPUNCH_WINDOSE
 	WSADATA bitch = {0};
@@ -496,48 +496,11 @@ void NutPunch_Reset() {
 	NP_ResetImpl();
 }
 
-#define NP_PrintError()                                                                                                \
-	do                                                                                                             \
-		if (NP_LastErrorCode)                                                                                  \
-			NP_Warn("WARN: %s (error code: %d)", NP_LastError, NP_LastErrorCode);                          \
-		else                                                                                                   \
-			NP_Warn("WARN: %s", NP_LastError);                                                             \
-	while (0)
-
-static NP_Addr NP_ResolveAddr(const char* host, uint16_t port) {
-	NP_Addr res = {0}, nullres = {0};
-	NP_LazyInit(), NP_Memzero2(&res.raw);
-
-	struct addrinfo *resolved = NULL, hints = {0};
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_DGRAM;
-	hints.ai_protocol = IPPROTO_UDP;
-	hints.ai_flags = AI_PASSIVE;
-
-	static char fmt[8] = {0};
-	NP_Memzero(fmt), snprintf(fmt, sizeof(fmt), "%d", port);
-
-	if (getaddrinfo(host, fmt, &hints, &resolved) || !resolved) {
-		NP_LastError = "Failed to resolve NutPuncher server address";
-		goto fail;
-	}
-
-	res.ipv = resolved->ai_family == AF_INET6 ? NP_IPv6 : NP_IPv4;
-	NutPunch_Memcpy(&res.raw, resolved->ai_addr, resolved->ai_addrlen);
-	freeaddrinfo(resolved);
-	return res;
-
-fail:
-	NP_LastErrorCode = NP_SockError();
-	NP_PrintError();
-	return nullres;
-}
-
 void NutPunch_SetServerAddr(const char* hostname) {
 	if (hostname == NULL)
 		NP_ServerHost[0] = 0;
 	else
-		snprintf(NP_ServerHost, sizeof(NP_ServerHost), "%s", hostname);
+		NutPunch_SNPrintF(NP_ServerHost, sizeof(NP_ServerHost), "%s", hostname);
 }
 
 static int NP_FieldNameSize(const char* name) {
@@ -625,11 +588,39 @@ void NutPunch_LobbySet(const char* name, int size, const void* data) {
 	NP_SetMetadataIn(NP_LobbyMetadataOut, name, size, data);
 }
 
-static void NP_ExpectNutpuncher() {
+static int NP_ResolveNutpuncher(const int ipv) {
+	const int ai_family = ipv == NP_IPv6 ? AF_INET6 : AF_INET;
+	NP_LazyInit(), NP_Memzero2(&NP_PuncherAddr.raw);
+
+	struct addrinfo *resolved = NULL, *REALSHIT = NULL, hints = {0};
+	hints.ai_family = AF_UNSPEC, hints.ai_socktype = SOCK_DGRAM, hints.ai_protocol = IPPROTO_UDP;
+
 	if (!NP_ServerHost[0]) {
 		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
-		NP_Info("Connecting to public NutPunch instance because no address was specified");
+		NP_Info("Connecting to public NutPuncher because no server was specified");
 	}
+
+	static char portfmt[8] = {0};
+	NutPunch_SNPrintF(portfmt, sizeof(portfmt), "%d", NUTPUNCH_SERVER_PORT);
+
+	if (getaddrinfo(NP_ServerHost, portfmt, &hints, &resolved)) {
+		NP_Warn("NutPuncher server address failed to resolve");
+		return 0;
+	}
+	for (REALSHIT = resolved; REALSHIT; REALSHIT = REALSHIT->ai_next)
+		if (REALSHIT->ai_family == ai_family)
+			break;
+	if (!REALSHIT) {
+		NP_Warn("Couldn't resolve NutPuncher IPv%s address", ipv == NP_IPv6 ? "6" : "4");
+		return 0;
+	}
+
+	NP_PuncherAddr.ipv = ipv;
+	NutPunch_Memcpy(&NP_PuncherAddr.raw, REALSHIT->ai_addr, REALSHIT->ai_addrlen);
+	freeaddrinfo(resolved);
+
+	NP_Info("Resolved NutPuncher IPv%s address", ipv == NP_IPv6 ? "6" : "4");
+	return 1;
 }
 
 static int NP_MakeNonblocking(NP_Socket sock) {
@@ -646,71 +637,52 @@ static int NP_BindSocket(NP_IPv ipv) {
 
 	NP_Addr local = {0};
 	NP_Socket* sock = ipv == NP_IPv6 ? &NP_Sock6 : &NP_Sock4;
-	*sock = socket(ipv == NP_IPv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	NP_NukeSocket(sock), *sock = socket(ipv == NP_IPv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
 	if (*sock == NUTPUNCH_INVALID_SOCKET) {
-		if (ipv == NP_IPv6)
-			goto v6_optional;
-		else {
-			NP_LastError = "Failed to create the underlying UDP socket";
-			goto fail;
-		}
+		NP_Warn("Failed to create the underlying UDP socket (%d)", NP_SockError());
+		return 0;
 	}
 
 	if (NP_MakeNonblocking(*sock) < 0) {
-		NP_LastError = "Failed to set socket to non-blocking mode";
-		goto fail;
+		NP_Warn("Failed to set socket to non-blocking mode (%d)", NP_SockError());
+		return 0;
 	}
 
-	local.ipv = ipv;
+	local.ipv = ipv, *NP_AddrFamily(&local) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
 	if (ipv == NP_IPv6)
-		((struct sockaddr_in6*)&local.raw)->sin6_family = AF_INET6;
+		((struct sockaddr_in6*)&local.raw)->sin6_addr = in6addr_any;
 	else
-		((struct sockaddr_in*)&local.raw)->sin_family = AF_INET;
-	*NP_AddrPort(&local) = NUTPUNCH_PORT_MIN + rand() % (NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1);
+		((struct sockaddr_in*)&local.raw)->sin_addr.S_un.S_addr = INADDR_ANY;
 
-	if (!bind(*sock, (struct sockaddr*)&local.raw, sizeof(local.raw))) {
-		NP_ExpectNutpuncher();
-		NP_PuncherPeer = NP_ResolveAddr(NP_ServerHost, NUTPUNCH_SERVER_PORT);
-		return 1;
-	}
+	const clock_t range = NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1;
+	*NP_AddrPort(&local) = NUTPUNCH_PORT_MIN + (clock() % range);
 
-	if (ipv == NP_IPv6) {
-	v6_optional:
-		NP_Warn("Failed to bind an IPv6 socket");
-		NP_NukeSocket(sock);
-		return 1;
-	}
+	if (!bind(*sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
+		return NP_ResolveNutpuncher(ipv);
 
-	NP_LastError = "Failed to bind the UDP socket";
-fail:
-	NP_LastStatus = NPS_Error;
-	NP_LastErrorCode = NP_SockError();
-	NP_PrintError();
-	NutPunch_Reset();
+	NP_Warn("Failed to bind an IPv%s socket (%d)", ipv == NP_IPv6 ? "6" : "4", NP_SockError());
 	return 0;
 }
 
 static int NutPunch_Connect(const char* lobbyId) {
 	NP_LazyInit();
 	NP_NukeLobbyData();
-	NP_ExpectNutpuncher();
 
-	NP_NukeSocket(&NP_Sock4), NP_NukeSocket(&NP_Sock6);
-	if (!NP_BindSocket(NP_IPv6) || !NP_BindSocket(NP_IPv4))
-		goto fail;
-
-	NP_LastStatus = NPS_Online;
-	if (lobbyId != NULL) {
-		NP_Memzero(NP_LobbyId);
-		snprintf(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobbyId);
+	if (!NP_BindSocket(NP_IPv6) && !NP_BindSocket(NP_IPv4)) {
+		NutPunch_Reset(), NP_LastStatus = NPS_Error;
+		return 0;
 	}
-	return 1;
 
-fail:
-	NutPunch_Reset();
-	NP_LastStatus = NPS_Error;
-	return 0;
+	NP_Info("Ready to send heartbeats");
+	NP_LastStatus = NPS_Online;
+
+	if (lobbyId) {
+		NP_Memzero(NP_LobbyId);
+		NutPunch_SNPrintF(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobbyId);
+	}
+
+	return 1;
 }
 
 int NutPunch_Host(const char* lobbyId) {
@@ -771,7 +743,7 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 }
 
 NP_MakeHandler(NP_HandleShalom) {
-	if (NP_AddrEq(peer, NP_PuncherPeer))
+	if (NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 	const uint8_t idx = *data;
 	if (idx < NUTPUNCH_MAX_PLAYERS)
@@ -785,25 +757,24 @@ NP_MakeHandler(NP_HandleDisconnect) {
 }
 
 NP_MakeHandler(NP_HandleGTFO) {
-	if (!NP_AddrEq(peer, NP_PuncherPeer))
+	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
 	NutPunch_Reset();
 	NP_LastStatus = NPS_Error;
-	NP_LastErrorCode = *data;
 
-	switch (NP_LastErrorCode) {
+	switch (*data) {
 	case NPE_NoSuchLobby:
-		NP_LastError = "Lobby doesn't exist";
+		NP_Warn("Lobby doesn't exist");
 		break;
 	case NPE_LobbyExists:
-		NP_LastError = "Lobby already exists";
+		NP_Warn("Lobby already exists");
 		break;
 	case NPE_Ok:
-		NP_LastError = "wtf bro";
+		NP_Warn("wtf bro");
 		break;
 	default:
-		NP_LastError = "Unidentified error";
+		NP_Warn("Unidentified error");
 		break;
 	}
 }
@@ -813,28 +784,34 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 		return;
 
 	NP_Addr peer = {0};
-	peer.ipv = *data++;
-
-	*NP_AddrFamily(&peer) = (peer.ipv == NP_IPv6 ? AF_INET6 : AF_INET);
-	NutPunch_Memcpy(NP_AddrRaw(&peer), data, (peer.ipv == NP_IPv6 ? 16 : 4));
-	data += 16;
-
-	if (NP_AddrNull(peer) || !*(uint16_t*)data)
-		return;
-	uint16_t* port = NP_AddrPort(&peer);
-
-	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
-	shalom[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
+	peer.ipv = *data, data += 1;
 
 	const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return;
+
+	*NP_AddrFamily(&peer) = (peer.ipv == NP_IPv6 ? AF_INET6 : AF_INET);
+	NutPunch_Memcpy(NP_AddrRaw(&peer), data, (peer.ipv == NP_IPv6 ? 16 : 4)), data += 16;
+
+	if (NP_AddrNull(peer) || !*(uint16_t*)data)
+		return;
+
+	uint16_t* port = NP_AddrPort(&peer);
+	*port = *(uint16_t*)data, data += 2;
+
+	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
+	shalom[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
+
+	sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+#if 0
+	// TODO: figure out if we really need this.
 	for (*port = NUTPUNCH_PORT_MIN; *port <= NUTPUNCH_PORT_MAX; *port += 1)
 		sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+#endif
 }
 
 NP_MakeHandler(NP_HandleBeat) {
-	if (!NP_AddrEq(peer, NP_PuncherPeer))
+	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
@@ -859,7 +836,7 @@ NP_MakeHandler(NP_HandleBeat) {
 }
 
 NP_MakeHandler(NP_HandleList) {
-	if (!NP_AddrEq(peer, NP_PuncherPeer))
+	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++) {
 		NutPunch_Memcpy(NP_Lobbies[i], data, NUTPUNCH_ID_MAX);
@@ -906,7 +883,7 @@ NP_MakeHandler(NP_HandleAcky) {
 }
 
 static int NP_SendHeartbeat() {
-	const NP_Socket sock = NP_PuncherPeer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
+	const NP_Socket sock = NP_PuncherAddr.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return 1;
 
@@ -931,9 +908,9 @@ static int NP_SendHeartbeat() {
 
 	size_t length = ptr - heartbeat;
 	int status = sendto(
-		sock, heartbeat, (int)length, 0, (struct sockaddr*)&NP_PuncherPeer.raw, sizeof(NP_PuncherPeer.raw));
+		sock, heartbeat, (int)length, 0, (struct sockaddr*)&NP_PuncherAddr.raw, sizeof(NP_PuncherAddr.raw));
 	if (status < 0 && NP_SockError() != NP_WouldBlock && NP_SockError() != NP_ConnReset) {
-		NP_LastError = "Failed to send heartbeat to NutPuncher";
+		NP_Warn("Failed to send heartbeat to NutPuncher (%d)", NP_SockError());
 		return 0;
 	}
 	return 1;
@@ -946,7 +923,6 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 
 	struct sockaddr_storage addr = {0};
 	socklen_t addrSize = sizeof(addr);
-	NP_Memzero2(&addr);
 
 	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
 	int size = recvfrom(*sock, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &addrSize);
@@ -955,7 +931,7 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 			return 1;
 		if (NP_SockError() == NP_ConnReset)
 			return 0;
-		NP_LastError = "Failed to receive from NutPuncher";
+		NP_Warn("Failed to receive from NutPuncher (%d)", NP_SockError());
 		return -1;
 	}
 
@@ -970,14 +946,14 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 		return 0;
 	size -= NUTPUNCH_HEADER_SIZE;
 
+	const NP_Addr peer = {.raw = addr, .ipv = ipv};
 	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
 		const NP_MessageTable msg = NP_Messages[i];
 		if (!NutPunch_Memcmp(buf, msg.identifier, NUTPUNCH_HEADER_SIZE)
 			&& (msg.packetSize < 0 || size == msg.packetSize))
 		{
-			NP_Addr peer = {.raw = addr, .ipv = ipv};
 			msg.handler(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
-			return 0;
+			break;
 		}
 	}
 
@@ -1037,9 +1013,7 @@ static void NP_FlushOutQueue() {
 		if (!result || NP_SockError() == NP_ConnReset)
 			NP_KillPeer(cur->peer);
 		else {
-			NP_LastError = "Failed to send to peer";
-			NP_LastErrorCode = NP_SockError();
-			NP_PrintError();
+			NP_Warn("Failed to send data to peer #%d (%d)", cur->peer + 1, NP_SockError());
 			NP_NukeLobbyData();
 			return;
 		}
@@ -1076,8 +1050,6 @@ flush:
 	return NPS_Online;
 
 sockFail:
-	NP_LastErrorCode = NP_SockError();
-	NP_PrintError();
 	NP_NukeLobbyData();
 	return NPS_Error;
 }
@@ -1087,9 +1059,12 @@ int NutPunch_Update() {
 	int socks_dead = NP_Sock4 == NUTPUNCH_INVALID_SOCKET && NP_Sock6 == NUTPUNCH_INVALID_SOCKET;
 	if (NP_LastStatus == NPS_Idle || socks_dead)
 		return NPS_Idle;
-	if (NP_LastStatus == NPS_Error)
+	NP_LastStatus = NP_RealUpdate();
+	if (NP_LastStatus == NPS_Error) {
 		NutPunch_Reset();
-	return (NP_LastStatus = NP_RealUpdate());
+		return NPS_Error;
+	}
+	return NP_LastStatus;
 }
 
 int NutPunch_HasMessage() {

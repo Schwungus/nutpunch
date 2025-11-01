@@ -1,5 +1,9 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static FILE* logfile = NULL; // gotta use a logfile since we're drawing to the console
+#define NutPunch_Log(msg, ...) fprintf(logfile, msg "\n", ##__VA_ARGS__)
 
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
@@ -119,15 +123,20 @@ static void move_our_dot() {
 }
 
 static void draw_debug_bits(int status) {
+	const char sep = ':';
 	const int chrs[] = {
 		'D',
 		'B',
 		'G',
-		'0' + (NPS_Online == status),
-		NutPunch_IsMaster() ? 'M' : '0',
-		'0' + waitingForPlayers,
+		sep,
+		NPS_Online == status ? '+' : '-',
+		NutPunch_IsMaster() ? 'M' : 'S',
+		sep,
 		'0' + NutPunch_PeerCount(),
-		'0' + NutPunch_LocalPeer(),
+		'/',
+		'0' + waitingForPlayers,
+		sep,
+		'1' + NutPunch_LocalPeer(),
 	};
 
 	const int x = 0, y = 0;
@@ -149,7 +158,12 @@ int main(int argc, char* argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	srand(time(NULL));
+	logfile = fopen("log.txt", "w");
+	if (!logfile) {
+		printf("WTF???");
+		return EXIT_FAILURE;
+	}
+
 	for (poor_init(); poor_running(); poor_tick()) {
 		poor_title("nutpunch test");
 		if (poor_key_pressed(POOR_ESC) || poor_key_pressed(POOR_Q))
@@ -174,6 +188,7 @@ int main(int argc, char* argv[]) {
 	}
 
 cleanup:
+	fclose(logfile), fflush(logfile);
 	NutPunch_Cleanup();
 	return EXIT_SUCCESS;
 }

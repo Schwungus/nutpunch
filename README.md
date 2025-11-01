@@ -117,6 +117,7 @@ SDL3 example:
 #include <SDL3/SDL_stdinc.h>
 
 #define NUTPUNCH_IMPLEMENTATION
+#define NutPunch_SNPrintF SDL_snprintf
 #define NutPunch_Memcmp SDL_memcmp
 #define NutPunch_Memset SDL_memset
 #define NutPunch_Memcpy SDL_memcpy
