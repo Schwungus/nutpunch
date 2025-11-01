@@ -30,7 +30,7 @@ if(NUTPUNCH_BUILD_TESTS)
         GIT_TAG 732eb2d7a34524f4cb6ccaba593a7ae09dd6762e)
     FetchContent_MakeAvailable(poormans)
 
-    add_executable(nutpunchTest ${SRC_DIR}/test.c ${SRC_DIR}/nutpunch.c)
+    add_executable(nutpunchTest ${SRC_DIR}/test.c)
     target_link_libraries(nutpunchTest PRIVATE nutpunch poormans)
 endif()
 
@@ -44,6 +44,6 @@ endif()
 
 option(NUTPUNCH_BUILD_LOBBYIST "Build lobbyist?" ON)
 if(NUTPUNCH_BUILD_LOBBYIST)
-    add_executable(nutpunchLobbyist ${SRC_DIR}/lobbyist.c ${SRC_DIR}/nutpunch.c)
+    add_executable(nutpunchLobbyist ${SRC_DIR}/lobbyist.c)
     target_link_libraries(nutpunchLobbyist PRIVATE nutpunch)
 endif()

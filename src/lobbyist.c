@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define NUTPUNCH_IMPLEMENTATION
 #include <nutpunch.h>
 
 #ifdef NUTPUNCH_WINDOSE

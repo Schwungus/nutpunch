@@ -1,8 +1,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define POOR_IMPLEMENTATION
+#define NUTPUNCH_IMPLEMENTATION
 #include <nutpunch.h>
+
+#define POOR_IMPLEMENTATION
 #include <poormans.h>
 
 static const char *const magicKey = "NUTPUNCH", *const lobbyName = "Ligma";

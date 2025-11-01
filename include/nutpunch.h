@@ -230,6 +230,8 @@ const char* NutPunch_Basename(const char*);
 	} while (0)
 #endif
 
+#ifdef NUTPUNCH_IMPLEMENTATION
+
 #ifndef NP_Info
 #define NP_Info(msg, ...) NutPunch_Log("INFO: " msg, ##__VA_ARGS__)
 #endif
@@ -237,8 +239,6 @@ const char* NutPunch_Basename(const char*);
 #ifndef NP_Warn
 #define NP_Warn(msg, ...) NutPunch_Log("WARN: " msg, ##__VA_ARGS__)
 #endif
-
-#ifdef NUTPUNCH_IMPLEMENTATION
 
 #ifdef NUTPUNCH_WINDOSE
 
