@@ -5,7 +5,7 @@
 #include <string>
 
 #define NUTPUNCH_IMPLEMENTATION
-#include "nutpunch.h"
+#include <NutPunch.h>
 
 #ifdef NUTPUNCH_WINDOSE
 #define SleepMs(ms) Sleep(ms)

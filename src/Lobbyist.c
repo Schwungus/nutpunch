@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #define NUTPUNCH_IMPLEMENTATION
-#include <nutpunch.h>
+#include <NutPunch.h>
 
 #ifdef NUTPUNCH_WINDOSE
 #include <windows.h>

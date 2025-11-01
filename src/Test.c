@@ -2,7 +2,7 @@
 #include <string.h>
 
 #define NUTPUNCH_IMPLEMENTATION
-#include <nutpunch.h>
+#include <NutPunch.h>
 
 #define POOR_IMPLEMENTATION
 #include <poormans.h>

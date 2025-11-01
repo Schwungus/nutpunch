@@ -65,22 +65,22 @@ add_executable(MyGame main.c) # your game's CMake target goes here
 target_link_libraries(MyGame PRIVATE nutpunch)
 ```
 
-For other build systems (or lack thereof), you only need to copy [`nutpunch.h`](include/nutpunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with scary linker errors related to Winsock.
+For other build systems (or lack thereof), you only need to copy [`NutPunch.h`](include/NutPunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with scary linker errors related to Winsock.
 
 ## Basic Usage
 
-Once [`nutpunch.h`](include/nutpunch.h) is in your include-path, using it is straightforward, just like any header-only library. Select a source file where the library's function definitions will reside (it could be your `main.c` as well), tell the compiler to add NutPunch implementation details with a `#define`, and `#include` the library's main header inside it:
+Once [`NutPunch.h`](include/NutPunch.h) is in your include-path, using it is straightforward, just like any header-only library. Select a source file where the library's function definitions will reside (it could be your `main.c` as well), tell the compiler to add NutPunch implementation details with a `#define`, and `#include` the library's main header inside it:
 
 ```c
 #define NUTPUNCH_IMPLEMENTATION
-#include <nutpunch.h>
+#include <NutPunch.h>
 ```
 
-Then `#include <nutpunch.h>` wherever you need to use it. Here's a really simple example:
+Then `#include <NutPunch.h>` wherever you need to use it. Here's a really simple example:
 
 ```c
 #include <stdlib.h> // for EXIT_SUCCESS
-#include <nutpunch.h>
+#include <NutPunch.h>
 
 int main(int argc, char* argv[]) {
     NutPunch_Join("MyLobby");
@@ -122,17 +122,17 @@ SDL3 example:
 #define NutPunch_Memcpy SDL_memcpy
 #define NutPunch_Malloc SDL_malloc
 #define NutPunch_Free SDL_free
-#include <nutpunch.h>
+#include <NutPunch.h>
 ```
 
 ### Customize Logger Implementation
 
-Just like in the example above, you can override NutPunch's logging facility before including `nutpunch.h`:
+Just like in the example above, you can override NutPunch's logging facility before including `NutPunch.h`:
 
 ```c
 #define NUTPUNCH_IMPLEMENTATION
 #define NutPunch_Log(msg, ...) printf(msg, ##__VA_ARGS__)
-#include <nutpunch.h>
+#include <NutPunch.h>
 ```
 
 ## Hosting your own NutPuncher
