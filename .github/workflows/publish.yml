@@ -55,7 +55,7 @@ jobs:
     runs-on: ${{ matrix.runner-os }}
     if: github.ref_type == 'tag'
     env:
-      BINARY: nutpuncher-${{ matrix.os-name }}-${{ github.ref_name }}${{ matrix.bin-ext }}
+      BINARY: NutPuncher-${{ matrix.os-name }}-${{ github.ref_name }}${{ matrix.bin-ext }}
     strategy:
       matrix:
         include:
@@ -73,10 +73,9 @@ jobs:
       - name: Build
         run: |
           cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D NUTPUNCH_BUILD_TESTS=OFF -D NUTPUNCH_BUILD_LOBBYIST=OFF
-          cmake --build build --target nutpuncher
+          cmake --build build --target NutPuncher
       - name: Rename binary artifact
-        run: |
-          cp build/nutpuncher${{ matrix.bin-ext }} ${{ env.BINARY }}
+        run: cp build/NutPuncher${{ matrix.bin-ext }} $BINARY
       - name: Release binary
         uses: softprops/action-gh-release@v2
         with:
@@ -87,7 +86,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: binary
     env:
-      BINARY: /usr/local/bin/nutpuncher
+      BINARY: /usr/local/bin/NutPuncher
     steps:
       - name: Deploy
         uses: appleboy/ssh-action@v1.2.2
@@ -97,6 +96,6 @@ jobs:
           key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
           script: |
             systemctl stop nutpuncher
-            wget -O ${{ env.BINARY }} https://github.com/Schwungus/nutpunch/releases/download/stable/nutpuncher-Linux-${{ github.ref_name }}
+            wget -O ${{ env.BINARY }} https://github.com/Schwungus/nutpunch/releases/download/stable/NutPuncher-Linux-${{ github.ref_name }}
             chmod +x ${{ env.BINARY }}
             systemctl start nutpuncher
