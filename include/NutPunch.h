@@ -55,7 +55,7 @@ extern "C" {
 #define NUTPUNCH_MAX_PLAYERS (16)
 
 /// The UDP port used by the punching mediator server. Not customizable, sorry.
-#define NUTPUNCH_SERVER_PORT (30001)
+#define NUTPUNCH_SERVER_PORT (30000)
 
 /// The maximum length of a lobby identifier excluding the null terminator. Not customizable.
 #define NUTPUNCH_ID_MAX (32)
@@ -81,19 +81,23 @@ extern "C" {
 /// How many updates to wait before resending a reliable packet.
 #define NUTPUNCH_BOUNCE_TICKS (60)
 
+#define NUTPUNCH_PORT_MIN ((uint16_t)(NUTPUNCH_SERVER_PORT + 1))
+#define NUTPUNCH_PORT_MAX ((uint16_t)(NUTPUNCH_PORT_MIN + 512))
+
 #define NUTPUNCH_HEADER_SIZE (4)
 #define NUTPUNCH_ADDRESS_SIZE (19)
 
 #define NUTPUNCH_RESPONSE_SIZE                                                                                         \
-	(NUTPUNCH_HEADER_SIZE + 1 + NUTPUNCH_MAX_PLAYERS * 2 * NUTPUNCH_ADDRESS_SIZE                                   \
+	(NUTPUNCH_HEADER_SIZE + 1 + NUTPUNCH_MAX_PLAYERS * NUTPUNCH_ADDRESS_SIZE                                       \
 		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
-	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage) + NUTPUNCH_ADDRESS_SIZE        \
+	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
 		+ 2 * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <time.h>
 
 typedef struct {
 	char name[NUTPUNCH_FIELD_NAME_MAX], data[NUTPUNCH_FIELD_DATA_MAX];
@@ -470,11 +474,11 @@ static void NP_LazyInit() {
 		return;
 	NP_InitDone = 1;
 
+	srand(time(NULL));
+
 #ifdef NUTPUNCH_WINDOSE
-	{
-		WSADATA bitch = {0};
-		WSAStartup(MAKEWORD(2, 2), &bitch);
-	}
+	WSADATA bitch = {0};
+	WSAStartup(MAKEWORD(2, 2), &bitch);
 #endif
 
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++)
@@ -661,9 +665,8 @@ static int NP_BindSocket(NP_IPv ipv) {
 
 	NP_Addr local = {0};
 	NP_Socket* sock = ipv == NP_IPv6 ? &NP_Sock6 : &NP_Sock4;
-	NP_NukeSocket(sock);
-
 	*sock = socket(ipv == NP_IPv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+
 	if (*sock == NUTPUNCH_INVALID_SOCKET) {
 		if (ipv == NP_IPv6)
 			goto v6_optional;
@@ -679,6 +682,8 @@ static int NP_BindSocket(NP_IPv ipv) {
 	}
 
 	NP_GetAddrInfo(&local, NULL, 0, ipv);
+	*NP_AddrPort(&local) = NUTPUNCH_PORT_MIN + rand() % (NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1);
+
 	if (!bind(*sock, (struct sockaddr*)&local.raw, sizeof(local.raw))) {
 		NP_ExpectNutpuncher();
 		NP_PuncherPeer = NP_ResolveAddr(NP_ServerHost, NUTPUNCH_SERVER_PORT);
@@ -706,6 +711,7 @@ static int NutPunch_Connect(const char* lobbyId) {
 	NP_NukeLobbyData();
 	NP_ExpectNutpuncher();
 
+	NP_NukeSocket(&NP_Sock4), NP_NukeSocket(&NP_Sock6);
 	if (!NP_BindSocket(NP_IPv6) || !NP_BindSocket(NP_IPv4))
 		goto fail;
 
@@ -817,7 +823,10 @@ NP_MakeHandler(NP_HandleGTFO) {
 	}
 }
 
-static void NP_SayShalom(const uint8_t* data) {
+static void NP_SayShalom(int idx, const uint8_t* data) {
+	if (idx == NP_LocalPeer || NutPunch_PeerAlive(idx))
+		return;
+
 	NP_Addr peer = {0};
 	peer.ipv = *data++;
 
@@ -825,21 +834,17 @@ static void NP_SayShalom(const uint8_t* data) {
 	NutPunch_Memcpy(NP_AddrRaw(&peer), data, (peer.ipv == NP_IPv6 ? 16 : 4));
 	data += 16;
 
-	if (NP_AddrNull(peer))
+	if (NP_AddrNull(peer) || !*(uint16_t*)data)
 		return;
-
 	uint16_t* port = NP_AddrPort(&peer);
-	NutPunch_Memcpy(port, data, 2);
-	data += 2;
 
-	if (!*port)
-		return;
-
-	static uint8_t shalom[] = "SHLM";
+	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
 	shalom[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
 
 	const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
-	if (sock != NUTPUNCH_INVALID_SOCKET)
+	if (sock == NUTPUNCH_INVALID_SOCKET)
+		return;
+	for (*port = NUTPUNCH_PORT_MIN; *port <= NUTPUNCH_PORT_MAX; *port += 1)
 		sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
 }
 
@@ -849,11 +854,11 @@ NP_MakeHandler(NP_HandleBeat) {
 
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
 	const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
-	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + NUTPUNCH_ADDRESS_SIZE + metaSize;
+	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + metaSize;
 
 	NP_ResponseFlags = *data++;
 	for (uint8_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		const uint8_t *ptr = data + i * stride + NUTPUNCH_ADDRESS_SIZE, nulladdr[16] = {0};
+		const uint8_t *ptr = data + i * stride, nulladdr[16] = {0};
 		if (!NutPunch_Memcmp(ptr + 1, nulladdr, 16) && *(uint16_t*)(ptr + 17)) {
 			NP_LocalPeer = i;
 			break;
@@ -862,8 +867,7 @@ NP_MakeHandler(NP_HandleBeat) {
 	if (NP_LocalPeer == NUTPUNCH_MAX_PLAYERS)
 		return;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		NP_SayShalom(data), data += NUTPUNCH_ADDRESS_SIZE; // private addr
-		NP_SayShalom(data), data += NUTPUNCH_ADDRESS_SIZE; // public addr
+		NP_SayShalom(i, data), data += NUTPUNCH_ADDRESS_SIZE;
 		NutPunch_Memcpy(NP_PeerMetadataIn[i], data, metaSize), data += metaSize;
 	}
 	NutPunch_Memcpy(NP_LobbyMetadataIn, data, metaSize);
@@ -934,18 +938,6 @@ static int NP_SendHeartbeat() {
 
 		// TODO: make sure to correct endianness when multibyte flags become a thing.
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags, ptr += sizeof(NP_HeartbeatFlags);
-
-		struct sockaddr_storage addr = {0};
-		socklen_t addr_size = sizeof(addr);
-		getsockname(sock, (struct sockaddr*)&addr, &addr_size);
-
-		NP_Addr np_addr;
-		np_addr.raw = addr;
-		np_addr.ipv = NP_PuncherPeer.ipv;
-
-		*ptr++ = *(char*)&np_addr.ipv;
-		NutPunch_Memcpy(ptr, NP_AddrRaw(&np_addr), sock == NP_Sock6 ? 16 : 4), ptr += 16;
-		NutPunch_Memcpy(ptr, NP_AddrPort(&np_addr), 2), ptr += 2; // TODO: `htons`?
 
 		const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 		NutPunch_Memcpy(ptr, NP_PeerMetadataOut, metaSize), ptr += metaSize;
@@ -1100,6 +1092,7 @@ flush:
 
 sockFail:
 	NP_LastErrorCode = NP_SockError();
+	NP_PrintError();
 	NP_NukeLobbyData();
 	return NPS_Error;
 }

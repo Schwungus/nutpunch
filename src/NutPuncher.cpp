@@ -234,7 +234,7 @@ struct Addr : NP_Addr {
 };
 
 struct Player {
-	Addr priv, pub;
+	Addr addr;
 	std::uint32_t countdown;
 	Metadata metadata;
 
@@ -242,13 +242,11 @@ struct Player {
 
 	bool dead() const {
 		static constexpr const char zero[sizeof(Addr)] = {0};
-		return countdown < 1 || !std::memcmp(&priv, zero, sizeof(priv))
-		       || !std::memcmp(&pub, zero, sizeof(pub));
+		return countdown < 1 || !std::memcmp(&addr, zero, sizeof(addr));
 	}
 
 	void reset() {
-		std::memset(&priv, 0, sizeof(priv));
-		std::memset(&pub, 0, sizeof(pub));
+		std::memset(&addr, 0, sizeof(addr));
 		metadata.reset();
 		countdown = 0;
 	}
@@ -294,7 +292,6 @@ struct Lobby {
 	void accept(const int idx, const char* meta) {
 		auto& player = players[idx];
 		player.countdown = keepAliveBeats;
-		player.priv.load(meta), meta += NUTPUNCH_ADDRESS_SIZE;
 		player.metadata.load(meta), meta += sizeof(Metadata);
 		if (idx == master())
 			metadata.load(meta);
@@ -318,21 +315,20 @@ struct Lobby {
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& player = players[i];
-			std::memset(ptr, 0, NUTPUNCH_ADDRESS_SIZE + NUTPUNCH_ADDRESS_SIZE + sizeof(Metadata));
 
-			player.priv.dump(ptr), ptr += NUTPUNCH_ADDRESS_SIZE;
-
-			player.pub.dump(ptr);
-			if (playerIdx == i)
+			player.addr.dump(ptr);
+			if (playerIdx == i) // local peer gets a zeroed IP and a non-zero port
 				NutPunch_Memset(ptr + 1, 0, 16);
 			ptr += NUTPUNCH_ADDRESS_SIZE;
 
-			std::memcpy(ptr, &player.metadata, sizeof(Metadata)), ptr += sizeof(Metadata);
+			std::memset(ptr, 0, sizeof(Metadata));
+			std::memcpy(ptr, &player.metadata, sizeof(Metadata));
+			ptr += sizeof(Metadata);
 		}
 		std::memcpy(ptr, &metadata, sizeof(Metadata));
 
 		auto& player = players[playerIdx];
-		if (player.pub.send(buf, sizeof(buf)) < 0) {
+		if (player.addr.send(buf, sizeof(buf)) < 0) {
 			NP_Warn("Player %d aborted connection", playerIdx + 1);
 			player.reset();
 		}
@@ -497,7 +493,7 @@ static int receive(NP_IPv ipv) {
 		// Match against existing peers to prevent creating multiple lobbies with the same master.
 		for (const auto& [lobbyId, lobby] : lobbies)
 			for (const auto& player : lobby.players)
-				if (!player.dead() && !std::memcmp(&player.pub, &addr, sizeof(addr)))
+				if (!player.dead() && !std::memcmp(&player.addr, &addr, sizeof(addr)))
 					return RecvKeepGoing; // fuck you...
 		lobbies.insert({id, Lobby(id)});
 		NP_Info("Created lobby '%s'", fmtLobbyId(id));
@@ -505,7 +501,7 @@ static int receive(NP_IPv ipv) {
 
 	players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!players[i].dead() && !std::memcmp(&players[i].pub.raw, &addr.raw, sizeof(addr.raw))) {
+		if (!players[i].dead() && !std::memcmp(&players[i].addr.raw, &addr.raw, sizeof(addr.raw))) {
 			lobbies[id].accept(i, ptr);
 			return RecvKeepGoing;
 		}
@@ -517,7 +513,7 @@ static int receive(NP_IPv ipv) {
 		if (!players[i].dead())
 			continue;
 
-		players[i].pub = addr;
+		players[i].addr = addr;
 		lobbies[id].accept(i, ptr);
 
 		const char* ipv_s = ipv == NP_IPv6 ? "IPv6" : "IPv4";
