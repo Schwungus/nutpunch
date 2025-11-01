@@ -107,6 +107,8 @@ NutPunch_Join("lobby-id");
 
 ## Advanced Usage
 
+### Customize Memory Handling
+
 You can `#define` custom memory handling functions for NutPunch to use. They're only relevant to the implementation.
 
 SDL3 example:
@@ -120,6 +122,16 @@ SDL3 example:
 #define NutPunch_Memcpy SDL_memcpy
 #define NutPunch_Malloc SDL_malloc
 #define NutPunch_Free SDL_free
+#include <nutpunch.h>
+```
+
+### Customize Logger Implementation
+
+Just like in the example above, you can override NutPunch's logging facility before including `nutpunch.h`:
+
+```c
+#define NUTPUNCH_IMPLEMENTATION
+#define NutPunch_Log(msg, ...) printf(msg, ##__VA_ARGS__)
 #include <nutpunch.h>
 ```
 
