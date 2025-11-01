@@ -504,25 +504,12 @@ void NutPunch_Reset() {
 			NP_Warn("WARN: %s", NP_LastError);                                                             \
 	while (0)
 
-static int NP_GetAddrInfo(NP_Addr* out, const char* host, uint16_t port, NP_IPv ipv) {
-	NP_LazyInit();
+static NP_Addr NP_ResolveAddr(const char* host, uint16_t port) {
+	NP_Addr res = {0}, nullres = {0};
+	NP_LazyInit(), NP_Memzero2(&res.raw);
 
-	out->ipv = ipv;
-	NP_Memzero2(&out->raw);
-
-	if (ipv == NP_IPv6) {
-		((struct sockaddr_in6*)&out->raw)->sin6_family = AF_INET6;
-		((struct sockaddr_in6*)&out->raw)->sin6_port = htons(port);
-	} else {
-		((struct sockaddr_in*)&out->raw)->sin_family = AF_INET;
-		((struct sockaddr_in*)&out->raw)->sin_port = htons(port);
-	}
-
-	if (host == NULL)
-		return 1;
-
-	struct addrinfo *result = NULL, hints = {0};
-	hints.ai_family = ipv == NP_IPv6 ? AF_INET6 : AF_INET;
+	struct addrinfo *resolved = NULL, hints = {0};
+	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_protocol = IPPROTO_UDP;
 	hints.ai_flags = AI_PASSIVE;
@@ -530,26 +517,20 @@ static int NP_GetAddrInfo(NP_Addr* out, const char* host, uint16_t port, NP_IPv 
 	static char fmt[8] = {0};
 	NP_Memzero(fmt), snprintf(fmt, sizeof(fmt), "%d", port);
 
-	if (getaddrinfo(host, fmt, &hints, &result)) {
-		NP_LastError = "Failed to get NutPuncher server address info";
-		NP_LastErrorCode = NP_SockError();
-		NP_PrintError();
-		return 0;
+	if (getaddrinfo(host, fmt, &hints, &resolved) || !resolved) {
+		NP_LastError = "Failed to resolve NutPuncher server address";
+		goto fail;
 	}
-	if (result == NULL)
-		return 0;
 
-	NP_Memzero2(&out->raw);
-	NutPunch_Memcpy(&out->raw, result->ai_addr, result->ai_addrlen);
-	freeaddrinfo(result);
-	return 1;
-}
+	res.ipv = resolved->ai_family == AF_INET6 ? NP_IPv6 : NP_IPv4;
+	NutPunch_Memcpy(&res.raw, resolved->ai_addr, resolved->ai_addrlen);
+	freeaddrinfo(resolved);
+	return res;
 
-static NP_Addr NP_ResolveAddr(const char* host, uint16_t port) {
-	NP_Addr out = {0};
-	if (!NP_GetAddrInfo(&out, host, port, NP_IPv6))
-		NP_GetAddrInfo(&out, host, port, NP_IPv4);
-	return out;
+fail:
+	NP_LastErrorCode = NP_SockError();
+	NP_PrintError();
+	return nullres;
 }
 
 void NutPunch_SetServerAddr(const char* hostname) {
@@ -681,7 +662,11 @@ static int NP_BindSocket(NP_IPv ipv) {
 		goto fail;
 	}
 
-	NP_GetAddrInfo(&local, NULL, 0, ipv);
+	local.ipv = ipv;
+	if (ipv == NP_IPv6)
+		((struct sockaddr_in6*)&local.raw)->sin6_family = AF_INET6;
+	else
+		((struct sockaddr_in*)&local.raw)->sin_family = AF_INET;
 	*NP_AddrPort(&local) = NUTPUNCH_PORT_MIN + rand() % (NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1);
 
 	if (!bind(*sock, (struct sockaddr*)&local.raw, sizeof(local.raw))) {
