@@ -56,13 +56,13 @@ If you're using CMake, you can include this library in your project by adding th
 
 ```cmake
 include(FetchContent)
-FetchContent_Declare(nutpunch
+FetchContent_Declare(NutPunch
     GIT_REPOSITORY https://github.com/Schwungus/nutpunch.git
     GIT_TAG stable) # you can use a specific commit hash here
-FetchContent_MakeAvailable(nutpunch)
+FetchContent_MakeAvailable(NutPunch)
 
 add_executable(MyGame main.c) # your game's CMake target goes here
-target_link_libraries(MyGame PRIVATE nutpunch)
+target_link_libraries(MyGame PRIVATE NutPunch)
 ```
 
 For other build systems (or lack thereof), you only need to copy [`NutPunch.h`](include/NutPunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with scary linker errors related to Winsock.
