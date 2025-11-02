@@ -383,7 +383,6 @@ static void bindSock(NP_IPv ipv) {
 	} else {
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_family = AF_INET;
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
-		reinterpret_cast<sockaddr_in*>(&addr)->sin_addr.S_un.S_addr = INADDR_ANY;
 	}
 
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)))
