@@ -347,41 +347,23 @@ private:
 	int masterIdx = NUTPUNCH_MAX_PLAYERS;
 };
 
-static void bindSock(NP_IPv ipv) {
+static void bindSock(const NP_IPv ipv) {
 	auto& sock = ipv == NP_IPv6 ? sock6 : sock4;
 
 	sock = socket(ipv == NP_IPv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		throw "Failed to create the underlying UDP socket";
-
-#ifdef NUTPUNCH_WINDOSE
-	u_long
-#else
-	std::uint32_t
-#endif
-		argp;
-
-	argp = 1;
-	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&argp), sizeof(argp)))
-		throw "Failed to set socket reuseaddr option";
-
-	argp = 1;
-	if (
-#ifdef NUTPUNCH_WINDOSE
-		ioctlsocket(sock, FIONBIO, &argp)
-#else
-		fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK)
-#endif
-		< 0)
+	if (NP_MakeNonblocking(sock) < 0)
 		throw "Failed to set socket to non-blocking mode";
 
 	sockaddr_storage addr = {0};
 	if (ipv == NP_IPv6) {
 		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_family = AF_INET6;
-		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port = htons(NUTPUNCH_SERVER_PORT);
 		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_addr = in6addr_any;
+		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port = htons(NUTPUNCH_SERVER_PORT);
 	} else {
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_family = AF_INET;
+		reinterpret_cast<sockaddr_in*>(&addr)->sin_addr.s_addr = INADDR_ANY;
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
 	}
 
@@ -389,9 +371,9 @@ static void bindSock(NP_IPv ipv) {
 		NP_Info("Bound IPv%s socket", ipv == NP_IPv6 ? "6" : "4");
 	else if (ipv == NP_IPv6) { // IPv6 is optional and skipped with a warning
 		NP_Warn("Failed to bind IPv6 socket (%d)", NP_SockError());
-		sock = NUTPUNCH_INVALID_SOCKET;
+		NP_NukeSocket(&sock);
 	} else
-		throw "Failed to bind IPv4 socket, and IPv6-only mode is unsupported";
+		throw "Failed to bind an IPv4 socket. IPv6-only mode is unsupported";
 }
 
 static void sendLobbies(Addr addr, const NutPunch_Filter* filters) {
@@ -529,8 +511,7 @@ exists:
 struct cleanup {
 	cleanup() = default;
 	~cleanup() {
-		NP_NukeSocket(&sock4);
-		NP_NukeSocket(&sock6);
+		NP_NukeSocket(&sock4), NP_NukeSocket(&sock6);
 #ifdef NUTPUNCH_WINDOSE
 		WSACleanup();
 #endif
@@ -546,10 +527,9 @@ int main(int, char*[]) {
 #endif
 
 	try {
-		bindSock(NP_IPv6);
-		bindSock(NP_IPv4);
+		bindSock(NP_IPv6), bindSock(NP_IPv4);
 	} catch (const char* msg) {
-		NP_Info("CRITICAL: %s (code %d)", msg, NP_SockError());
+		NP_Warn("DEAD!!! %s (code %d)", msg, NP_SockError());
 		return EXIT_FAILURE;
 	}
 
@@ -579,7 +559,7 @@ int main(int, char*[]) {
 			const auto& lobby = kv.second;
 			bool dead = lobby.dead();
 			if (dead)
-				NP_Info("Deleted lobby '%s'", lobby.fmtId());
+				NP_Info("Deleting lobby '%s'", lobby.fmtId());
 			return dead;
 		});
 

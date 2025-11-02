@@ -33,19 +33,13 @@ extern "C" {
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
+
 #define NUTPUNCH_WINDOSE
-#endif
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
 
-#ifndef WINVER
-#define WINVER 0x0501
-#endif
-
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0501
 #endif
 
 /// The default NutPuncher instance. It's public, so feel free to [ab]use it.
@@ -468,7 +462,6 @@ static void NP_NukeSocket(NP_Socket* sock) {
 static void NP_ResetImpl() {
 	NP_NukeRemote(), NP_NukeLobbyData();
 	NP_NukeSocket(&NP_Sock4), NP_NukeSocket(&NP_Sock6);
-	NP_Memzero(NP_LastError);
 }
 
 static void NP_LazyInit() {
@@ -593,6 +586,7 @@ static int NP_ResolveNutpuncher(const int ipv) {
 	NP_LazyInit(), NP_Memzero2(&NP_PuncherAddr.raw);
 
 	struct addrinfo *resolved = NULL, *REALSHIT = NULL, hints = {0};
+	// XXX: using `AF_INET` or `AF_INET6` explicitly breaks resolution.
 	hints.ai_family = AF_UNSPEC, hints.ai_socktype = SOCK_DGRAM, hints.ai_protocol = IPPROTO_UDP;
 
 	if (!NP_ServerHost[0]) {
@@ -633,6 +627,7 @@ static int NP_MakeNonblocking(NP_Socket sock) {
 }
 
 static int NP_BindSocket(NP_IPv ipv) {
+	const clock_t range = NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1;
 	NP_LazyInit();
 
 	NP_Addr local = {0};
@@ -646,20 +641,20 @@ static int NP_BindSocket(NP_IPv ipv) {
 
 	if (NP_MakeNonblocking(*sock) < 0) {
 		NP_Warn("Failed to set socket to non-blocking mode (%d)", NP_SockError());
-		return 0;
+		goto fail;
 	}
 
 	local.ipv = ipv, *NP_AddrFamily(&local) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
 	if (ipv == NP_IPv6)
 		((struct sockaddr_in6*)&local.raw)->sin6_addr = in6addr_any;
 
-	const clock_t range = NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1;
-	*NP_AddrPort(&local) = NUTPUNCH_PORT_MIN + (clock() % range);
-
+	*NP_AddrPort(&local) = htons(NUTPUNCH_PORT_MIN + (clock() % range));
 	if (!bind(*sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
 		return NP_ResolveNutpuncher(ipv);
 
 	NP_Warn("Failed to bind an IPv%s socket (%d)", ipv == NP_IPv6 ? "6" : "4", NP_SockError());
+fail:
+	NP_NukeSocket(sock);
 	return 0;
 }
 
@@ -667,13 +662,15 @@ static int NutPunch_Connect(const char* lobbyId) {
 	NP_LazyInit();
 	NP_NukeLobbyData();
 
-	if (!NP_BindSocket(NP_IPv6) && !NP_BindSocket(NP_IPv4)) {
+	NP_BindSocket(NP_IPv6);
+	if (!NP_BindSocket(NP_IPv4)) {
 		NutPunch_Reset(), NP_LastStatus = NPS_Error;
 		return 0;
 	}
 
 	NP_Info("Ready to send heartbeats");
 	NP_LastStatus = NPS_Online;
+	NP_Memzero(NP_LastError);
 
 	if (lobbyId) {
 		NP_Memzero(NP_LobbyId);
@@ -802,9 +799,11 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 
 	sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
 #if 0
-	// TODO: figure out if we really need this.
-	for (*port = NUTPUNCH_PORT_MIN; *port <= NUTPUNCH_PORT_MAX; *port += 1)
+	// TODO: figure out if we really need this:
+	for (uint16_t hport = NUTPUNCH_PORT_MIN; hport <= NUTPUNCH_PORT_MAX; hport += 1) {
+		*port = htons(hport);
 		sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+	}
 #endif
 }
 
@@ -904,14 +903,20 @@ static int NP_SendHeartbeat() {
 		NutPunch_Memcpy(ptr, NP_LobbyMetadataOut, metaSize), ptr += metaSize;
 	}
 
-	size_t length = ptr - heartbeat;
-	int status = sendto(
-		sock, heartbeat, (int)length, 0, (struct sockaddr*)&NP_PuncherAddr.raw, sizeof(NP_PuncherAddr.raw));
-	if (status < 0 && NP_SockError() != NP_WouldBlock && NP_SockError() != NP_ConnReset) {
-		NP_Warn("Failed to send heartbeat to NutPuncher (%d)", NP_SockError());
+	int status = sendto(sock, heartbeat, (int)(ptr - heartbeat), 0, (struct sockaddr*)&NP_PuncherAddr.raw,
+		sizeof(NP_PuncherAddr.raw));
+	if (status >= 0)
+		return 1;
+
+	switch (NP_SockError()) {
+	case NP_WouldBlock:
+	case NP_ConnReset:
+		return 1;
+	default:
+		NP_Warn("Failed to send heartbeat to NutPuncher over IPv%s (%d)",
+			NP_PuncherAddr.ipv == NP_IPv6 ? "6" : "4", NP_SockError());
 		return 0;
 	}
-	return 1;
 }
 
 static int NP_ReceiveShit(NP_IPv ipv) {
@@ -1026,6 +1031,8 @@ static int NP_RealUpdate() {
 		goto sockFail;
 
 	while (*ipVer >= 0) {
+		if (NP_LastStatus == NPS_Error) // happens after handling GTFO
+			return NPS_Error;
 		switch (NP_ReceiveShit(*ipVer)) {
 		case -1:
 			goto sockFail;
