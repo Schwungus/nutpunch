@@ -456,8 +456,8 @@ static void NP_NukeRemote() {
 static void NP_NukeSocket(NP_Socket* sock) {
 	if (*sock == NUTPUNCH_INVALID_SOCKET)
 		return;
-	shutdown(*sock, SD_BOTH);
 #ifdef NUTPUNCH_WINDOSE
+	shutdown(*sock, SD_BOTH);
 	closesocket(*sock);
 #else
 	close(*sock);
@@ -652,8 +652,6 @@ static int NP_BindSocket(NP_IPv ipv) {
 	local.ipv = ipv, *NP_AddrFamily(&local) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
 	if (ipv == NP_IPv6)
 		((struct sockaddr_in6*)&local.raw)->sin6_addr = in6addr_any;
-	else
-		((struct sockaddr_in*)&local.raw)->sin_addr.S_un.S_addr = INADDR_ANY;
 
 	const clock_t range = NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1;
 	*NP_AddrPort(&local) = NUTPUNCH_PORT_MIN + (clock() % range);
