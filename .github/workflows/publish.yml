@@ -75,7 +75,8 @@ jobs:
           cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D NUTPUNCH_BUILD_TESTS=OFF -D NUTPUNCH_BUILD_LOBBYIST=OFF
           cmake --build build --target NutPuncher
       - name: Rename binary artifact
-        run: cp build/NutPuncher${{ matrix.bin-ext }} $BINARY
+        # Expand `$BINARY` directly since pwsh wants `$env:BINARY`, while bash accepts `$BINARY`, which confuses the command run between those two shells.
+        run: cp build/NutPuncher${{ matrix.bin-ext }} ${{ env.BINARY }}
       - name: Release binary
         uses: softprops/action-gh-release@v2
         with:
