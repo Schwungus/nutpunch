@@ -351,10 +351,14 @@ static void bindSock(const NP_IPv ipv) {
 	auto& sock = ipv == NP_IPv6 ? sock6 : sock4;
 
 	sock = socket(ipv == NP_IPv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (sock == NUTPUNCH_INVALID_SOCKET)
-		throw "Failed to create the underlying UDP socket";
-	if (NP_MakeNonblocking(sock) < 0)
-		throw "Failed to set socket to non-blocking mode";
+	if (sock == NUTPUNCH_INVALID_SOCKET) {
+		NP_Warn("Failed to create the underlying UDP socket (%d)", NP_SockError());
+		return;
+	}
+	if (NP_MakeNonblocking(sock) < 0) {
+		NP_Warn("Failed to set socket to non-blocking mode (%d)", NP_SockError());
+		return;
+	}
 
 	sockaddr_storage addr = {0};
 	if (ipv == NP_IPv6) {
@@ -373,7 +377,7 @@ static void bindSock(const NP_IPv ipv) {
 		NP_Warn("Failed to bind IPv6 socket (%d)", NP_SockError());
 		NP_NukeSocket(&sock);
 	} else
-		throw "Failed to bind an IPv4 socket. IPv6-only mode is unsupported";
+		NP_Warn("Failed to bind an IPv4 socket. IPv6-only mode is unsupported (%d)", NP_SockError());
 }
 
 static void sendLobbies(Addr addr, const NutPunch_Filter* filters) {
@@ -525,13 +529,7 @@ int main(int, char*[]) {
 	WSADATA __bitch = {0};
 	WSAStartup(MAKEWORD(2, 2), &__bitch);
 #endif
-
-	try {
-		bindSock(NP_IPv6), bindSock(NP_IPv4);
-	} catch (const char* msg) {
-		NP_Warn("DEAD!!! %s (code %d)", msg, NP_SockError());
-		return EXIT_FAILURE;
-	}
+	bindSock(NP_IPv6), bindSock(NP_IPv4);
 
 	int result;
 	std::int64_t start = clock(), end, delta;
