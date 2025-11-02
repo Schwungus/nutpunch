@@ -1,7 +1,6 @@
 {
     "recommendations": [
         "llvm-vs-code-extensions.vscode-clangd",
-        "ms-vscode.cmake-tools",
-        "cheshirekow.cmake-format"
+        "ms-vscode.cmake-tools"
     ]
 }
