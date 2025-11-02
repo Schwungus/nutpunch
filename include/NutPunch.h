@@ -662,7 +662,7 @@ static int NutPunch_Connect(const char* lobbyId) {
 	NP_LazyInit();
 	NP_NukeLobbyData();
 
-	NP_BindSocket(NP_IPv6);
+	NP_BindSocket(NP_IPv6); // IPv6 can fail, IPv4 is mandatory
 	if (!NP_BindSocket(NP_IPv4)) {
 		NutPunch_Reset(), NP_LastStatus = NPS_Error;
 		return 0;
