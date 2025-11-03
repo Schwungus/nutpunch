@@ -363,11 +363,9 @@ static void bindSock(const NP_IPv ipv) {
 	sockaddr_storage addr = {0};
 	if (ipv == NP_IPv6) {
 		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_family = AF_INET6;
-		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_addr = in6addr_any;
 		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port = htons(NUTPUNCH_SERVER_PORT);
 	} else {
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_family = AF_INET;
-		reinterpret_cast<sockaddr_in*>(&addr)->sin_addr.s_addr = INADDR_ANY;
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
 	}
 
@@ -542,9 +540,7 @@ int main(int, char*[]) {
 
 		static constexpr const NP_IPv ipvs[2] = {NP_IPv6, NP_IPv4};
 		for (const auto ipv : ipvs) {
-			do
-				result = receive(ipv);
-			while (RecvKeepGoing == result);
+			while ((result = receive(ipv)) == RecvKeepGoing) {}
 			if (result > 0) {
 				NP_Warn("Failed to receive data (code %d)", result);
 				(ipv == NP_IPv6 ? sock6 : sock4) = NUTPUNCH_INVALID_SOCKET;

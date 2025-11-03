@@ -307,8 +307,8 @@ typedef int64_t NP_Socket;
 	} while (0)
 
 typedef uint8_t NP_IPv;
-#define NP_IPv4 (0)
-#define NP_IPv6 (1)
+#define NP_IPv4 (1)
+#define NP_IPv6 (2)
 
 typedef uint32_t NP_PacketIdx;
 
@@ -583,7 +583,7 @@ void NutPunch_LobbySet(const char* name, int size, const void* data) {
 
 static int NP_ResolveNutpuncher(const int ipv) {
 	const int ai_family = ipv == NP_IPv6 ? AF_INET6 : AF_INET;
-	NP_LazyInit(), NP_Memzero2(&NP_PuncherAddr.raw);
+	NP_LazyInit();
 
 	struct addrinfo *resolved = NULL, *REALSHIT = NULL, hints = {0};
 	// XXX: using `AF_INET` or `AF_INET6` explicitly breaks resolution.
@@ -609,7 +609,7 @@ static int NP_ResolveNutpuncher(const int ipv) {
 		return 0;
 	}
 
-	NP_PuncherAddr.ipv = ipv;
+	NP_Memzero2(&NP_PuncherAddr.raw), NP_PuncherAddr.ipv = ipv;
 	NutPunch_Memcpy(&NP_PuncherAddr.raw, REALSHIT->ai_addr, REALSHIT->ai_addrlen);
 	freeaddrinfo(resolved);
 
@@ -641,19 +641,16 @@ static int NP_BindSocket(NP_IPv ipv) {
 
 	if (NP_MakeNonblocking(*sock) < 0) {
 		NP_Warn("Failed to set socket to non-blocking mode (%d)", NP_SockError());
-		goto fail;
+		goto sockfail;
 	}
 
 	local.ipv = ipv, *NP_AddrFamily(&local) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
-	if (ipv == NP_IPv6)
-		((struct sockaddr_in6*)&local.raw)->sin6_addr = in6addr_any;
-
-	*NP_AddrPort(&local) = htons(NUTPUNCH_PORT_MIN + (clock() % range));
+	*NP_AddrPort(&local) = htons(NUTPUNCH_PORT_MIN + clock() % range);
 	if (!bind(*sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
-		return NP_ResolveNutpuncher(ipv);
+		return 1;
 
 	NP_Warn("Failed to bind an IPv%s socket (%d)", ipv == NP_IPv6 ? "6" : "4", NP_SockError());
-fail:
+sockfail:
 	NP_NukeSocket(sock);
 	return 0;
 }
@@ -662,11 +659,15 @@ static int NutPunch_Connect(const char* lobbyId) {
 	NP_LazyInit();
 	NP_NukeLobbyData();
 
-	NP_BindSocket(NP_IPv6); // IPv6 can fail, IPv4 is mandatory
-	if (!NP_BindSocket(NP_IPv4)) {
+	NP_Memzero2(&NP_PuncherAddr);
+	if (NP_BindSocket(NP_IPv6))
+		NP_ResolveNutpuncher(NP_IPv6);
+	if (!NP_BindSocket(NP_IPv4)) { // IPv6 can fail, IPv4 is mandatory
 		NutPunch_Reset(), NP_LastStatus = NPS_Error;
 		return 0;
 	}
+	if (NP_PuncherAddr.ipv != NP_IPv6)
+		NP_ResolveNutpuncher(NP_IPv4);
 
 	NP_Info("Ready to send heartbeats");
 	NP_LastStatus = NPS_Online;
@@ -903,9 +904,8 @@ static int NP_SendHeartbeat() {
 		NutPunch_Memcpy(ptr, NP_LobbyMetadataOut, metaSize), ptr += metaSize;
 	}
 
-	int status = sendto(sock, heartbeat, (int)(ptr - heartbeat), 0, (struct sockaddr*)&NP_PuncherAddr.raw,
-		sizeof(NP_PuncherAddr.raw));
-	if (status >= 0)
+	if (0 <= sendto(sock, heartbeat, (int)(ptr - heartbeat), 0, (const struct sockaddr*)&NP_PuncherAddr.raw,
+		    sizeof(NP_PuncherAddr.raw)))
 		return 1;
 
 	switch (NP_SockError()) {
@@ -915,8 +915,9 @@ static int NP_SendHeartbeat() {
 	default:
 		NP_Warn("Failed to send heartbeat to NutPuncher over IPv%s (%d)",
 			NP_PuncherAddr.ipv == NP_IPv6 ? "6" : "4", NP_SockError());
-		return 0;
 	}
+
+	return 0;
 }
 
 static int NP_ReceiveShit(NP_IPv ipv) {
@@ -1023,7 +1024,7 @@ static void NP_FlushOutQueue() {
 	}
 }
 
-static int NP_RealUpdate() {
+static void NP_RealUpdate() {
 	static const int socks[] = {NP_IPv6, NP_IPv4, -999};
 	const int* ipVer = socks;
 
@@ -1032,7 +1033,7 @@ static int NP_RealUpdate() {
 
 	while (*ipVer >= 0) {
 		if (NP_LastStatus == NPS_Error) // happens after handling GTFO
-			return NPS_Error;
+			return;
 		switch (NP_ReceiveShit(*ipVer)) {
 		case -1:
 			goto sockFail;
@@ -1043,20 +1044,19 @@ static int NP_RealUpdate() {
 		}
 	}
 
-	static char bye[4] = {'D', 'I', 'S', 'C'};
 	if (!NP_Closing)
 		goto flush;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		for (int kkk = 0; kkk < 10; kkk++)
+		for (int kkk = 0; kkk < 10; kkk++) {
+			static char bye[4] = {'D', 'I', 'S', 'C'};
 			NP_QueueSend(i, bye, sizeof(bye), 0);
-
+		}
 flush:
 	NP_PruneOutQueue(), NP_FlushOutQueue();
-	return NPS_Online;
+	return;
 
 sockFail:
-	NP_NukeLobbyData();
-	return NPS_Error;
+	NP_NukeLobbyData(), NP_LastStatus = NPS_Error;
 }
 
 int NutPunch_Update() {
@@ -1064,7 +1064,7 @@ int NutPunch_Update() {
 	int socks_dead = NP_Sock4 == NUTPUNCH_INVALID_SOCKET && NP_Sock6 == NUTPUNCH_INVALID_SOCKET;
 	if (NP_LastStatus == NPS_Idle || socks_dead)
 		return NPS_Idle;
-	NP_LastStatus = NP_RealUpdate();
+	NP_LastStatus = NPS_Online, NP_RealUpdate();
 	if (NP_LastStatus == NPS_Error) {
 		NutPunch_Reset();
 		return NPS_Error;
