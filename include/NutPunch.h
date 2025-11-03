@@ -834,7 +834,7 @@ static void NP_PrintLocalPeer(const uint8_t* data) {
 		NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4);
 	data += 16;
 
-	NP_Info("Server thinks you are %s:%d", NP_FormatAddr(addr), ntohs(*(uint16_t*)data));
+	NP_Info("Server thinks you are %s port %d", NP_FormatAddr(addr), ntohs(*(uint16_t*)data));
 }
 
 NP_MakeHandler(NP_HandleBeat) {
