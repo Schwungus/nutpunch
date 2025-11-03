@@ -820,15 +820,27 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 #endif
 }
 
+#ifdef NUTPUNCH_WINDOSE
+void NP_inet_ntop(int family, const void* addr, char* out, int outsize) {
+	const char* ntoa = family == AF_INET6 ? "(XXX)" : inet_ntoa(*(struct in_addr*)addr);
+	int i = 0;
+	for (; i < outsize && ntoa[i]; i++)
+		out[i] = ntoa[i];
+	out[i] = 0;
+}
+#else
+#define NP_inet_ntop inet_ntop
+#endif
+
 /// NOTE: formats just the address portion (without the port).
 static const char* NP_FormatAddr(NP_Addr addr) {
 	static char out[46] = "";
 	NP_Memzero(out);
 
 	if (*NP_AddrFamily(&addr) == AF_INET6)
-		inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, out, sizeof(out));
+		NP_inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, out, sizeof(out));
 	else
-		inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, out, sizeof(out));
+		NP_inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, out, sizeof(out));
 	return out;
 }
 
