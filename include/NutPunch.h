@@ -309,8 +309,8 @@ typedef int64_t NP_Socket;
 	} while (0)
 
 typedef uint8_t NP_IPv;
-#define NP_IPv4 (1)
-#define NP_IPv6 (2)
+#define NP_IPv4 '4'
+#define NP_IPv6 '6'
 
 typedef uint32_t NP_PacketIdx;
 
@@ -603,7 +603,7 @@ static int NP_ResolveNutpuncher(const int ipv) {
 		if (REALSHIT->ai_family == ai_family)
 			break;
 	if (!REALSHIT) {
-		NP_Warn("Couldn't resolve NutPuncher IPv%s address", ipv == NP_IPv6 ? "6" : "4");
+		NP_Warn("Couldn't resolve NutPuncher IPv%c address", ipv);
 		return 0;
 	}
 
@@ -611,7 +611,7 @@ static int NP_ResolveNutpuncher(const int ipv) {
 	NutPunch_Memcpy(&NP_PuncherAddr.raw, REALSHIT->ai_addr, REALSHIT->ai_addrlen);
 	freeaddrinfo(resolved);
 
-	NP_Info("Resolved NutPuncher IPv%s address", ipv == NP_IPv6 ? "6" : "4");
+	NP_Info("Resolved NutPuncher IPv%c address", ipv);
 	return 1;
 }
 
@@ -661,7 +661,7 @@ static int NP_BindSocket(NP_IPv ipv) {
 	if (!bind(*sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
 		return 1;
 
-	NP_Warn("Failed to bind an IPv%s socket (%d)", ipv == NP_IPv6 ? "6" : "4", NP_SockError());
+	NP_Warn("Failed to bind an IPv%c socket (%d)", ipv, NP_SockError());
 sockfail:
 	NP_NukeSocket(sock);
 	return 0;
