@@ -317,8 +317,8 @@ struct Lobby {
 			auto& player = players[i];
 
 			player.addr.dump(ptr);
-			if (playerIdx == i) // local peer gets a zeroed IP and a non-zero port
-				NutPunch_Memset(ptr + 1, 0, 16);
+			if (playerIdx == i) // local peer gets a zeroed port
+				NutPunch_Memset(ptr + 17, 0, 2);
 			ptr += NUTPUNCH_ADDRESS_SIZE;
 
 			std::memset(ptr, 0, sizeof(Metadata));

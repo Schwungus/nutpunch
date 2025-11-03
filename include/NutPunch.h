@@ -810,19 +810,49 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 #endif
 }
 
+/// NOTE: formats just the address portion (without the port).
+static const char* NP_FormatAddr(NP_Addr addr) {
+	static char out[32] = "";
+	NP_Memzero(out);
+
+	if (addr.ipv == NP_IPv6)
+		inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, out, sizeof(out));
+	else
+		inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, out, sizeof(out));
+	return out;
+}
+
+static void NP_PrintLocalPeer(const uint8_t* data) {
+	NP_Addr addr = {0};
+
+	addr.ipv = data[0], data++;
+	*NP_AddrFamily(&addr) = addr.ipv == NP_IPv6 ? AF_INET6 : AF_INET;
+
+	if (addr.ipv == NP_IPv6)
+		NutPunch_Memcpy(NP_AddrRaw(&addr), data, 16);
+	else
+		NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4);
+
+	NP_Info("Server thinks you are %s", NP_FormatAddr(addr));
+}
+
 NP_MakeHandler(NP_HandleBeat) {
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
+	int just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
+
 	const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + metaSize;
 
 	NP_ResponseFlags = *data++;
 	for (uint8_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		const uint8_t *ptr = data + i * stride, nulladdr[16] = {0};
-		if (!NutPunch_Memcmp(ptr + 1, nulladdr, 16) && *(uint16_t*)(ptr + 17)) {
+		if (NutPunch_Memcmp(ptr + 1, nulladdr, 16) && !*(uint16_t*)(ptr + 17)) {
 			NP_LocalPeer = i;
+			if (just_joined)
+				NP_PrintLocalPeer(ptr);
 			break;
 		}
 	}
