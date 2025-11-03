@@ -2,7 +2,7 @@ name: Publish NutPuncher for major platforms
 
 on:
   push:
-    tags: [stable]
+    tags: [stable, staging]
 
 jobs:
   docker:
@@ -70,10 +70,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release
+            -D NUTPUNCH_BUILD_TESTS=OFF -D NUTPUNCH_BUILD_LOBBYIST=OFF
+            ${{ github.ref_name == 'staging' && '-D NUTPUNCH_STAGING=ON' || '' }}
       - name: Build
-        run: |
-          cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D NUTPUNCH_BUILD_TESTS=OFF -D NUTPUNCH_BUILD_LOBBYIST=OFF
-          cmake --build build --target NutPuncher
+        run: cmake --build build --target NutPuncher
       - name: Rename binary artifact
         # Expand `$BINARY` directly since pwsh wants `$env:BINARY`, while bash accepts `$BINARY`, which confuses the command run between those two shells.
         run: cp build/NutPuncher${{ matrix.bin-ext }} ${{ env.BINARY }}
@@ -83,8 +86,8 @@ jobs:
           files: ${{ env.BINARY }}
   deploy:
     name: Deploy the public instance
-    if: github.ref_name == 'stable'
     runs-on: ubuntu-24.04
+    if: github.ref_type == 'tag'
     needs: binary
     env:
       BINARY: /usr/local/bin/NutPuncher
@@ -97,6 +100,6 @@ jobs:
           key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
           script: |
             systemctl stop nutpuncher || true
-            wget -O ${{ env.BINARY }} https://github.com/Schwungus/nutpunch/releases/download/stable/NutPuncher-Linux-${{ github.ref_name }}
+            wget -O ${{ env.BINARY }} https://github.com/Schwungus/nutpunch/releases/download/${{ github.ref_name }}/NutPuncher-Linux-${{ github.ref_name }}
             chmod +x ${{ env.BINARY }}
             systemctl start nutpuncher && echo Restarted service || exit 1

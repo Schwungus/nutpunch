@@ -48,8 +48,10 @@ extern "C" {
 /// Maximum amount of players in a lobby. Not intended to be customizable.
 #define NUTPUNCH_MAX_PLAYERS (16)
 
-/// The UDP port used by the punching mediator server. Not customizable, sorry.
+#ifndef NUTPUNCH_SERVER_PORT
+/// The UDP port used by the punching mediator server.
 #define NUTPUNCH_SERVER_PORT (30000)
+#endif
 
 /// The maximum length of a lobby identifier excluding the null terminator. Not customizable.
 #define NUTPUNCH_ID_MAX (32)

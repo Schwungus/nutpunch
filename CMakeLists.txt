@@ -11,6 +11,7 @@ set(BUILD_SHARED_LIBS OFF)
 include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)
 
+option(NUTPUNCH_STAGING "Staging-facing build? Uses a different port from the regular build." OFF)
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_library(NutPunch INTERFACE)
@@ -20,6 +21,10 @@ if(WIN32)
     target_link_options(NutPunch INTERFACE -static)
     target_link_libraries(NutPunch INTERFACE ws2_32)
 endif()
+if(NUTPUNCH_STAGING)
+    target_compile_definitions(NutPunch INTERFACE NUTPUNCH_SERVER_PORT=29999)
+endif()
+
 
 option(NUTPUNCH_BUILD_TESTS "Build NutPunch test binary?" ON)
 if(NUTPUNCH_BUILD_TESTS)
