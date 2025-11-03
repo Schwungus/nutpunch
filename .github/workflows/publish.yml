@@ -87,7 +87,7 @@ jobs:
     if: github.ref_type == 'tag'
     needs: binary
     env:
-      BINARY: /usr/local/bin/NutPuncher
+      BINARY: /usr/local/bin/NutPuncher-${{ github.ref_name }}
     steps:
       - name: Deploy
         uses: appleboy/ssh-action@v1.2.2
@@ -96,7 +96,7 @@ jobs:
           username: root
           key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
           script: |
-            systemctl stop nutpuncher || true
+            systemctl stop nutpuncher@${{ github.ref_name }} || true
             wget -O ${{ env.BINARY }} https://github.com/Schwungus/nutpunch/releases/download/${{ github.ref_name }}/NutPuncher-Linux-${{ github.ref_name }}
             chmod +x ${{ env.BINARY }}
-            systemctl start nutpuncher && echo Restarted service || exit 1
+            systemctl start nutpuncher@${{ github.ref_name }} && echo Restarted service || exit 1
