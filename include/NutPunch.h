@@ -530,14 +530,8 @@ void* NutPunch_LobbyGet(const char* name, int* size) {
 
 void* NutPunch_PeerGet(int peer, const char* name, int* size) {
 	if (!NutPunch_PeerAlive(peer))
-		goto none;
-	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS)
-		goto none;
+		return NP_GetMetadataFrom(NULL, "", size);
 	return NP_GetMetadataFrom(NP_PeerMetadataIn[peer], name, size);
-none:
-	if (size != NULL)
-		*size = 0;
-	return NULL;
 }
 
 static void NP_SetMetadataIn(NutPunch_Field* fields, const char* name, int dataSize, const void* data) {
@@ -1192,11 +1186,9 @@ int NutPunch_PeerCount() {
 }
 
 int NutPunch_PeerAlive(int peer) {
-	if (NP_LastStatus != NPS_Online)
+	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS || NP_LastStatus != NPS_Online)
 		return 0;
-	if (NutPunch_LocalPeer() == peer)
-		return 1;
-	return 0 != *NP_AddrPort(NP_Peers + peer);
+	return NutPunch_LocalPeer() == peer || *NP_AddrPort(NP_Peers + peer) != 0;
 }
 
 int NutPunch_LocalPeer() {
