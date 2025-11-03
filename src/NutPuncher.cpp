@@ -8,10 +8,8 @@
 #include <NutPunch.h>
 
 #ifdef NUTPUNCH_WINDOSE
-using sockulong = u_long;
 #define SleepMs(ms) Sleep(ms)
 #else
-using sockulong = std::uint32_t;
 #include <time.h>
 #define SleepMs(ms) sleepUnix(ms)
 static void sleepUnix(int ms) {
@@ -333,6 +331,7 @@ private:
 };
 
 static void bindSock(const NP_IPv ipv) {
+	sockaddr_storage addr = {0};
 	auto& sock = ipv == NP_IPv6 ? sock6 : sock4;
 
 	sock = socket(ipv == NP_IPv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -341,18 +340,16 @@ static void bindSock(const NP_IPv ipv) {
 		return;
 	}
 
-	sockulong argp = 1;
-	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&argp), sizeof(argp))) {
+	if (!NP_MakeReuseAddr(sock)) {
 		NP_Warn("Failed to set socket reuseaddr option (%d)", NP_SockError());
-		return;
+		goto sockfail;
 	}
 
-	if (NP_MakeNonblocking(sock) < 0) {
+	if (!NP_MakeNonblocking(sock)) {
 		NP_Warn("Failed to set socket to non-blocking mode (%d)", NP_SockError());
-		return;
+		goto sockfail;
 	}
 
-	sockaddr_storage addr = {0};
 	if (ipv == NP_IPv6) {
 		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_family = AF_INET6;
 		reinterpret_cast<sockaddr_in6*>(&addr)->sin6_port = htons(NUTPUNCH_SERVER_PORT);
@@ -361,13 +358,19 @@ static void bindSock(const NP_IPv ipv) {
 		reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
 	}
 
-	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)))
+	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
 		NP_Info("Bound IPv%s socket", ipv == NP_IPv6 ? "6" : "4");
-	else if (ipv == NP_IPv6) { // IPv6 is optional and skipped with a warning
+		return;
+	} else if (ipv == NP_IPv6) { // IPv6 is optional and skipped with a warning
 		NP_Warn("Failed to bind IPv6 socket (%d)", NP_SockError());
-		NP_NukeSocket(&sock);
-	} else
+		goto sockfail;
+	} else {
 		NP_Warn("Failed to bind an IPv4 socket. IPv6-only mode is unsupported (%d)", NP_SockError());
+		goto sockfail;
+	}
+
+sockfail:
+	NP_NukeSocket(&sock);
 }
 
 static void sendLobbies(Addr addr, const NutPunch_Filter* filters) {

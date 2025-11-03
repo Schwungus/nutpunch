@@ -618,10 +618,19 @@ static int NP_ResolveNutpuncher(const int ipv) {
 static int NP_MakeNonblocking(NP_Socket sock) {
 #ifdef NUTPUNCH_WINDOSE
 	u_long argp = 1;
-	return ioctlsocket(sock, FIONBIO, &argp);
+	return !ioctlsocket(sock, FIONBIO, &argp);
 #else
-	return fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK);
+	return !fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK);
 #endif
+}
+
+static int NP_MakeReuseAddr(NP_Socket sock) {
+#ifdef NUTPUNCH_WINDOSE
+	const u_long argp = 1;
+#else
+	const std::uint32_t argp = 1;
+#endif
+	return !setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&argp, sizeof(argp));
 }
 
 static int NP_BindSocket(NP_IPv ipv) {
@@ -637,7 +646,12 @@ static int NP_BindSocket(NP_IPv ipv) {
 		return 0;
 	}
 
-	if (NP_MakeNonblocking(*sock) < 0) {
+	if (!NP_MakeReuseAddr(*sock)) {
+		NP_Warn("Failed to set socket reuseaddr option (%d)", NP_SockError());
+		goto sockfail;
+	}
+
+	if (!NP_MakeNonblocking(*sock)) {
 		NP_Warn("Failed to set socket to non-blocking mode (%d)", NP_SockError());
 		goto sockfail;
 	}
