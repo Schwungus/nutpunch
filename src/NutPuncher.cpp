@@ -8,8 +8,10 @@
 #include <NutPunch.h>
 
 #ifdef NUTPUNCH_WINDOSE
+using sockulong = u_long;
 #define SleepMs(ms) Sleep(ms)
 #else
+using sockulong = std::uint32_t;
 #include <time.h>
 #define SleepMs(ms) sleepUnix(ms)
 static void sleepUnix(int ms) {
@@ -338,6 +340,13 @@ static void bindSock(const NP_IPv ipv) {
 		NP_Warn("Failed to create the underlying UDP socket (%d)", NP_SockError());
 		return;
 	}
+
+	sockulong argp = 1;
+	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<char*>(&argp), sizeof(argp))) {
+		NP_Warn("Failed to set socket reuseaddr option (%d)", NP_SockError());
+		return;
+	}
+
 	if (NP_MakeNonblocking(sock) < 0) {
 		NP_Warn("Failed to set socket to non-blocking mode (%d)", NP_SockError());
 		return;
