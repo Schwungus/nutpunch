@@ -316,7 +316,6 @@ typedef uint32_t NP_PacketIdx;
 
 typedef struct {
 	struct sockaddr_storage raw;
-	NP_IPv ipv;
 } NP_Addr;
 
 typedef struct NP_DataMessage {
@@ -393,30 +392,27 @@ enum {
 	NP_R_Master = 1 << 0,
 };
 
+static uint16_t* NP_AddrFamily(NP_Addr* addr) {
+	return &((struct sockaddr*)&addr->raw)->sa_family;
+}
+
 static void* NP_AddrRaw(NP_Addr* addr) {
-	if (addr->ipv == NP_IPv6)
+	if (*NP_AddrFamily(addr) == AF_INET6)
 		return &((struct sockaddr_in6*)&addr->raw)->sin6_addr;
 	else
 		return &((struct sockaddr_in*)&addr->raw)->sin_addr;
 }
 
-static uint16_t* NP_AddrFamily(NP_Addr* addr) {
-	if (addr->ipv == NP_IPv6)
-		return (uint16_t*)&((struct sockaddr_in6*)&addr->raw)->sin6_family;
-	else
-		return (uint16_t*)&((struct sockaddr_in*)&addr->raw)->sin_family;
-}
-
 static uint16_t* NP_AddrPort(NP_Addr* addr) {
-	if (addr->ipv == NP_IPv6)
+	if (*NP_AddrFamily(addr) == AF_INET6)
 		return &((struct sockaddr_in6*)&addr->raw)->sin6_port;
 	else
 		return &((struct sockaddr_in*)&addr->raw)->sin_port;
 }
 
-static int NP_AddrEq(const NP_Addr a, const NP_Addr b) {
-	const int size = a.ipv == NP_IPv6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
-	return a.ipv == b.ipv && !NutPunch_Memcmp(&a.raw, &b.raw, size);
+static int NP_AddrEq(NP_Addr a, NP_Addr b) {
+	const int size = *NP_AddrFamily(&a) == AF_INET6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
+	return *NP_AddrFamily(&a) == *NP_AddrFamily(&b) && !NutPunch_Memcmp(&a.raw, &b.raw, size);
 }
 
 static int NP_AddrNull(const NP_Addr addr) {
@@ -611,7 +607,7 @@ static int NP_ResolveNutpuncher(const int ipv) {
 		return 0;
 	}
 
-	NP_Memzero2(&NP_PuncherAddr.raw), NP_PuncherAddr.ipv = ipv;
+	NP_Memzero2(&NP_PuncherAddr.raw);
 	NutPunch_Memcpy(&NP_PuncherAddr.raw, REALSHIT->ai_addr, REALSHIT->ai_addrlen);
 	freeaddrinfo(resolved);
 
@@ -646,7 +642,7 @@ static int NP_BindSocket(NP_IPv ipv) {
 		goto sockfail;
 	}
 
-	local.ipv = ipv, *NP_AddrFamily(&local) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
+	*NP_AddrFamily(&local) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
 	*NP_AddrPort(&local) = htons(NUTPUNCH_PORT_MIN + clock() % range);
 	if (!bind(*sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
 		return 1;
@@ -668,7 +664,7 @@ static int NutPunch_Connect(const char* lobbyId) {
 		NutPunch_Reset(), NP_LastStatus = NPS_Error;
 		return 0;
 	}
-	if (NP_PuncherAddr.ipv != NP_IPv6)
+	if (*NP_AddrFamily(&NP_PuncherAddr) != AF_INET6)
 		NP_ResolveNutpuncher(NP_IPv4);
 
 	NP_Info("Ready to send heartbeats");
@@ -782,14 +778,14 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 		return;
 
 	NP_Addr peer = {0};
-	peer.ipv = *data, data += 1;
+	const int ipv = *data++;
 
-	const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
+	const NP_Socket sock = ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return;
 
-	*NP_AddrFamily(&peer) = (peer.ipv == NP_IPv6 ? AF_INET6 : AF_INET);
-	NutPunch_Memcpy(NP_AddrRaw(&peer), data, (peer.ipv == NP_IPv6 ? 16 : 4)), data += 16;
+	*NP_AddrFamily(&peer) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
+	NutPunch_Memcpy(NP_AddrRaw(&peer), data, (ipv == NP_IPv6 ? 16 : 4)), data += 16;
 
 	if (NP_AddrNull(peer) || !*(uint16_t*)data)
 		return;
@@ -815,7 +811,7 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 	static char out[32] = "";
 	NP_Memzero(out);
 
-	if (addr.ipv == NP_IPv6)
+	if (*NP_AddrFamily(&addr) == AF_INET6)
 		inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, out, sizeof(out));
 	else
 		inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, out, sizeof(out));
@@ -824,11 +820,9 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 
 static void NP_PrintLocalPeer(const uint8_t* data) {
 	NP_Addr addr = {0};
+	*NP_AddrFamily(&addr) = *data++ == NP_IPv6 ? AF_INET6 : AF_INET;
 
-	addr.ipv = *data++;
-	*NP_AddrFamily(&addr) = addr.ipv == NP_IPv6 ? AF_INET6 : AF_INET;
-
-	if (addr.ipv == NP_IPv6)
+	if (*NP_AddrFamily(&addr) == AF_INET6)
 		NutPunch_Memcpy(NP_AddrRaw(&addr), data, 16);
 	else
 		NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4);
@@ -905,7 +899,7 @@ NP_MakeHandler(NP_HandleAcky) {
 }
 
 static int NP_SendHeartbeat() {
-	const NP_Socket sock = NP_PuncherAddr.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
+	const NP_Socket sock = *NP_AddrFamily(&NP_PuncherAddr) == AF_INET6 ? NP_Sock6 : NP_Sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return 1;
 
@@ -938,7 +932,7 @@ static int NP_SendHeartbeat() {
 		return 1;
 	default:
 		NP_Warn("Failed to send heartbeat to NutPuncher over IPv%s (%d)",
-			NP_PuncherAddr.ipv == NP_IPv6 ? "6" : "4", NP_SockError());
+			*NP_AddrFamily(&NP_PuncherAddr) == AF_INET6 ? "6" : "4", NP_SockError());
 	}
 
 	return 0;
@@ -974,7 +968,7 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 		return 0;
 	size -= NUTPUNCH_HEADER_SIZE;
 
-	const NP_Addr peer = {.raw = addr, .ipv = ipv};
+	const NP_Addr peer = {.raw = addr};
 	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
 		const NP_MessageTable msg = NP_Messages[i];
 		if (!NutPunch_Memcmp(buf, msg.identifier, NUTPUNCH_HEADER_SIZE)
@@ -1027,8 +1021,8 @@ static void NP_FlushOutQueue() {
 				continue;
 		cur->bounce = NUTPUNCH_BOUNCE_TICKS;
 
-		const NP_Addr peer = NP_Peers[cur->peer];
-		const NP_Socket sock = peer.ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
+		NP_Addr peer = NP_Peers[cur->peer];
+		const NP_Socket sock = *NP_AddrFamily(&peer) == AF_INET6 ? NP_Sock6 : NP_Sock4;
 		if (sock == NUTPUNCH_INVALID_SOCKET) {
 			cur->dead = 1;
 			continue;

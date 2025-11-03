@@ -163,10 +163,8 @@ private:
 };
 
 struct Addr : NP_Addr {
-	Addr() : Addr(NP_IPv4) {}
-	Addr(NP_IPv ipv) {
+	Addr() {
 		std::memset(&raw, 0, sizeof(raw));
-		this->ipv = ipv;
 	}
 
 	sockaddr_in* v4() {
@@ -185,8 +183,12 @@ struct Addr : NP_Addr {
 		return reinterpret_cast<const sockaddr_in6*>(&raw);
 	}
 
+	int ipv() const {
+		return reinterpret_cast<const sockaddr*>(&raw)->sa_family == AF_INET6 ? NP_IPv6 : NP_IPv4;
+	}
+
 	template <typename T> int send(const T buf[], size_t size) const {
-		const auto sock = ipv == NP_IPv6 ? sock6 : sock4;
+		const auto sock = ipv() == NP_IPv6 ? sock6 : sock4;
 		return sendto(sock, reinterpret_cast<const char*>(buf), static_cast<int>(size), 0,
 			reinterpret_cast<const sockaddr*>(&raw), sizeof(raw));
 	}
@@ -200,35 +202,18 @@ struct Addr : NP_Addr {
 		return status;
 	}
 
-	void load(const uint8_t* ptr) {
-		return load(reinterpret_cast<const char*>(ptr));
-	}
-
-	void load(const char* ptr) {
-		ipv = *ptr++;
-		if (NP_IPv4 == ipv) {
-			v4()->sin_family = AF_INET;
-			std::memcpy(&v4()->sin_addr, ptr, 4), ptr += 16;
-			std::memcpy(&v4()->sin_port, ptr, 2), ptr += 2;
-		} else {
-			v6()->sin6_family = AF_INET6;
-			std::memcpy(&v6()->sin6_addr, ptr, 16), ptr += 16;
-			std::memcpy(&v6()->sin6_port, ptr, 2), ptr += 2;
-		}
-	}
-
 	void dump(uint8_t* ptr) const {
 		return dump(reinterpret_cast<char*>(ptr));
 	}
 
 	void dump(char* ptr) const {
-		*ptr++ = *(char*)&ipv;
-		if (NP_IPv4 == ipv) {
-			std::memcpy(ptr, &v4()->sin_addr, 4), ptr += 16;
-			std::memcpy(ptr, &v4()->sin_port, 2), ptr += 2;
-		} else {
+		*ptr++ = (char)ipv();
+		if (NP_IPv6 == ipv()) {
 			std::memcpy(ptr, &v6()->sin6_addr, 16), ptr += 16;
 			std::memcpy(ptr, &v6()->sin6_port, 2), ptr += 2;
+		} else {
+			std::memcpy(ptr, &v4()->sin_addr, 4), ptr += 16;
+			std::memcpy(ptr, &v4()->sin_port, 2), ptr += 2;
 		}
 	}
 };
@@ -431,7 +416,7 @@ static int receive(NP_IPv ipv) {
 
 	char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
 	socklen_t addrSize = ipv == NP_IPv6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
-	Addr addr(ipv);
+	Addr addr;
 
 	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.raw), &addrSize);
 	if (rcv < 0)
