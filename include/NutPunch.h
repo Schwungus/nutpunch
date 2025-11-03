@@ -628,7 +628,7 @@ static int NP_MakeReuseAddr(NP_Socket sock) {
 #ifdef NUTPUNCH_WINDOSE
 	const u_long argp = 1;
 #else
-	const std::uint32_t argp = 1;
+	const uint32_t argp = 1;
 #endif
 	return !setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&argp, sizeof(argp));
 }
