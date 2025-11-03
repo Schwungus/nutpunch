@@ -822,7 +822,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 
 /// NOTE: formats just the address portion (without the port).
 static const char* NP_FormatAddr(NP_Addr addr) {
-	static char out[32] = "";
+	static char out[46] = "";
 	NP_Memzero(out);
 
 	if (*NP_AddrFamily(&addr) == AF_INET6)
