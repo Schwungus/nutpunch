@@ -25,7 +25,6 @@ if(NUTPUNCH_STAGING)
     target_compile_definitions(NutPunch INTERFACE NUTPUNCH_SERVER_PORT=29999)
 endif()
 
-
 option(NUTPUNCH_BUILD_TESTS "Build NutPunch test binary?" ON)
 if(NUTPUNCH_BUILD_TESTS)
     set(BUILD_TOYS OFF CACHE INTERNAL "Fuck poormans")
@@ -49,6 +48,6 @@ endif()
 
 option(NUTPUNCH_BUILD_LOBBYIST "Build lobbyist?" ON)
 if(NUTPUNCH_BUILD_LOBBYIST)
-    add_executable(NutPunchLobbyist ${SRC_DIR}/lobbyist.c)
+    add_executable(NutPunchLobbyist ${SRC_DIR}/Lobbyist.c)
     target_link_libraries(NutPunchLobbyist PRIVATE NutPunch)
 endif()
