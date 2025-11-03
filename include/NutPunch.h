@@ -476,10 +476,10 @@ static void NP_LazyInit() {
 		NP_Lobbies[i] = NP_LobbyNames[i];
 	NP_ResetImpl();
 
-	NP_Info(".-------------------------------------------------------------.");
-	NP_Info("| For troubleshooting multiplayer connectivity, please visit: |");
-	NP_Info("|    https://github.com/Schwungus/nutpunch#troubleshooting    |");
-	NP_Info("'-------------------------------------------------------------'");
+	NutPunch_Log(".-------------------------------------------------------------.");
+	NutPunch_Log("| For troubleshooting multiplayer connectivity, please visit: |");
+	NutPunch_Log("|    https://github.com/Schwungus/nutpunch#troubleshooting    |");
+	NutPunch_Log("'-------------------------------------------------------------'");
 }
 
 void NutPunch_Reset() {
