@@ -579,7 +579,7 @@ void NutPunch_LobbySet(const char* name, int size, const void* data) {
 	NP_SetMetadataIn(NP_LobbyMetadataOut, name, size, data);
 }
 
-static int NP_ResolveNutpuncher(const int ipv) {
+static int NP_ResolveNutpuncher(const NP_IPv ipv) {
 	const int ai_family = ipv == NP_IPv6 ? AF_INET6 : AF_INET;
 	NP_LazyInit();
 
@@ -792,7 +792,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 		return;
 
 	NP_Addr peer = {0};
-	const int ipv = *data++;
+	const NP_IPv ipv = *data++;
 
 	const NP_Socket sock = ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
 	if (sock == NUTPUNCH_INVALID_SOCKET)
