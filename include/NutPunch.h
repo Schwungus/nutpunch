@@ -84,7 +84,7 @@ extern "C" {
 #define NUTPUNCH_ADDRESS_SIZE (19)
 
 #define NUTPUNCH_RESPONSE_SIZE                                                                                         \
-	(NUTPUNCH_HEADER_SIZE + 1 + NUTPUNCH_MAX_PLAYERS * NUTPUNCH_ADDRESS_SIZE                                       \
+	(NUTPUNCH_HEADER_SIZE + 1 + 1 + NUTPUNCH_MAX_PLAYERS * NUTPUNCH_ADDRESS_SIZE                                   \
 		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
@@ -825,39 +825,31 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 static void NP_PrintLocalPeer(const uint8_t* data) {
 	NP_Addr addr = {0};
 
-	addr.ipv = data[0], data++;
+	addr.ipv = *data++;
 	*NP_AddrFamily(&addr) = addr.ipv == NP_IPv6 ? AF_INET6 : AF_INET;
 
 	if (addr.ipv == NP_IPv6)
 		NutPunch_Memcpy(NP_AddrRaw(&addr), data, 16);
 	else
 		NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4);
+	data += 16;
 
-	NP_Info("Server thinks you are %s", NP_FormatAddr(addr));
+	NP_Info("Server thinks you are %s:%d", NP_FormatAddr(addr), ntohs(*(uint16_t*)data));
 }
 
 NP_MakeHandler(NP_HandleBeat) {
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
-	int just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
-	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
-
+	const int just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
 	const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + metaSize;
 
+	NP_LocalPeer = *data++;
 	NP_ResponseFlags = *data++;
-	for (uint8_t i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		const uint8_t *ptr = data + i * stride, nulladdr[16] = {0};
-		if (NutPunch_Memcmp(ptr + 1, nulladdr, 16) && !*(uint16_t*)(ptr + 17)) {
-			NP_LocalPeer = i;
-			if (just_joined)
-				NP_PrintLocalPeer(ptr);
-			break;
-		}
-	}
-	if (NP_LocalPeer == NUTPUNCH_MAX_PLAYERS)
-		return;
+	if (just_joined)
+		NP_PrintLocalPeer(data + NP_LocalPeer * stride);
+
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		NP_SayShalom(i, data), data += NUTPUNCH_ADDRESS_SIZE;
 		NutPunch_Memcpy(NP_PeerMetadataIn[i], data, metaSize), data += metaSize;

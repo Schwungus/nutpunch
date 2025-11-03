@@ -311,16 +311,14 @@ struct Lobby {
 	void beat(const int playerIdx) {
 		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = "BEAT";
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
+
+		*ptr++ = static_cast<uint8_t>(playerIdx);
 		*ptr++ = static_cast<NP_ResponseFlagsStorage>(playerIdx == master()) * NP_R_Master;
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& player = players[i];
 
-			player.addr.dump(ptr);
-			if (playerIdx == i) // local peer gets a zeroed port
-				NutPunch_Memset(ptr + 17, 0, 2);
-			ptr += NUTPUNCH_ADDRESS_SIZE;
-
+			player.addr.dump(ptr), ptr += NUTPUNCH_ADDRESS_SIZE;
 			std::memset(ptr, 0, sizeof(Metadata));
 			std::memcpy(ptr, &player.metadata, sizeof(Metadata));
 			ptr += sizeof(Metadata);
