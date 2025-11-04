@@ -191,7 +191,7 @@ int main(int argc, char* argv[]) {
 	}
 
 cleanup:
-	fclose(logfile), fflush(logfile);
 	NutPunch_Cleanup();
+	fclose(logfile), fflush(logfile);
 	return EXIT_SUCCESS;
 }

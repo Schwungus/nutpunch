@@ -707,8 +707,9 @@ void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters) {
 }
 
 void NutPunch_Disconnect() {
-	NP_Closing = 1;
-	NutPunch_Update();
+	NP_Info("Disconnecting from lobby (if any)");
+	if (NP_LastStatus == NPS_Online)
+		NP_Closing = 1, NutPunch_Update();
 	NutPunch_Reset();
 }
 
@@ -787,8 +788,8 @@ NP_MakeHandler(NP_HandleGTFO) {
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
-	NutPunch_Reset();
 	NP_LastStatus = NPS_Error;
+	NutPunch_Disconnect();
 
 	switch (*data) {
 	case NPE_NoSuchLobby:
@@ -1108,7 +1109,7 @@ int NutPunch_Update() {
 		return NPS_Idle;
 	NP_LastStatus = NPS_Online, NP_RealUpdate();
 	if (NP_LastStatus == NPS_Error) {
-		NutPunch_Reset();
+		NutPunch_Disconnect();
 		return NPS_Error;
 	}
 	return NP_LastStatus;
