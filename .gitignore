@@ -2,4 +2,4 @@
 /.cache
 /*.bat
 /compile_commands.json
-log.txt
+log*.txt

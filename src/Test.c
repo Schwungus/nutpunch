@@ -145,11 +145,11 @@ static void draw_debug_bits(int status) {
 }
 
 int main(int argc, char* argv[]) {
-	if (argc != 2 && argc != 3) {
+	if (argc < 2 && argc > 4) {
 		printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
 		return EXIT_FAILURE;
 	}
-	if (argc == 3)
+	if (argc > 2)
 		NutPunch_SetServerAddr(argv[2]);
 
 	waitingForPlayers = strtol(argv[1], NULL, 10), _waitingForPlayers = waitingForPlayers;
@@ -158,7 +158,10 @@ int main(int argc, char* argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	logfile = fopen("log.txt", "w");
+	static char fname[256] = "";
+	snprintf(fname, sizeof(fname), "log%s.txt", argc > 3 ? argv[3] : "");
+
+	logfile = fopen(fname, "w");
 	if (!logfile) {
 		printf("WTF???");
 		return EXIT_FAILURE;
