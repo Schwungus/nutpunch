@@ -329,9 +329,9 @@ typedef struct NP_DataMessage {
 
 typedef struct {
 	const char identifier[NUTPUNCH_HEADER_SIZE];
-	void (*const handler)(NP_Addr, int, const uint8_t*);
+	void (*const handle)(NP_Addr, int, const uint8_t*);
 	const int packetSize;
-} NP_MessageTable;
+} NP_MessageType;
 
 #define NP_BEAT_LEN (NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
 #define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * NUTPUNCH_ID_MAX)
@@ -346,7 +346,7 @@ NP_MakeHandler(NP_HandleList);
 NP_MakeHandler(NP_HandleAcky);
 NP_MakeHandler(NP_HandleData);
 
-static const NP_MessageTable NP_Messages[] = {
+static const NP_MessageType NP_Messages[] = {
 	{{'S', 'H', 'L', 'M'}, NP_HandleShalom,     1          },
 	{{'D', 'I', 'S', 'C'}, NP_HandleDisconnect, 0          },
 	{{'G', 'T', 'F', 'O'}, NP_HandleGTFO,       1          },
@@ -994,11 +994,11 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 
 	const NP_Addr peer = {.raw = addr};
 	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
-		const NP_MessageTable msg = NP_Messages[i];
-		if (!NutPunch_Memcmp(buf, msg.identifier, NUTPUNCH_HEADER_SIZE)
-			&& (msg.packetSize < 0 || size == msg.packetSize))
+		const NP_MessageType* type = &NP_Messages[i];
+		if (!NutPunch_Memcmp(buf, type->identifier, NUTPUNCH_HEADER_SIZE)
+			&& (type->packetSize < 0 || size == type->packetSize))
 		{
-			msg.handler(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
+			type->handle(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
 			break;
 		}
 	}
