@@ -661,9 +661,15 @@ sockfail:
 	return 0;
 }
 
-static int NutPunch_Connect(const char* lobbyId) {
+static int NutPunch_Connect(const char* lobbyId, int sane) {
 	NP_LazyInit();
 	NP_NukeLobbyData();
+
+	if (sane && (!lobbyId || !lobbyId[0])) {
+		NP_Warn("Lobby ID cannot be null or empty!");
+		NP_LastStatus = NPS_Error;
+		return 0;
+	}
 
 	NP_Memzero2(&NP_PuncherAddr);
 	if (NP_BindSocket(NP_IPv6))
@@ -679,22 +685,20 @@ static int NutPunch_Connect(const char* lobbyId) {
 	NP_LastStatus = NPS_Online;
 	NP_Memzero(NP_LastError);
 
-	if (lobbyId) {
-		NP_Memzero(NP_LobbyId);
+	if (lobbyId)
 		NutPunch_SNPrintF(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobbyId);
-	}
 
 	return 1;
 }
 
 int NutPunch_Host(const char* lobbyId) {
 	NP_HeartbeatFlags = NP_HB_Join | NP_HB_Create;
-	return NutPunch_Connect(lobbyId);
+	return NutPunch_Connect(lobbyId, 1);
 }
 
 int NutPunch_Join(const char* lobbyId) {
 	NP_HeartbeatFlags = NP_HB_Join;
-	return NutPunch_Connect(lobbyId);
+	return NutPunch_Connect(lobbyId, 1);
 }
 
 void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters) {
@@ -702,7 +706,7 @@ void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters) {
 		return;
 	else if (filterCount > NUTPUNCH_SEARCH_FILTERS_MAX)
 		filterCount = NUTPUNCH_SEARCH_FILTERS_MAX;
-	NP_Querying = NutPunch_Connect(NULL);
+	NP_Querying = NutPunch_Connect(NULL, 0);
 	NutPunch_Memcpy(NP_Filters, filters, filterCount * sizeof(*filters));
 }
 
@@ -937,6 +941,8 @@ static int NP_SendHeartbeat() {
 		NutPunch_Memcpy(ptr, NP_Filters, sizeof(NP_Filters)), ptr += sizeof(NP_Filters);
 	} else {
 		NutPunch_Memcpy(ptr, "JOIN", NUTPUNCH_HEADER_SIZE), ptr += NUTPUNCH_HEADER_SIZE;
+
+		NutPunch_Memset(ptr, 0, NUTPUNCH_ID_MAX);
 		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX), ptr += NUTPUNCH_ID_MAX;
 
 		// TODO: make sure to correct endianness when multibyte flags become a thing.
