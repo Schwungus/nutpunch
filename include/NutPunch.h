@@ -578,7 +578,8 @@ static int NP_ResolveNutpuncher(const NP_IPv ipv) {
 	NP_LazyInit();
 
 	struct addrinfo *resolved = NULL, *REALSHIT = NULL, hints = {0};
-	// XXX: using `AF_INET` or `AF_INET6` explicitly breaks resolution.
+	// Explicitly using `AF_INET` or `AF_INET6` breaks resolution. See:
+	// <https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/getaddrinfo-fails-error-11001-call-af-inet6-family>
 	hints.ai_family = AF_UNSPEC, hints.ai_socktype = SOCK_DGRAM, hints.ai_protocol = IPPROTO_UDP;
 
 	if (!NP_ServerHost[0]) {
