@@ -24,11 +24,10 @@ static void sleepUnix(int ms) {
 }
 #endif
 
-struct Lobby;
-
 constexpr const int beatsPerSecond = 60, keepAliveSeconds = 3, keepAliveBeats = keepAliveSeconds * beatsPerSecond,
 		    maxLobbies = 512;
 
+struct Lobby;
 static NP_Socket sock4 = NUTPUNCH_INVALID_SOCKET, sock6 = NUTPUNCH_INVALID_SOCKET;
 static std::map<std::string, Lobby> lobbies;
 
