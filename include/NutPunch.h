@@ -974,10 +974,8 @@ static int NP_ReceiveShit(NP_IPv ipv) {
 	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
 	int size = recvfrom(*sock, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &addrSize);
 	if (size < 0) {
-		if (NP_SockError() == NP_WouldBlock)
+		if (NP_SockError() == NP_WouldBlock || NP_SockError() == NP_ConnReset)
 			return 1;
-		if (NP_SockError() == NP_ConnReset)
-			return 0;
 		NP_Warn("Failed to receive from NutPuncher (%d)", NP_SockError());
 		return -1;
 	}
@@ -1054,16 +1052,13 @@ static void NP_FlushOutQueue() {
 		}
 
 		int result = sendto(sock, cur->data, (int)cur->size, 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
-		if (result > 0 || NP_SockError() == NP_WouldBlock)
-			continue;
-
-		if (!result || NP_SockError() == NP_ConnReset)
+		if (!result)
 			NP_KillPeer(cur->peer);
-		else {
-			NP_Warn("Failed to send data to peer #%d (%d)", cur->peer + 1, NP_SockError());
-			NP_NukeLobbyData();
-			return;
-		}
+		if (result >= 0 || NP_SockError() == NP_WouldBlock || NP_SockError() == NP_ConnReset)
+			continue;
+		NP_Warn("Failed to send data to peer #%d (%d)", cur->peer + 1, NP_SockError());
+		NP_NukeLobbyData();
+		return;
 	}
 }
 
