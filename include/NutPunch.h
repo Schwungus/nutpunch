@@ -781,39 +781,6 @@ NP_MakeHandler(NP_HandleGTFO) {
 	}
 }
 
-static void NP_SayShalom(int idx, const uint8_t* data) {
-	if (idx == NP_LocalPeer || NutPunch_PeerAlive(idx))
-		return;
-
-	NP_Addr peer = {0};
-	const NP_IPv ipv = *data++;
-
-	const NP_Socket sock = ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
-	if (sock == NUTPUNCH_INVALID_SOCKET)
-		return;
-
-	*NP_AddrFamily(&peer) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
-	NutPunch_Memcpy(NP_AddrRaw(&peer), data, (ipv == NP_IPv6 ? 16 : 4)), data += 16;
-
-	if (NP_AddrNull(peer) || !*(uint16_t*)data)
-		return;
-
-	uint16_t* port = NP_AddrPort(&peer);
-	*port = *(uint16_t*)data, data += 2;
-
-	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
-	shalom[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
-
-	sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
-#if 0
-	// TODO: figure out if we really need this:
-	for (uint16_t hport = NUTPUNCH_PORT_MIN; hport <= NUTPUNCH_PORT_MAX; hport += 1) {
-		*port = htons(hport);
-		sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
-	}
-#endif
-}
-
 #ifdef NUTPUNCH_WINDOSE
 void NP_inet_ntop(int family, const void* addr, char* out, int outsize) {
 	const char* ntoa = family == AF_INET6 ? "(XXX)" : inet_ntoa(*(struct in_addr*)addr);
@@ -849,6 +816,39 @@ static void NP_PrintLocalPeer(const uint8_t* data) {
 	data += 16;
 
 	NP_Info("Server thinks you are %s port %d", NP_FormatAddr(addr), ntohs(*(uint16_t*)data));
+}
+
+static void NP_SayShalom(int idx, const uint8_t* data) {
+	if (idx == NP_LocalPeer || NutPunch_PeerAlive(idx))
+		return;
+
+	NP_Addr peer = {0};
+	const NP_IPv ipv = *data++;
+
+	const NP_Socket sock = ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
+	if (sock == NUTPUNCH_INVALID_SOCKET)
+		return;
+
+	*NP_AddrFamily(&peer) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
+	NutPunch_Memcpy(NP_AddrRaw(&peer), data, (ipv == NP_IPv6 ? 16 : 4)), data += 16;
+
+	uint16_t* port = NP_AddrPort(&peer);
+	*port = *(uint16_t*)data, data += 2;
+
+	if (NP_AddrNull(peer) || !*port)
+		return;
+
+	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
+	shalom[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
+
+	sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+#if 0
+	// TODO: figure out if we really need this:
+	for (uint16_t hport = NUTPUNCH_PORT_MIN; hport <= NUTPUNCH_PORT_MAX; hport += 1) {
+		*port = htons(hport);
+		sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+	}
+#endif
 }
 
 NP_MakeHandler(NP_HandleBeat) {
