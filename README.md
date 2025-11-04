@@ -109,7 +109,7 @@ NutPunch_Join("lobby-id");
 
 ### Customize Memory Handling
 
-You can `#define` custom memory handling functions for NutPunch to use. They're only relevant to the implementation.
+You can `#define` custom memory handling functions for NutPunch to use, before including the header. They're only relevant to the implementation. If none are specified, C's standard library functions are used.
 
 SDL3 example:
 
@@ -149,7 +149,7 @@ services:
   main:
     image: ghcr.io/schwungus/nutpuncher
     container_name: nutpuncher
-    ports: [30001:30001/udp]
+    ports: [30000:30000/udp]
     restart: always
 ```
 
