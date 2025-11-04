@@ -851,13 +851,6 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 #if 0
 	NP_Info("SENT HI %s port %d (%d)", NP_FormatAddr(peer), ntohs(*port), result >= 0 ? 0 : NP_SockError());
 #endif
-
-#if 0 // TODO: figure out if we really need this:
-	for (uint16_t hport = NUTPUNCH_PORT_MIN; hport <= NUTPUNCH_PORT_MAX; hport += 1) {
-		*port = htons(hport);
-		sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
-	}
-#endif
 }
 
 NP_MakeHandler(NP_HandleBeat) {
