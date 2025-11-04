@@ -723,6 +723,30 @@ const char* NutPunch_GetLastError() {
 	return NP_LastError;
 }
 
+#ifdef NUTPUNCH_WINDOSE
+void NP_inet_ntop(int family, const void* addr, char* out, int outsize) {
+	const char* ntoa = family == AF_INET6 ? "(XXX)" : inet_ntoa(*(struct in_addr*)addr);
+	int i = 0;
+	for (; i < outsize && ntoa[i]; i++)
+		out[i] = ntoa[i];
+	out[i] = 0;
+}
+#else
+#define NP_inet_ntop inet_ntop
+#endif
+
+/// NOTE: formats just the address portion (without the port).
+static const char* NP_FormatAddr(NP_Addr addr) {
+	static char out[46] = "";
+	NP_Memzero(out);
+
+	if (*NP_AddrFamily(&addr) == AF_INET6)
+		NP_inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, out, sizeof(out));
+	else
+		NP_inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, out, sizeof(out));
+	return out;
+}
+
 static void NP_KillPeer(int peer) {
 	NutPunch_Memset(NP_Peers + peer, 0, sizeof(*NP_Peers));
 }
@@ -745,11 +769,12 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 }
 
 NP_MakeHandler(NP_HandleShalom) {
-	if (NP_AddrEq(peer, NP_PuncherAddr))
-		return;
 	const uint8_t idx = *data;
 	if (idx < NUTPUNCH_MAX_PLAYERS)
 		NP_Peers[idx] = peer;
+#if 0
+	NP_Info("SHALOM %d = %s port %d", idx, NP_FormatAddr(peer), ntohs(*NP_AddrPort(&peer)));
+#endif
 }
 
 NP_MakeHandler(NP_HandleDisconnect) {
@@ -779,30 +804,6 @@ NP_MakeHandler(NP_HandleGTFO) {
 		NP_Warn("Unidentified error");
 		break;
 	}
-}
-
-#ifdef NUTPUNCH_WINDOSE
-void NP_inet_ntop(int family, const void* addr, char* out, int outsize) {
-	const char* ntoa = family == AF_INET6 ? "(XXX)" : inet_ntoa(*(struct in_addr*)addr);
-	int i = 0;
-	for (; i < outsize && ntoa[i]; i++)
-		out[i] = ntoa[i];
-	out[i] = 0;
-}
-#else
-#define NP_inet_ntop inet_ntop
-#endif
-
-/// NOTE: formats just the address portion (without the port).
-static const char* NP_FormatAddr(NP_Addr addr) {
-	static char out[46] = "";
-	NP_Memzero(out);
-
-	if (*NP_AddrFamily(&addr) == AF_INET6)
-		NP_inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, out, sizeof(out));
-	else
-		NP_inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, out, sizeof(out));
-	return out;
 }
 
 static void NP_PrintLocalPeer(const uint8_t* data) {
@@ -839,11 +840,14 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 		return;
 
 	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
-	shalom[NUTPUNCH_HEADER_SIZE] = (uint8_t)NP_LocalPeer;
+	shalom[NUTPUNCH_HEADER_SIZE] = NP_LocalPeer;
 
-	sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+	int result = sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
 #if 0
-	// TODO: figure out if we really need this:
+	NP_Info("SENT HI %s port %d (%d)", NP_FormatAddr(peer), ntohs(*port), result >= 0 ? 0 : NP_SockError());
+#endif
+
+#if 0 // TODO: figure out if we really need this:
 	for (uint16_t hport = NUTPUNCH_PORT_MIN; hport <= NUTPUNCH_PORT_MAX; hport += 1) {
 		*port = htons(hport);
 		sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
