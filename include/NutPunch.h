@@ -858,7 +858,7 @@ NP_MakeHandler(NP_HandleBeat) {
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
-	const int just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
+	const int just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS, was_slave = !NutPunch_IsMaster();
 	const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + metaSize;
 
@@ -866,6 +866,8 @@ NP_MakeHandler(NP_HandleBeat) {
 	NP_ResponseFlags = *data++;
 	if (just_joined)
 		NP_PrintLocalPeer(data + NP_LocalPeer * stride);
+	if (NutPunch_IsMaster() && was_slave)
+		NP_Info("We're the lobby's master now");
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		NP_SayShalom(i, data), data += NUTPUNCH_ADDRESS_SIZE;
