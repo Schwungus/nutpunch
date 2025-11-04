@@ -31,7 +31,7 @@ if(NUTPUNCH_BUILD_TESTS)
     FetchContent_Declare(
         poormans
         GIT_REPOSITORY https://github.com/nonk123/poormans.git
-        GIT_TAG 732eb2d7a34524f4cb6ccaba593a7ae09dd6762e)
+        GIT_TAG 65217ce89bfd4bc272954a858fc496007a457bf4)
     FetchContent_MakeAvailable(poormans)
 
     add_executable(NutPunchTest ${SRC_DIR}/Test.c)
