@@ -31,7 +31,7 @@ static void maybe_start_netgame() {
 	int size = 0, *ptr = NutPunch_LobbyGet("PLAYERS", &size);
 	if (size != 1 || !*ptr || NutPunch_PeerCount() < *ptr)
 		return;
-	memset(players, 0, sizeof(players));
+	NutPunch_Memset(players, 0, sizeof(players));
 	players[NutPunch_LocalPeer()].x = poor_width() / 2;
 	players[NutPunch_LocalPeer()].y = poor_height() / 2;
 	waitingForPlayers = 0;
@@ -87,15 +87,15 @@ static void chat_with(int idx) {
 	const char* theirName = NutPunch_PeerGet(idx, "NAME", NULL);
 	if (theirName == NULL)
 		return;
-	snprintf(name1, sizeof(name1), "%s", theirName);
+	NutPunch_SNPrintF(name1, sizeof(name1), "%s", theirName);
 
 	const char* ourName = NutPunch_PeerGet(NutPunch_LocalPeer(), "NAME", NULL);
 	if (ourName == NULL)
 		return;
-	snprintf(name2, sizeof(name2), "%s", ourName);
+	NutPunch_SNPrintF(name2, sizeof(name2), "%s", ourName);
 
 	static char buf[96] = {0};
-	snprintf(buf, sizeof(buf), "[%s]: Hi, %s!", name2, name1);
+	NutPunch_SNPrintF(buf, sizeof(buf), "[%s]: Hi, %s!", name2, name1);
 
 	NutPunch_SendReliably(idx, buf, sizeof(buf));
 }
@@ -159,7 +159,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	static char fname[256] = "";
-	snprintf(fname, sizeof(fname), "log%s.txt", argc > 3 ? argv[3] : "");
+	NutPunch_SNPrintF(fname, sizeof(fname), "log%s.txt", argc > 3 ? argv[3] : "");
 
 	logfile = fopen(fname, "w");
 	if (!logfile) {
