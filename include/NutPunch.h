@@ -308,6 +308,12 @@ typedef int64_t NP_Socket;
 		NutPunch_SNPrintF(NP_LastError, sizeof(NP_LastError), __VA_ARGS__);                                    \
 	} while (0)
 
+#ifdef NUTPUNCH_TRACING
+#define NP_Trace(...) NutPunch_Log("TRACE: " __VA_ARGS__)
+#else
+#define NP_Trace(...)
+#endif
+
 typedef uint8_t NP_IPv;
 #define NP_IPv4 '4'
 #define NP_IPv6 '6'
@@ -778,9 +784,7 @@ NP_MakeHandler(NP_HandleShalom) {
 	const uint8_t idx = *data;
 	if (idx < NUTPUNCH_MAX_PLAYERS)
 		NP_Peers[idx] = peer;
-#if 0
-	NP_Info("SHALOM %d = %s port %d", idx, NP_FormatAddr(peer), ntohs(*NP_AddrPort(&peer)));
-#endif
+	NP_Trace("SHALOM %d = %s port %d", idx, NP_FormatAddr(peer), ntohs(*NP_AddrPort(&peer)));
 }
 
 NP_MakeHandler(NP_HandleDisconnect) {
@@ -849,9 +853,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	shalom[NUTPUNCH_HEADER_SIZE] = NP_LocalPeer;
 
 	int result = sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
-#if 0
-	NP_Info("SENT HI %s port %d (%d)", NP_FormatAddr(peer), ntohs(*port), result >= 0 ? 0 : NP_SockError());
-#endif
+	NP_Trace("SENT HI %s port %d (%d)", NP_FormatAddr(peer), ntohs(*port), result >= 0 ? 0 : NP_SockError());
 }
 
 NP_MakeHandler(NP_HandleBeat) {

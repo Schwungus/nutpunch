@@ -6,6 +6,7 @@ static FILE* logfile = NULL; // gotta use a logfile since we're drawing to the c
 #define NutPunch_Log(msg, ...) fprintf(logfile, msg "\n", ##__VA_ARGS__)
 
 #define NUTPUNCH_IMPLEMENTATION
+#define NUTPUNCH_TRACING
 #include <NutPunch.h>
 
 #define POOR_IMPLEMENTATION
