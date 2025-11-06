@@ -311,7 +311,9 @@ typedef int64_t NP_Socket;
 #ifdef NUTPUNCH_TRACING
 #define NP_Trace(...) NutPunch_Log("TRACE: " __VA_ARGS__)
 #else
-#define NP_Trace(...)
+#define NP_Trace(...)                                                                                                  \
+	do {                                                                                                           \
+	} while (0)
 #endif
 
 typedef uint8_t NP_IPv;
