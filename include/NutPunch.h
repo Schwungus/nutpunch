@@ -719,13 +719,6 @@ void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters) {
 	NutPunch_Memcpy(NP_Filters, filters, filterCount * sizeof(*filters));
 }
 
-void NutPunch_Disconnect() {
-	NP_Info("Disconnecting from lobby (if any)");
-	if (NP_LastStatus == NPS_Online)
-		NP_Closing = 1, NutPunch_Update();
-	NutPunch_Reset();
-}
-
 void NutPunch_Cleanup() {
 	NutPunch_Disconnect();
 #ifdef NUTPUNCH_WINDOSE
@@ -1115,6 +1108,13 @@ int NutPunch_Update() {
 		return NPS_Error;
 	}
 	return NP_LastStatus;
+}
+
+void NutPunch_Disconnect() {
+	NP_Info("Disconnecting from lobby (if any)");
+	if (NP_LastStatus == NPS_Online)
+		NP_Closing = 1, NP_RealUpdate();
+	NutPunch_Reset();
 }
 
 int NutPunch_HasMessage() {
