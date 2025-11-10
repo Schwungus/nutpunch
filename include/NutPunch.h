@@ -730,9 +730,9 @@ const char* NutPunch_GetLastError() {
 	return NP_LastError;
 }
 
-/// NOTE: formats just the address portion (without the port).
+// NOTE: formats both the address portion and the port.
 static const char* NP_FormatAddr(NP_Addr addr) {
-	static char buf[46] = "";
+	static char buf[64] = "";
 	NP_Memzero(buf);
 
 #ifdef NUTPUNCH_WINDOSE
@@ -740,10 +740,15 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 	DWORD size = (DWORD)sizeof(buf);
 	WSAAddressToString((struct sockaddr*)&addr.raw, sizeof(struct sockaddr_storage), NULL, buf, &size);
 #else
+	static char inet[64] = "";
+	NP_Memzero(inet);
+
 	if (*NP_AddrFamily(&addr) == AF_INET6)
-		inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, buf, sizeof(buf));
+		inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, inet, sizeof(inet));
 	else
-		inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, buf, sizeof(buf));
+		inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, inet, sizeof(inet));
+
+	NutPunch_SNPrintF(buf, sizeof(buf), "%s port %d", inet, ntohs(*NP_AddrPort(&addr)));
 #endif
 
 	return buf;
@@ -774,7 +779,7 @@ NP_MakeHandler(NP_HandleShalom) {
 	const uint8_t idx = *data;
 	if (idx < NUTPUNCH_MAX_PLAYERS)
 		NP_Peers[idx] = peer;
-	NP_Trace("SHALOM %d = %s port %d", idx, NP_FormatAddr(peer), ntohs(*NP_AddrPort(&peer)));
+	NP_Trace("SHALOM %d = %s", idx, NP_FormatAddr(peer));
 }
 
 NP_MakeHandler(NP_HandleDisconnect) {
@@ -816,7 +821,8 @@ static void NP_PrintLocalPeer(const uint8_t* data) {
 		NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4);
 	data += 16;
 
-	NP_Info("Server thinks you are %s port %d", NP_FormatAddr(addr), ntohs(*(uint16_t*)data));
+	*NP_AddrPort(&addr) = *(uint16_t*)data, data += 2;
+	NP_Info("Server thinks you are %s", NP_FormatAddr(addr));
 }
 
 static void NP_SayShalom(int idx, const uint8_t* data) {
@@ -843,7 +849,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	shalom[NUTPUNCH_HEADER_SIZE] = NP_LocalPeer;
 
 	int result = sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
-	NP_Trace("SENT HI %s port %d (%d)", NP_FormatAddr(peer), ntohs(*port), result >= 0 ? 0 : NP_SockError());
+	NP_Trace("SENT HI %s (%d)", NP_FormatAddr(peer), result >= 0 ? 0 : NP_SockError());
 }
 
 NP_MakeHandler(NP_HandleBeat) {
