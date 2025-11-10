@@ -730,29 +730,23 @@ const char* NutPunch_GetLastError() {
 	return NP_LastError;
 }
 
-#ifdef NUTPUNCH_WINDOSE
-// Can't use inet_ntop directly since we're keeping compatibility with WinXP, and that doesn't have it.
-void NP_inet_ntop(int family, const void* addr, char* out, int outsize) {
-	const char* ntoa = family == AF_INET6 ? "(XXX)" : inet_ntoa(*(struct in_addr*)addr);
-	int i = 0;
-	for (; i < outsize && ntoa[i]; i++)
-		out[i] = ntoa[i];
-	out[i] = 0;
-}
-#else
-#define NP_inet_ntop inet_ntop
-#endif
-
 /// NOTE: formats just the address portion (without the port).
 static const char* NP_FormatAddr(NP_Addr addr) {
-	static char out[46] = "";
-	NP_Memzero(out);
+	static char buf[46] = "";
+	NP_Memzero(buf);
 
+#ifdef NUTPUNCH_WINDOSE
+	// Can't use inet_ntop directly since we're keeping compatibility with WinXP, and that doesn't have it.
+	DWORD size = (DWORD)sizeof(buf);
+	WSAAddressToString((struct sockaddr*)&addr.raw, sizeof(struct sockaddr_storage), NULL, buf, &size);
+#else
 	if (*NP_AddrFamily(&addr) == AF_INET6)
-		NP_inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, out, sizeof(out));
+		inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, buf, sizeof(buf));
 	else
-		NP_inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, out, sizeof(out));
-	return out;
+		inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, buf, sizeof(buf));
+#endif
+
+	return buf;
 }
 
 static void NP_KillPeer(int peer) {
