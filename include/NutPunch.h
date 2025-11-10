@@ -103,7 +103,12 @@ typedef struct {
 typedef struct {
 	char name[NUTPUNCH_FIELD_NAME_MAX], value[NUTPUNCH_FIELD_DATA_MAX];
 	uint8_t comparison;
-} NutPunch_Filter; // public API
+} NutPunch_Filter;
+
+typedef struct {
+	char name[NUTPUNCH_ID_MAX + 1];
+	int players;
+} NutPunch_LobbyInfo;
 
 enum {
 	NPS_Error,
@@ -149,6 +154,9 @@ void NutPunch_LobbySet(const char* name, int size, const void* data);
 ///
 /// The resulting pointer is actually a static allocation, so don't rely too much on it; its data will change after the
 /// next `NutPunch_LobbyGet` call.
+///
+/// Note: you cannot query a lobby's metadata if you aren't connected to it. That's what `NutPunch_FindLobbies` uses
+/// filters for.
 void* NutPunch_LobbyGet(const char* name, int* size);
 
 /// Request your peer-specific metadata to be set. Works the same way as `NutPunch_LobbySet` otherwise.
@@ -207,8 +215,8 @@ void NutPunch_Disconnect();
 /// The lobby list is queried every call to `NutPunch_Update`, so make sure you are calling that.
 void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters);
 
-/// Extract the lobby IDs resulting from `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
-const char* NutPunch_GetLobby(int index);
+/// Extract lobby info after `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
+const NutPunch_LobbyInfo* NutPunch_GetLobby(int index);
 
 /// Count how many lobbies were found after `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
 int NutPunch_LobbyCount();
@@ -342,7 +350,7 @@ typedef struct {
 } NP_MessageType;
 
 #define NP_BEAT_LEN (NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
-#define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * NUTPUNCH_ID_MAX)
+#define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (1 + NUTPUNCH_ID_MAX))
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
 #define NP_MakeHandler(name) static void name(NP_Addr peer, int size, const uint8_t* data)
@@ -383,9 +391,7 @@ static NutPunch_Field NP_LobbyMetadataIn[NUTPUNCH_MAX_FIELDS] = {0},
 
 static int NP_Querying = 0;
 static NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
-
-static char NP_LobbyNames[NUTPUNCH_SEARCH_RESULTS_MAX][NUTPUNCH_ID_MAX + 1] = {0};
-static char* NP_Lobbies[NUTPUNCH_SEARCH_RESULTS_MAX] = {0};
+static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_SEARCH_RESULTS_MAX] = {0};
 
 typedef uint8_t NP_HeartbeatFlagsStorage;
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
@@ -480,8 +486,6 @@ static void NP_LazyInit() {
 	WSAStartup(MAKEWORD(2, 2), &bitch);
 #endif
 
-	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++)
-		NP_Lobbies[i] = NP_LobbyNames[i];
 	NP_ResetImpl();
 
 	NutPunch_Log(".-------------------------------------------------------------.");
@@ -877,10 +881,12 @@ NP_MakeHandler(NP_HandleBeat) {
 NP_MakeHandler(NP_HandleList) {
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
+	const size_t idlen = NUTPUNCH_ID_MAX;
+	NP_Memzero(NP_Lobbies);
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++) {
-		NutPunch_Memcpy(NP_Lobbies[i], data, NUTPUNCH_ID_MAX);
-		NP_Lobbies[i][NUTPUNCH_ID_MAX] = '\0';
-		data += NUTPUNCH_ID_MAX;
+		NP_Lobbies[i].players = *(uint8_t*)(data++);
+		NutPunch_Memcpy(NP_Lobbies[i].name, data, idlen), data += idlen;
+		NP_Lobbies[i].name[NUTPUNCH_ID_MAX] = '\0';
 	}
 }
 
@@ -1171,16 +1177,16 @@ void NutPunch_SendReliably(int peer, const void* data, int size) {
 	NP_SendEx(peer, data, size, 1);
 }
 
-const char* NutPunch_GetLobby(int index) {
+const NutPunch_LobbyInfo* NutPunch_GetLobby(int index) {
 	NP_LazyInit();
-	return index < NutPunch_LobbyCount() ? NP_Lobbies[index] : NULL;
+	return index >= 0 && index < NutPunch_LobbyCount() ? &NP_Lobbies[index] : NULL;
 }
 
 int NutPunch_LobbyCount() {
-	static const char nully[NUTPUNCH_ID_MAX + 1] = {0};
 	NP_LazyInit();
+	static const char nully[NUTPUNCH_ID_MAX] = {0};
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++)
-		if (!NutPunch_Memcmp(NP_Lobbies[i], nully, sizeof(nully)))
+		if (!NutPunch_Memcmp(NP_Lobbies[i].name, nully, sizeof(nully)))
 			return i;
 	return NUTPUNCH_SEARCH_RESULTS_MAX;
 }

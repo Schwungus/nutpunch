@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
 		printf(":");
 	printf("\n");
 	for (int i = 0; i < lobbyCount; i++)
-		printf("'%s' ", NutPunch_GetLobby(i));
+		printf("'%s' ", NutPunch_GetLobby(i)->name);
 	if (lobbyCount)
 		printf("\n");
 	return EXIT_SUCCESS;

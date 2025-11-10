@@ -402,6 +402,7 @@ static void sendLobbies(Addr addr, const NutPunch_Filter* filters) {
 		}
 
 		// All filters matched.
+		*ptr++ = lobby.gamers();
 		std::memset(ptr, 0, NUTPUNCH_ID_MAX);
 		std::memcpy(ptr, id.data(), std::strlen(lobby.fmtId()));
 		ptr += NUTPUNCH_ID_MAX;
