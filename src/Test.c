@@ -147,7 +147,7 @@ static void draw_debug_bits(int status) {
 }
 
 int main(int argc, char* argv[]) {
-	if (argc < 2 && argc > 4) {
+	if (argc < 2 || argc > 4) {
 		printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
 		return EXIT_FAILURE;
 	}
