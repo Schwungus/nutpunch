@@ -738,6 +738,7 @@ const char* NutPunch_GetLastError() {
 }
 
 #ifdef NUTPUNCH_WINDOSE
+// Can't use inet_ntop directly since we're keeping compatibility with WinXP, and that doesn't have it.
 void NP_inet_ntop(int family, const void* addr, char* out, int outsize) {
 	const char* ntoa = family == AF_INET6 ? "(XXX)" : inet_ntoa(*(struct in_addr*)addr);
 	int i = 0;
