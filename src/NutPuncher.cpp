@@ -36,8 +36,7 @@
 #define SleepMs(ms) Sleep(ms)
 #else
 #include <time.h>
-#define SleepMs(ms) sleepUnix(ms)
-static void sleepUnix(int ms) {
+static void SleepMs(int ms) {
 	// Stolen from: <https://stackoverflow.com/a/1157217>
 	struct timespec ts;
 	ts.tv_sec = (ms) / 1000;
