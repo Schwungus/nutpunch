@@ -75,6 +75,24 @@ static const char* fmtLobbyId(const char* id) {
 	return buf;
 }
 
+static bool match_field_value(const int diff, const int flags) {
+	const int eq = !diff;
+	bool result = true;
+	if (flags & NPF_Greater) {
+		result &= diff > 0;
+		if (flags & NPF_Eq)
+			result |= eq;
+	} else if (flags & NPF_Less) {
+		result &= diff < 0;
+		if (flags & NPF_Eq)
+			result |= eq;
+	} else if (flags & NPF_Eq)
+		result &= eq;
+	else // junk
+		return false;
+	return (flags & NPF_Not) ? !result : result;
+}
+
 struct Field : NutPunch_Field {
 	Field() {
 		reset();
@@ -103,7 +121,12 @@ struct Field : NutPunch_Field {
 		return ourLen == argLen && !std::memcmp(this->name, name, ourLen);
 	}
 
-	bool matches(const Lobby& lobby, const NutPunch_Filter& filter) const;
+	bool matches(const Lobby& lobby, const NutPunch_Filter& filter) const {
+		if (filter.special.index > 0 || !named(filter.field.name))
+			return false;
+		const int diff = std::memcmp(data, filter.field.value, size);
+		return match_field_value(diff, filter.comparison);
+	}
 
 	void reset() {
 		std::memset(name, 0, sizeof(name));
@@ -271,6 +294,17 @@ struct Lobby {
 		}
 	}
 
+	int special(NutPunch_SpecialField idx) const {
+		switch (idx) {
+		case NPSF_Capacity:
+			return capacity;
+		case NPSF_Players:
+			return gamers();
+		default:
+			return 0;
+		}
+	}
+
 	bool dead() const {
 		return !gamers();
 	}
@@ -342,42 +376,6 @@ private:
 	int masterIdx = NUTPUNCH_MAX_PLAYERS;
 };
 
-bool Field::matches(const Lobby& lobby, const NutPunch_Filter& filter) const {
-	int diff = 0;
-	if (filter.special.index > 0) { // hacky AF but it works???
-		diff = (uint8_t)filter.special.value;
-		switch (filter.special.index) { // also hacky...
-		case NPSF_Players:
-			diff -= lobby.gamers();
-			break;
-		case NPSF_Capacity:
-			diff -= lobby.capacity;
-			break;
-		}
-	} else if (!named(filter.field.name)) {
-		return false;
-	} else {
-		diff = std::memcmp(data, filter.field.value, size);
-	}
-
-	int eq = !diff, flags = filter.comparison;
-
-	bool result = true;
-	if (flags & NPF_Greater) {
-		result &= diff > 0;
-		if (flags & NPF_Eq)
-			result |= eq;
-	} else if (flags & NPF_Less) {
-		result &= diff < 0;
-		if (flags & NPF_Eq)
-			result |= eq;
-	} else if (flags & NPF_Eq)
-		result &= eq;
-	else // junk
-		return false;
-	return (flags & NPF_Not) ? !result : result;
-}
-
 static void bindSock(const NP_IPv ipv) {
 	sockaddr_storage addr = {0};
 	auto& sock = ipv == NP_IPv6 ? sock6 : sock4;
@@ -438,6 +436,13 @@ static void sendLobbies(Addr addr, const NutPunch_Filter* filters) {
 	for (const auto& [id, lobby] : lobbies) {
 		for (int f = 0; f < filterCount; f++) {
 			const auto& filter = filters[f];
+			if (filter.special.index > 0) {
+				int diff = ((int)(uint8_t)filter.special.value);
+				diff -= lobby.special(filter.special.index);
+				if (match_field_value(diff, filter.comparison))
+					continue;
+				goto nextLobby;
+			}
 			for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++) {
 				const auto& field = lobby.metadata.fields[m];
 				if (field.dead())
