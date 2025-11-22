@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,30 +27,30 @@ static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
 static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
 #define PAYLOAD_SIZE ((size_t)(2))
 
-uint8_t waitingForPlayers, _waitingForPlayers;
+static uint8_t targetPlayerCount = 0;
+static bool done_waiting = false;
+
 static void maybe_start_netgame() {
-	if (!waitingForPlayers || NutPunch_LocalPeer() == NUTPUNCH_MAX_PLAYERS)
+	if (done_waiting || NutPunch_LocalPeer() == NUTPUNCH_MAX_PLAYERS)
 		return;
-	int size = 0, *ptr = NutPunch_LobbyGet("PLAYERS", &size);
-	if (size != 1 || !*ptr || NutPunch_PeerCount() < *ptr)
+	if (NutPunch_PeerCount() < NutPunch_GetMaxPlayers())
 		return;
 	NutPunch_Memset(players, 0, sizeof(players));
 	players[NutPunch_LocalPeer()].x = poor_width() / 2;
 	players[NutPunch_LocalPeer()].y = poor_height() / 2;
-	waitingForPlayers = 0;
+	done_waiting = true;
 }
 
 static void maybe_join_netgame() {
 	if (poor_key_pressed(POOR_J))
 		NutPunch_Join(lobbyName);
 	else if (poor_key_pressed(POOR_H))
-		NutPunch_Host(lobbyName);
+		NutPunch_Host(lobbyName, targetPlayerCount);
 	else
 		return;
 
-	waitingForPlayers = _waitingForPlayers;
+	done_waiting = false;
 	NutPunch_LobbySet(magicKey, sizeof(magicValue), &magicValue);
-	NutPunch_LobbySet("PLAYERS", 1, &waitingForPlayers);
 
 	const char* name = randomNames[rand() % nameCount];
 	NutPunch_PeerSet("NAME", (int)strlen(name) + 1, name);
@@ -136,7 +137,7 @@ static void draw_debug_bits(int status) {
 		sep,
 		'0' + NutPunch_PeerCount(),
 		'/',
-		'0' + waitingForPlayers,
+		'0' + NutPunch_GetMaxPlayers(),
 		sep,
 		'1' + NutPunch_LocalPeer(),
 	};
@@ -154,8 +155,8 @@ int main(int argc, char* argv[]) {
 	if (argc > 2)
 		NutPunch_SetServerAddr(argv[2]);
 
-	waitingForPlayers = strtol(argv[1], NULL, 10), _waitingForPlayers = waitingForPlayers;
-	if (waitingForPlayers < 2) {
+	targetPlayerCount = strtol(argv[1], NULL, 10);
+	if (targetPlayerCount < 2) {
 		printf("The fuck do you mean?\n");
 		return EXIT_FAILURE;
 	}
@@ -188,8 +189,10 @@ int main(int argc, char* argv[]) {
 			draw_players();
 		else
 			maybe_join_netgame();
-		if (poor_key_pressed(POOR_K))
+		if (poor_key_pressed(POOR_K)) {
 			NutPunch_Reset();
+			done_waiting = false;
+		}
 	}
 
 cleanup:

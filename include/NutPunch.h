@@ -100,14 +100,28 @@ typedef struct {
 	uint8_t size;
 } NutPunch_Field; // DOT NOT MOVE OUT, used in `NUTPUNCH_*_SIZE` constants above!!!
 
+typedef enum {
+	NPSF_Players = 1,
+	NPSF_Capacity,
+} NutPunch_SpecialField;
+
 typedef struct {
-	char name[NUTPUNCH_FIELD_NAME_MAX], value[NUTPUNCH_FIELD_DATA_MAX];
+	union {
+		struct {
+			uint8_t alwayszero;
+			char name[NUTPUNCH_FIELD_NAME_MAX], value[NUTPUNCH_FIELD_DATA_MAX];
+		} field;
+		struct {
+			NutPunch_SpecialField index; // always greater than zero
+			int8_t value;
+		} special;
+	};
 	uint8_t comparison;
 } NutPunch_Filter;
 
 typedef struct {
 	char name[NUTPUNCH_ID_MAX + 1];
-	int players;
+	int players, capacity;
 } NutPunch_LobbyInfo;
 
 enum {
@@ -135,8 +149,16 @@ void NutPunch_SetServerAddr(const char* hostname);
 /// Join a lobby by its ID. If no lobby exists with this ID, spit an error status out of `NutPunch_Update()`.
 int NutPunch_Join(const char*);
 
-/// Host a lobby with specified ID. If the lobby already exists, spit an error status out of `NutPunch_Update()`.
-int NutPunch_Host(const char*);
+/// Host a lobby with the specified ID and maximum player count.
+///
+/// If the lobby already exists, an error status spits out of `NutPunch_Update()` rather than immediately.
+int NutPunch_Host(const char*, int);
+
+/// Change the maximum player count after calling `NutPunch_Host`.
+void NutPunch_SetMaxPlayers(int);
+
+/// Get the maximum player count of the lobby you are in. Returns 0 if you aren't in a lobby.
+int NutPunch_GetMaxPlayers();
 
 /// Call this at the end of your program to run semi-important cleanup.
 void NutPunch_Cleanup();
@@ -205,14 +227,7 @@ void NutPunch_Disconnect();
 
 /// Query the lobbies list given a set of filters.
 ///
-/// Each filter consists of a name of a field, a target value, and a comparison operator against the target value. At
-/// least one filter is required; if you have nothing to compare, set a named "magic byte" in your lobby to distinguish
-/// it from other games' lobbies.
-///
-/// For `comparison`, bitwise OR the `NPF_*` constants. For example, `NPF_Not | NPF_Eq` means "not equal to the target
-/// value". Comparison is performed bytewise in a fashion similar to `memcmp`.
-///
-/// The lobby list is queried every call to `NutPunch_Update`, so make sure you are calling that.
+/// TODO: document properly...
 void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters);
 
 /// Extract lobby info after `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
@@ -704,8 +719,9 @@ static int NutPunch_Connect(const char* lobbyId, int sane) {
 	return 1;
 }
 
-int NutPunch_Host(const char* lobbyId) {
+int NutPunch_Host(const char* lobbyId, int players) {
 	NP_HeartbeatFlags = NP_HB_Join | NP_HB_Create;
+	NutPunch_SetMaxPlayers(players);
 	return NutPunch_Connect(lobbyId, 1);
 }
 
@@ -714,11 +730,29 @@ int NutPunch_Join(const char* lobbyId) {
 	return NutPunch_Connect(lobbyId, 1);
 }
 
+void NutPunch_SetMaxPlayers(int players) {
+	const int DEFAULT = 4;
+	if (players < 2 || players >= NUTPUNCH_MAX_PLAYERS) {
+		NP_Warn("Requested an invalid player count %d; defaulting to %d", players, DEFAULT);
+		players = DEFAULT;
+	}
+	NP_HeartbeatFlags &= 0xF, NP_HeartbeatFlags |= players << 4;
+}
+
+int NutPunch_GetMaxPlayers() {
+	if (NP_LastStatus != NPS_Online)
+		return 0;
+	return (NP_ResponseFlags & 0xF0) >> 4;
+}
+
 void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters) {
-	if (filterCount < 1)
+	if (filterCount < 1) {
+		NP_Warn("No filters given to `NutPunch_FindLobbies`; this is a no-op");
 		return;
-	else if (filterCount > NUTPUNCH_SEARCH_FILTERS_MAX)
+	} else if (filterCount > NUTPUNCH_SEARCH_FILTERS_MAX) {
+		NP_Warn("Filter count exceeded in `NutPunch_FindLobbies`; truncating...");
 		filterCount = NUTPUNCH_SEARCH_FILTERS_MAX;
+	}
 	NP_Querying = NutPunch_Connect(NULL, 0);
 	NutPunch_Memcpy(NP_Filters, filters, filterCount * sizeof(*filters));
 }
@@ -885,6 +919,7 @@ NP_MakeHandler(NP_HandleList) {
 	NP_Memzero(NP_Lobbies);
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++) {
 		NP_Lobbies[i].players = *(uint8_t*)(data++);
+		NP_Lobbies[i].capacity = *(uint8_t*)(data++);
 		NutPunch_Memcpy(NP_Lobbies[i].name, data, idlen), data += idlen;
 		NP_Lobbies[i].name[NUTPUNCH_ID_MAX] = '\0';
 	}

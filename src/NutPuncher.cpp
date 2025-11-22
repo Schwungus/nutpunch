@@ -103,23 +103,7 @@ struct Field : NutPunch_Field {
 		return ourLen == argLen && !std::memcmp(this->name, name, ourLen);
 	}
 
-	bool matches(const NutPunch_Filter& filter) const {
-		const int diff = std::memcmp(data, filter.value, size), eq = !diff, flags = filter.comparison;
-		bool result = true;
-		if (flags & NPF_Greater) {
-			result &= diff > 0;
-			if (flags & NPF_Eq)
-				result |= eq;
-		} else if (flags & NPF_Less) {
-			result &= diff < 0;
-			if (flags & NPF_Eq)
-				result |= eq;
-		} else if (flags & NPF_Eq)
-			result &= eq;
-		else // junk
-			return false;
-		return (flags & NPF_Not) ? !result : result;
-	}
+	bool matches(const Lobby& lobby, const NutPunch_Filter& filter) const;
 
 	void reset() {
 		std::memset(name, 0, sizeof(name));
@@ -262,11 +246,12 @@ struct Player {
 
 struct Lobby {
 	char id[NUTPUNCH_ID_MAX];
+	uint8_t capacity;
 	Player players[NUTPUNCH_MAX_PLAYERS];
 	Metadata metadata;
 
 	Lobby() : Lobby(nullptr) {}
-	Lobby(const char* id) {
+	Lobby(const char* id) : capacity(NUTPUNCH_MAX_PLAYERS) {
 		if (id == nullptr)
 			std::memset(this->id, 0, sizeof(this->id));
 		else
@@ -297,12 +282,14 @@ struct Lobby {
 		return count;
 	}
 
-	void accept(const int idx, const char* meta) {
+	void accept(const int idx, const NP_HeartbeatFlagsStorage flags, const char* meta) {
 		auto& player = players[idx];
 		player.countdown = keepAliveBeats;
 		player.metadata.load(meta), meta += sizeof(Metadata);
-		if (idx == master())
+		if (idx == master()) {
+			capacity = (flags & 0xF0) >> 4;
 			metadata.load(meta);
+		}
 	}
 
 	void tick(const int playerIdx) {
@@ -321,7 +308,9 @@ struct Lobby {
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
 
 		*ptr++ = static_cast<uint8_t>(playerIdx);
-		*ptr++ = static_cast<NP_ResponseFlagsStorage>(playerIdx == master()) * NP_R_Master;
+
+		*ptr = static_cast<NP_ResponseFlagsStorage>(playerIdx == master()) * NP_R_Master;
+		*ptr++ |= (capacity & 0xF) << 4;
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& player = players[i];
@@ -352,6 +341,42 @@ struct Lobby {
 private:
 	int masterIdx = NUTPUNCH_MAX_PLAYERS;
 };
+
+bool Field::matches(const Lobby& lobby, const NutPunch_Filter& filter) const {
+	int diff = 0;
+	if (filter.special.index > 0) { // hacky AF but it works???
+		diff = (uint8_t)filter.special.value;
+		switch (filter.special.index) { // also hacky...
+		case NPSF_Players:
+			diff -= lobby.gamers();
+			break;
+		case NPSF_Capacity:
+			diff -= lobby.capacity;
+			break;
+		}
+	} else if (!named(filter.field.name)) {
+		return false;
+	} else {
+		diff = std::memcmp(data, filter.field.value, size);
+	}
+
+	int eq = !diff, flags = filter.comparison;
+
+	bool result = true;
+	if (flags & NPF_Greater) {
+		result &= diff > 0;
+		if (flags & NPF_Eq)
+			result |= eq;
+	} else if (flags & NPF_Less) {
+		result &= diff < 0;
+		if (flags & NPF_Eq)
+			result |= eq;
+	} else if (flags & NPF_Eq)
+		result &= eq;
+	else // junk
+		return false;
+	return (flags & NPF_Not) ? !result : result;
+}
 
 static void bindSock(const NP_IPv ipv) {
 	sockaddr_storage addr = {0};
@@ -415,9 +440,9 @@ static void sendLobbies(Addr addr, const NutPunch_Filter* filters) {
 			const auto& filter = filters[f];
 			for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++) {
 				const auto& field = lobby.metadata.fields[m];
-				if (field.dead() || !field.named(filter.name))
+				if (field.dead())
 					continue;
-				if (field.matches(filter))
+				if (field.matches(lobby, filter))
 					goto nextFilter;
 			}
 			goto nextLobby; // no field matched the filter
@@ -426,7 +451,7 @@ static void sendLobbies(Addr addr, const NutPunch_Filter* filters) {
 		}
 
 		// All filters matched.
-		*ptr++ = lobby.gamers();
+		*ptr++ = lobby.gamers(), *ptr++ = lobby.capacity;
 		std::memset(ptr, 0, NUTPUNCH_ID_MAX);
 		std::memcpy(ptr, id.data(), std::strlen(lobby.fmtId()));
 		ptr += NUTPUNCH_ID_MAX;
@@ -450,6 +475,7 @@ static int receive(NP_IPv ipv) {
 		return RecvDone;
 	Player* players = nullptr;
 
+	int attempts = 0;
 	char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
 	socklen_t addrSize = ipv == NP_IPv6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
 	Addr addr;
@@ -502,19 +528,25 @@ static int receive(NP_IPv ipv) {
 	players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (!players[i].dead() && !std::memcmp(&players[i].addr.raw, &addr.raw, sizeof(addr.raw))) {
-			lobbies[id].accept(i, ptr);
+			lobbies[id].accept(i, flags, ptr);
 			return RecvKeepGoing;
 		}
 	}
 
 	if ((flags & NP_HB_Create) && lobbies[id].gamers() > 0)
 		goto exists;
+
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!players[i].dead())
-			continue;
+		if (!players[i].dead()) {
+			attempts++;
+			if (attempts >= lobbies[id].capacity)
+				break;
+			else
+				continue;
+		}
 
 		players[i].addr = addr;
-		lobbies[id].accept(i, ptr);
+		lobbies[id].accept(i, flags, ptr);
 
 		const char* ipv_s = ipv == NP_IPv6 ? "IPv6" : "IPv4";
 		NP_Info("Peer %d joined lobby '%s' (over %s)", i + 1, fmtLobbyId(id), ipv_s);

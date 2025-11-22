@@ -27,8 +27,8 @@ int main(int argc, char* argv[]) {
 		goto fail;
 
 	NutPunch_Filter filter = {0};
-	memcpy(filter.name, argv[1], len);
-	memcpy(filter.value, &data, sizeof(data));
+	memcpy(filter.field.name, argv[1], len);
+	memcpy(filter.field.value, &data, sizeof(data));
 	filter.comparison = NPF_Eq;
 	NutPunch_FindLobbies(1, &filter);
 
