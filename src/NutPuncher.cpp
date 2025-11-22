@@ -122,8 +122,6 @@ struct Field : NutPunch_Field {
 	}
 
 	bool matches(const Lobby& lobby, const NutPunch_Filter& filter) const {
-		if (filter.special.index > 0 || !named(filter.field.name))
-			return false;
 		const int diff = std::memcmp(data, filter.field.value, size);
 		return match_field_value(diff, filter.comparison);
 	}
@@ -436,16 +434,16 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 	for (const auto& [id, lobby] : lobbies) {
 		for (int f = 0; f < filterCount; f++) {
 			const auto& filter = filters[f];
-			if (filter.special.index > 0) {
-				int diff = ((int)(uint8_t)filter.special.value);
-				diff -= lobby.special(filter.special.index);
+			if (filter.field.alwayszero != 0) {
+				int diff = (int)(uint8_t)filter.special.value;
+				diff -= lobby.special((NutPunch_SpecialField)filter.special.index);
 				if (match_field_value(diff, filter.comparison))
-					continue;
+					goto nextFilter;
 				goto nextLobby;
 			}
 			for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++) {
 				const auto& field = lobby.metadata.fields[m];
-				if (field.dead())
+				if (field.dead() || !field.named(filter.field.name))
 					continue;
 				if (field.matches(lobby, filter))
 					goto nextFilter;

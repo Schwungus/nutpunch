@@ -112,7 +112,7 @@ typedef struct {
 			char name[NUTPUNCH_FIELD_NAME_MAX], value[NUTPUNCH_FIELD_DATA_MAX];
 		} field;
 		struct {
-			NutPunch_SpecialField index; // always greater than zero
+			uint8_t index;
 			int8_t value;
 		} special;
 	};
@@ -365,7 +365,7 @@ typedef struct {
 } NP_MessageType;
 
 #define NP_BEAT_LEN (NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
-#define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (1 + NUTPUNCH_ID_MAX))
+#define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (2 + NUTPUNCH_ID_MAX))
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
 #define NP_MakeHandler(name) static void name(NP_Addr peer, int size, const uint8_t* data)
