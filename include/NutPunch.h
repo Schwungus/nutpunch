@@ -444,12 +444,12 @@ enum {
 	NP_R_Master = 1 << 0,
 };
 
-static uint16_t* NP_AddrFamily(NP_Addr* addr) {
-	return &((struct sockaddr*)&addr->raw)->sa_family;
+static int16_t* NP_AddrFamily(NP_Addr* addr) {
+	return &((struct sockaddr_in*)&addr->raw)->sin_family;
 }
 
-static void* NP_AddrRaw(NP_Addr* addr) {
-	return &((struct sockaddr_in*)&addr->raw)->sin_addr;
+static uint32_t* NP_AddrRaw(NP_Addr* addr) {
+	return (uint32_t*)&((struct sockaddr_in*)&addr->raw)->sin_addr.s_addr;
 }
 
 static uint16_t* NP_AddrPort(NP_Addr* addr) {
@@ -689,6 +689,8 @@ static int NP_BindSocket() {
 
 	*NP_AddrFamily(&local) = AF_INET;
 	*NP_AddrPort(&local) = htons(NUTPUNCH_PORT_MIN + clock() % range);
+	*NP_AddrRaw(&local) = htonl(INADDR_ANY);
+
 	if (!bind(NP_Sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
 		return 1;
 

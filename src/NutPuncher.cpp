@@ -376,6 +376,7 @@ static void bindSock() {
 
 	reinterpret_cast<sockaddr_in*>(&addr)->sin_family = AF_INET;
 	reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
+	reinterpret_cast<sockaddr_in*>(&addr)->sin_addr.s_addr = htonl(INADDR_ANY);
 
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
 		NP_Info("Bound an IPv4 socket");
