@@ -444,8 +444,8 @@ enum {
 	NP_R_Master = 1 << 0,
 };
 
-static int16_t* NP_AddrFamily(NP_Addr* addr) {
-	return &((struct sockaddr_in*)&addr->raw)->sin_family;
+static uint16_t* NP_AddrFamily(NP_Addr* addr) {
+	return (uint16_t*)&((struct sockaddr_in*)&addr->raw)->sin_family;
 }
 
 static uint32_t* NP_AddrRaw(NP_Addr* addr) {
