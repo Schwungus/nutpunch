@@ -561,7 +561,8 @@ int main(int, char*[]) {
 			return EXIT_FAILURE;
 		}
 
-		while ((result = receive()) == RecvKeepGoing) {}
+		while ((result = receive()) == RecvKeepGoing)
+			;
 		if (result > 0) {
 			NP_Warn("Failed to receive data (code %d)", result);
 			sock = NUTPUNCH_INVALID_SOCKET;
@@ -569,6 +570,7 @@ int main(int, char*[]) {
 
 		for (auto& [id, lobby] : lobbies)
 			lobby.update();
+
 		std::erase_if(lobbies, [](const auto& kv) {
 			const auto& lobby = kv.second;
 			bool dead = lobby.dead();

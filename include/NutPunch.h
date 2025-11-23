@@ -461,7 +461,7 @@ static int NP_AddrEq(NP_Addr a, NP_Addr b) {
 }
 
 static int NP_AddrNull(NP_Addr addr) {
-	static uint8_t nulladdr[4] = {0};
+	static const uint8_t nulladdr[4] = {0};
 	return !NutPunch_Memcmp(NP_AddrRaw(&addr), nulladdr, sizeof(nulladdr));
 }
 
