@@ -449,22 +449,15 @@ static uint16_t* NP_AddrFamily(NP_Addr* addr) {
 }
 
 static void* NP_AddrRaw(NP_Addr* addr) {
-	if (*NP_AddrFamily(addr) == AF_INET6)
-		return &((struct sockaddr_in6*)&addr->raw)->sin6_addr;
-	else
-		return &((struct sockaddr_in*)&addr->raw)->sin_addr;
+	return &((struct sockaddr_in*)&addr->raw)->sin_addr;
 }
 
 static uint16_t* NP_AddrPort(NP_Addr* addr) {
-	if (*NP_AddrFamily(addr) == AF_INET6)
-		return &((struct sockaddr_in6*)&addr->raw)->sin6_port;
-	else
-		return &((struct sockaddr_in*)&addr->raw)->sin_port;
+	return &((struct sockaddr_in*)&addr->raw)->sin_port;
 }
 
 static int NP_AddrEq(NP_Addr a, NP_Addr b) {
-	const int size = *NP_AddrFamily(&a) == AF_INET6 ? sizeof(struct sockaddr_in6) : sizeof(struct sockaddr_in);
-	return *NP_AddrFamily(&a) == *NP_AddrFamily(&b) && !NutPunch_Memcmp(&a.raw, &b.raw, size);
+	return !NutPunch_Memcmp(&a.raw, &b.raw, 4);
 }
 
 static int NP_AddrNull(NP_Addr addr) {
@@ -626,10 +619,8 @@ void NutPunch_LobbySet(const char* name, int size, const void* data) {
 static int NP_ResolveNutpuncher() {
 	NP_LazyInit();
 
-	struct addrinfo *resolved = NULL, *REALSHIT = NULL, hints = {0};
-	// Explicitly using `AF_INET` or `AF_INET6` breaks resolution. See:
-	// <https://learn.microsoft.com/en-us/troubleshoot/windows-server/networking/getaddrinfo-fails-error-11001-call-af-inet6-family>
-	hints.ai_family = AF_UNSPEC, hints.ai_socktype = SOCK_DGRAM, hints.ai_protocol = IPPROTO_UDP;
+	struct addrinfo *resolved = NULL, hints = {0};
+	hints.ai_family = AF_INET, hints.ai_socktype = SOCK_DGRAM, hints.ai_protocol = IPPROTO_UDP;
 
 	if (!NP_ServerHost[0]) {
 		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
@@ -643,16 +634,13 @@ static int NP_ResolveNutpuncher() {
 		NP_Warn("NutPuncher server address failed to resolve");
 		return 0;
 	}
-	for (REALSHIT = resolved; REALSHIT; REALSHIT = REALSHIT->ai_next)
-		if (REALSHIT->ai_family == AF_INET)
-			break;
-	if (!REALSHIT) {
+	if (!resolved) {
 		NP_Warn("Couldn't resolve NutPuncher address");
 		return 0;
 	}
 
 	NP_Memzero2(&NP_PuncherAddr.raw);
-	NutPunch_Memcpy(&NP_PuncherAddr.raw, REALSHIT->ai_addr, REALSHIT->ai_addrlen);
+	NutPunch_Memcpy(&NP_PuncherAddr.raw, resolved->ai_addr, resolved->ai_addrlen);
 	freeaddrinfo(resolved);
 
 	NP_Info("Resolved NutPuncher address");
@@ -797,13 +785,7 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 	WSAAddressToString((struct sockaddr*)&addr.raw, sizeof(struct sockaddr_storage), NULL, buf, &size);
 #else
 	static char inet[64] = "";
-	NP_Memzero(inet);
-
-	if (*NP_AddrFamily(&addr) == AF_INET6)
-		inet_ntop(AF_INET6, &((struct sockaddr_in6*)&addr)->sin6_addr, inet, sizeof(inet));
-	else
-		inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, inet, sizeof(inet));
-
+	NP_Memzero(inet), inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, inet, sizeof(inet));
 	NutPunch_SNPrintF(buf, sizeof(buf), "%s port %d", inet, ntohs(*NP_AddrPort(&addr)));
 #endif
 
@@ -1005,8 +987,7 @@ static int NP_SendHeartbeat() {
 	case NP_ConnReset:
 		return 1;
 	default:
-		NP_Warn("Failed to send heartbeat to NutPuncher over IPv%s (%d)",
-			*NP_AddrFamily(&NP_PuncherAddr) == AF_INET6 ? "6" : "4", NP_SockError());
+		NP_Warn("Failed to send heartbeat to NutPuncher (%d)", NP_SockError());
 	}
 
 	return 0;
