@@ -81,7 +81,7 @@ extern "C" {
 #define NUTPUNCH_PORT_MAX ((uint16_t)(NUTPUNCH_PORT_MIN + 512))
 
 #define NUTPUNCH_HEADER_SIZE (4)
-#define NUTPUNCH_ADDRESS_SIZE (19)
+#define NUTPUNCH_ADDRESS_SIZE (6)
 
 #define NUTPUNCH_RESPONSE_SIZE                                                                                         \
 	(NUTPUNCH_HEADER_SIZE + 1 + 1 + NUTPUNCH_MAX_PLAYERS * NUTPUNCH_ADDRESS_SIZE                                   \
@@ -366,10 +366,6 @@ typedef int64_t NP_Socket;
 	} while (0)
 #endif
 
-typedef uint8_t NP_IPv;
-#define NP_IPv4 '4'
-#define NP_IPv6 '6'
-
 typedef uint32_t NP_PacketIdx;
 
 typedef struct {
@@ -422,7 +418,7 @@ static char NP_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
 static NP_Addr NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static uint8_t NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
 
-static NP_Socket NP_Sock4 = NUTPUNCH_INVALID_SOCKET, NP_Sock6 = NUTPUNCH_INVALID_SOCKET;
+static NP_Socket NP_Sock = NUTPUNCH_INVALID_SOCKET;
 static NP_Addr NP_PuncherAddr = {0};
 static char NP_ServerHost[128] = {0};
 
@@ -471,9 +467,9 @@ static int NP_AddrEq(NP_Addr a, NP_Addr b) {
 	return *NP_AddrFamily(&a) == *NP_AddrFamily(&b) && !NutPunch_Memcmp(&a.raw, &b.raw, size);
 }
 
-static int NP_AddrNull(const NP_Addr addr) {
-	static const char nulladdr[16] = {0};
-	return !NutPunch_Memcmp(&addr.raw, nulladdr, 16);
+static int NP_AddrNull(NP_Addr addr) {
+	static uint8_t nulladdr[4] = {0};
+	return !NutPunch_Memcmp(NP_AddrRaw(&addr), nulladdr, sizeof(nulladdr));
 }
 
 static void NP_CleanupPackets(NP_DataMessage** queue) {
@@ -515,7 +511,7 @@ static void NP_NukeSocket(NP_Socket* sock) {
 
 static void NP_ResetImpl() {
 	NP_NukeRemote(), NP_NukeLobbyData();
-	NP_NukeSocket(&NP_Sock4), NP_NukeSocket(&NP_Sock6);
+	NP_NukeSocket(&NP_Sock);
 }
 
 static void NP_LazyInit() {
@@ -627,8 +623,7 @@ void NutPunch_LobbySet(const char* name, int size, const void* data) {
 	NP_SetMetadataIn(NP_LobbyMetadataOut, name, size, data);
 }
 
-static int NP_ResolveNutpuncher(const NP_IPv ipv) {
-	const int ai_family = ipv == NP_IPv6 ? AF_INET6 : AF_INET;
+static int NP_ResolveNutpuncher() {
 	NP_LazyInit();
 
 	struct addrinfo *resolved = NULL, *REALSHIT = NULL, hints = {0};
@@ -649,10 +644,10 @@ static int NP_ResolveNutpuncher(const NP_IPv ipv) {
 		return 0;
 	}
 	for (REALSHIT = resolved; REALSHIT; REALSHIT = REALSHIT->ai_next)
-		if (REALSHIT->ai_family == ai_family)
+		if (REALSHIT->ai_family == AF_INET)
 			break;
 	if (!REALSHIT) {
-		NP_Warn("Couldn't resolve NutPuncher IPv%c address", ipv);
+		NP_Warn("Couldn't resolve NutPuncher IPv4 address");
 		return 0;
 	}
 
@@ -660,7 +655,7 @@ static int NP_ResolveNutpuncher(const NP_IPv ipv) {
 	NutPunch_Memcpy(&NP_PuncherAddr.raw, REALSHIT->ai_addr, REALSHIT->ai_addrlen);
 	freeaddrinfo(resolved);
 
-	NP_Info("Resolved NutPuncher IPv%c address", ipv);
+	NP_Info("Resolved NutPuncher IPv4 address");
 	return 1;
 }
 
@@ -682,37 +677,36 @@ static int NP_MakeReuseAddr(NP_Socket sock) {
 	return !setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&argp, sizeof(argp));
 }
 
-static int NP_BindSocket(NP_IPv ipv) {
+static int NP_BindSocket() {
 	const clock_t range = NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1;
 	NP_LazyInit();
 
 	NP_Addr local = {0};
-	NP_Socket* sock = ipv == NP_IPv6 ? &NP_Sock6 : &NP_Sock4;
-	NP_NukeSocket(sock), *sock = socket(ipv == NP_IPv6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	NP_NukeSocket(&NP_Sock), NP_Sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
-	if (*sock == NUTPUNCH_INVALID_SOCKET) {
+	if (NP_Sock == NUTPUNCH_INVALID_SOCKET) {
 		NP_Warn("Failed to create the underlying UDP socket (%d)", NP_SockError());
 		return 0;
 	}
 
-	if (!NP_MakeReuseAddr(*sock)) {
+	if (!NP_MakeReuseAddr(NP_Sock)) {
 		NP_Warn("Failed to set socket reuseaddr option (%d)", NP_SockError());
 		goto sockfail;
 	}
 
-	if (!NP_MakeNonblocking(*sock)) {
+	if (!NP_MakeNonblocking(NP_Sock)) {
 		NP_Warn("Failed to set socket to non-blocking mode (%d)", NP_SockError());
 		goto sockfail;
 	}
 
-	*NP_AddrFamily(&local) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
+	*NP_AddrFamily(&local) = AF_INET;
 	*NP_AddrPort(&local) = htons(NUTPUNCH_PORT_MIN + clock() % range);
-	if (!bind(*sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
+	if (!bind(NP_Sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
 		return 1;
 
-	NP_Warn("Failed to bind an IPv%c socket (%d)", ipv, NP_SockError());
+	NP_Warn("Failed to bind an IPv4 socket (%d)", NP_SockError());
 sockfail:
-	NP_NukeSocket(sock);
+	NP_NukeSocket(&NP_Sock);
 	return 0;
 }
 
@@ -727,14 +721,11 @@ static int NutPunch_Connect(const char* lobbyId, int sane) {
 	}
 
 	NP_Memzero2(&NP_PuncherAddr);
-	if (NP_BindSocket(NP_IPv6))
-		NP_ResolveNutpuncher(NP_IPv6);
-	if (!NP_BindSocket(NP_IPv4)) { // IPv6 can fail, IPv4 is mandatory
+	if (!NP_BindSocket()) {
 		NutPunch_Reset(), NP_LastStatus = NPS_Error;
 		return 0;
 	}
-	if (*NP_AddrFamily(&NP_PuncherAddr) != AF_INET6)
-		NP_ResolveNutpuncher(NP_IPv4);
+	NP_ResolveNutpuncher();
 
 	NP_Info("Ready to send heartbeats");
 	NP_LastStatus = NPS_Online;
@@ -878,14 +869,8 @@ NP_MakeHandler(NP_HandleGTFO) {
 
 static void NP_PrintLocalPeer(const uint8_t* data) {
 	NP_Addr addr = {0};
-	*NP_AddrFamily(&addr) = *data++ == NP_IPv6 ? AF_INET6 : AF_INET;
-
-	if (*NP_AddrFamily(&addr) == AF_INET6)
-		NutPunch_Memcpy(NP_AddrRaw(&addr), data, 16);
-	else
-		NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4);
-	data += 16;
-
+	*NP_AddrFamily(&addr) = AF_INET;
+	NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4), data += 4;
 	*NP_AddrPort(&addr) = *(uint16_t*)data, data += 2;
 	NP_Info("Server thinks you are %s", NP_FormatAddr(addr));
 }
@@ -894,15 +879,12 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	if (idx == NP_LocalPeer || NutPunch_PeerAlive(idx))
 		return;
 
-	NP_Addr peer = {0};
-	const NP_IPv ipv = *data++;
-
-	const NP_Socket sock = ipv == NP_IPv6 ? NP_Sock6 : NP_Sock4;
-	if (sock == NUTPUNCH_INVALID_SOCKET)
+	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return;
 
-	*NP_AddrFamily(&peer) = (ipv == NP_IPv6 ? AF_INET6 : AF_INET);
-	NutPunch_Memcpy(NP_AddrRaw(&peer), data, (ipv == NP_IPv6 ? 16 : 4)), data += 16;
+	NP_Addr peer = {0};
+	*NP_AddrFamily(&peer) = AF_INET;
+	NutPunch_Memcpy(NP_AddrRaw(&peer), data, 4), data += 4;
 
 	uint16_t* port = NP_AddrPort(&peer);
 	*port = *(uint16_t*)data, data += 2;
@@ -913,7 +895,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
 	shalom[NUTPUNCH_HEADER_SIZE] = NP_LocalPeer;
 
-	int result = sendto(sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+	int result = sendto(NP_Sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
 	NP_Trace("SENT HI %s (%d)", NP_FormatAddr(peer), result >= 0 ? 0 : NP_SockError());
 }
 
@@ -990,8 +972,7 @@ NP_MakeHandler(NP_HandleAcky) {
 }
 
 static int NP_SendHeartbeat() {
-	const NP_Socket sock = *NP_AddrFamily(&NP_PuncherAddr) == AF_INET6 ? NP_Sock6 : NP_Sock4;
-	if (sock == NUTPUNCH_INVALID_SOCKET)
+	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return 1;
 
 	static char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
@@ -1015,7 +996,7 @@ static int NP_SendHeartbeat() {
 		NutPunch_Memcpy(ptr, NP_LobbyMetadataOut, metaSize), ptr += metaSize;
 	}
 
-	if (0 <= sendto(sock, heartbeat, (int)(ptr - heartbeat), 0, (const struct sockaddr*)&NP_PuncherAddr.raw,
+	if (0 <= sendto(NP_Sock, heartbeat, (int)(ptr - heartbeat), 0, (const struct sockaddr*)&NP_PuncherAddr.raw,
 		    sizeof(NP_PuncherAddr.raw)))
 		return 1;
 
@@ -1031,16 +1012,15 @@ static int NP_SendHeartbeat() {
 	return 0;
 }
 
-static int NP_ReceiveShit(NP_IPv ipv) {
-	NP_Socket* sock = ipv == NP_IPv6 ? &NP_Sock6 : &NP_Sock4;
-	if (*sock == NUTPUNCH_INVALID_SOCKET)
+static int NP_ReceiveShit() {
+	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return 1;
 
 	struct sockaddr_storage addr = {0};
 	socklen_t addrSize = sizeof(addr);
 
 	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
-	int size = recvfrom(*sock, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &addrSize);
+	int size = recvfrom(NP_Sock, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &addrSize);
 	if (size < 0) {
 		if (NP_SockError() == NP_WouldBlock || NP_SockError() == NP_ConnReset)
 			return 1;
@@ -1112,14 +1092,15 @@ static void NP_FlushOutQueue() {
 				continue;
 		cur->bounce = NUTPUNCH_BOUNCE_TICKS;
 
-		NP_Addr peer = NP_Peers[cur->peer];
-		const NP_Socket sock = *NP_AddrFamily(&peer) == AF_INET6 ? NP_Sock6 : NP_Sock4;
-		if (sock == NUTPUNCH_INVALID_SOCKET) {
+		if (NP_Sock == NUTPUNCH_INVALID_SOCKET) {
 			cur->dead = 1;
 			continue;
 		}
 
-		int result = sendto(sock, cur->data, (int)cur->size, 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+		NP_Addr peer = NP_Peers[cur->peer];
+		int result
+			= sendto(NP_Sock, cur->data, (int)cur->size, 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+
 		if (!result)
 			NP_KillPeer(cur->peer);
 		if (result >= 0 || NP_SockError() == NP_WouldBlock || NP_SockError() == NP_ConnReset)
@@ -1131,25 +1112,23 @@ static void NP_FlushOutQueue() {
 }
 
 static void NP_RealUpdate() {
-	static const int socks[] = {NP_IPv6, NP_IPv4, -999};
-	const int* ipVer = socks;
-
 	if (!NP_SendHeartbeat())
 		goto sockFail;
 
-	while (*ipVer >= 0) {
-		if (NP_LastStatus == NPS_Error) // happens after handling GTFO
+	for (;;) {
+		if (NP_LastStatus == NPS_Error) // happens after handling a GTFO
 			return;
-		switch (NP_ReceiveShit(*ipVer)) {
+		switch (NP_ReceiveShit()) {
 		case -1:
 			goto sockFail;
 		case 1:
-			ipVer++;
+			goto send;
 		default:
 			break;
 		}
 	}
 
+send:
 	if (!NP_Closing)
 		goto flush;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
@@ -1167,8 +1146,7 @@ sockFail:
 
 int NutPunch_Update() {
 	NP_LazyInit();
-	int socks_dead = NP_Sock4 == NUTPUNCH_INVALID_SOCKET && NP_Sock6 == NUTPUNCH_INVALID_SOCKET;
-	if (NP_LastStatus == NPS_Idle || socks_dead)
+	if (NP_LastStatus == NPS_Idle || NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return NPS_Idle;
 	NP_LastStatus = NPS_Online, NP_RealUpdate();
 	if (NP_LastStatus == NPS_Error) {
