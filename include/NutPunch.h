@@ -147,15 +147,15 @@ enum {
 void NutPunch_SetServerAddr(const char* hostname);
 
 /// Join a lobby by its ID. If no lobby exists with this ID, spit an error status out of `NutPunch_Update()`.
-int NutPunch_Join(const char*);
+int NutPunch_Join(const char* lobby_id);
 
 /// Host a lobby with the specified ID and maximum player count.
 ///
 /// If the lobby already exists, an error status spits out of `NutPunch_Update()` rather than immediately.
-int NutPunch_Host(const char*, int);
+int NutPunch_Host(const char* lobby_id, int players);
 
 /// Change the maximum player count after calling `NutPunch_Host`.
-void NutPunch_SetMaxPlayers(int);
+void NutPunch_SetMaxPlayers(int players);
 
 /// Get the maximum player count of the lobby you are in. Returns 0 if you aren't in a lobby.
 int NutPunch_GetMaxPlayers();
@@ -225,10 +225,37 @@ int NutPunch_IsMaster();
 /// Call this to gracefully disconnect from the lobby.
 void NutPunch_Disconnect();
 
-/// Query the lobbies list given a set of filters.
+/// Query the lobbies list given a set of filters. Use `NutPunch_GetLobby` to retrieve the results.
 ///
-/// TODO: document properly...
-void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters);
+/// The list of lobbies will update after a few ticks of `NutPunch_Update`. Don't expect immediate results.
+///
+/// Each filter consists of either a special or a named metadata field, with a corresponding value to compare it to. All
+/// filters must match in order for a lobby to be listed.
+///
+/// Bitwise-or the `NPF_*` constants to set a filter's comparison flags.
+///
+/// To query "special" fields such as lobby capacity, use one of the `NPSF_*` constants with an `int8_t` value to
+/// compare it against. For example, to query lobbies for exactly a 2-player duo to play:
+///
+/// ```
+/// NutPunch_Filter filters[2] = {0};
+///
+/// // 2 players capacity:
+/// filters[0].special.index = NPSF_Capacity;
+/// filters[0].special.value = 2;
+/// filters[0].comparison = NPF_Eq;
+///
+/// // less than two players in the lobby so we can join:
+/// filters[1].special.index = NPSF_Players;
+/// filters[1].special.value = 2;
+/// filters[1].comparison = NPF_Less;
+///
+/// NutPunch_FindLobbies(2, &filters);
+/// ```
+///
+/// To query metadata fields, `memcpy` their names and values into the filter's `field` property. The comparison will be
+/// performed bytewise in a fashion similar to `memcmp`.
+void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters);
 
 /// Extract lobby info after `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
 const NutPunch_LobbyInfo* NutPunch_GetLobby(int index);
@@ -243,7 +270,7 @@ void NutPunch_Reset();
 const char* NutPunch_GetLastError();
 
 /// Get a file's basename (the name without directory). Used internally in `NP_Log`.
-const char* NutPunch_Basename(const char*);
+const char* NutPunch_Basename(const char* path);
 
 #ifndef NutPunch_Log
 #define NutPunch_Log(msg, ...)                                                                                         \
@@ -719,15 +746,15 @@ static int NutPunch_Connect(const char* lobbyId, int sane) {
 	return 1;
 }
 
-int NutPunch_Host(const char* lobbyId, int players) {
+int NutPunch_Host(const char* lobby_id, int players) {
 	NP_HeartbeatFlags = NP_HB_Join | NP_HB_Create;
 	NutPunch_SetMaxPlayers(players);
-	return NutPunch_Connect(lobbyId, 1);
+	return NutPunch_Connect(lobby_id, 1);
 }
 
-int NutPunch_Join(const char* lobbyId) {
+int NutPunch_Join(const char* lobby_id) {
 	NP_HeartbeatFlags = NP_HB_Join;
-	return NutPunch_Connect(lobbyId, 1);
+	return NutPunch_Connect(lobby_id, 1);
 }
 
 void NutPunch_SetMaxPlayers(int players) {
@@ -745,16 +772,16 @@ int NutPunch_GetMaxPlayers() {
 	return (NP_ResponseFlags & 0xF0) >> 4;
 }
 
-void NutPunch_FindLobbies(int filterCount, const NutPunch_Filter* filters) {
-	if (filterCount < 1) {
+void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
+	if (filter_count < 1) {
 		NP_Warn("No filters given to `NutPunch_FindLobbies`; this is a no-op");
 		return;
-	} else if (filterCount > NUTPUNCH_SEARCH_FILTERS_MAX) {
+	} else if (filter_count > NUTPUNCH_SEARCH_FILTERS_MAX) {
 		NP_Warn("Filter count exceeded in `NutPunch_FindLobbies`; truncating...");
-		filterCount = NUTPUNCH_SEARCH_FILTERS_MAX;
+		filter_count = NUTPUNCH_SEARCH_FILTERS_MAX;
 	}
 	NP_Querying = NutPunch_Connect(NULL, 0);
-	NutPunch_Memcpy(NP_Filters, filters, filterCount * sizeof(*filters));
+	NutPunch_Memcpy(NP_Filters, filters, filter_count * sizeof(*filters));
 }
 
 void NutPunch_Cleanup() {
