@@ -378,9 +378,9 @@ static void bindSock() {
 	reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
 
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
-		NP_Info("Bound IPv4 socket");
+		NP_Info("Bound an IPv4 socket");
 	} else {
-		NP_Warn("Failed to bind an IPv4 socket. IPv6-only mode is unsupported (%d)", NP_SockError());
+		NP_Warn("Failed to bind a socket. IPv6-only mode is unsupported (%d)", NP_SockError());
 	sockfail:
 		NP_NukeSocket(&sock);
 	}

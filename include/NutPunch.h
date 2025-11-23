@@ -647,7 +647,7 @@ static int NP_ResolveNutpuncher() {
 		if (REALSHIT->ai_family == AF_INET)
 			break;
 	if (!REALSHIT) {
-		NP_Warn("Couldn't resolve NutPuncher IPv4 address");
+		NP_Warn("Couldn't resolve NutPuncher address");
 		return 0;
 	}
 
@@ -655,7 +655,7 @@ static int NP_ResolveNutpuncher() {
 	NutPunch_Memcpy(&NP_PuncherAddr.raw, REALSHIT->ai_addr, REALSHIT->ai_addrlen);
 	freeaddrinfo(resolved);
 
-	NP_Info("Resolved NutPuncher IPv4 address");
+	NP_Info("Resolved NutPuncher address");
 	return 1;
 }
 
@@ -704,7 +704,7 @@ static int NP_BindSocket() {
 	if (!bind(NP_Sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
 		return 1;
 
-	NP_Warn("Failed to bind an IPv4 socket (%d)", NP_SockError());
+	NP_Warn("Failed to bind a socket (%d)", NP_SockError());
 sockfail:
 	NP_NukeSocket(&NP_Sock);
 	return 0;
