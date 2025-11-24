@@ -1180,13 +1180,12 @@ int NutPunch_NextMessage(void* out, int* size) {
 }
 
 static void NP_SendEx(int peer, const void* data, int data_size, int reliable) {
+	NP_LazyInit();
+
 	if (!data) {
 		NP_Warn("No data?");
 		return;
 	}
-
-	static char buf[NUTPUNCH_BUFFER_SIZE] = "DATA";
-	NP_LazyInit();
 
 	if (data_size > NUTPUNCH_BUFFER_SIZE - 32) {
 		NP_Warn("Ignoring a huge packet");
@@ -1196,7 +1195,9 @@ static void NP_SendEx(int peer, const void* data, int data_size, int reliable) {
 	static NP_PacketIdx packet_idx = 0;
 	const NP_PacketIdx index = reliable ? ++packet_idx : 0, net_index = htonl(index);
 
+	static char buf[NUTPUNCH_BUFFER_SIZE] = "DATA";
 	char* ptr = buf + NUTPUNCH_HEADER_SIZE;
+
 	NutPunch_Memcpy(ptr, &net_index, sizeof(net_index));
 	ptr += sizeof(net_index);
 
