@@ -891,6 +891,8 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 }
 
 NP_MakeHandler(NP_HandleBeat) {
+	NP_Trace("RECEIVED A BEATING FROM %s", NP_FormatAddr(peer));
+
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
