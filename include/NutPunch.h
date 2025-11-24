@@ -86,6 +86,7 @@ extern "C" {
 #define NUTPUNCH_RESPONSE_SIZE                                                                                         \
 	(NUTPUNCH_HEADER_SIZE + 1 + 1 + NUTPUNCH_MAX_PLAYERS * NUTPUNCH_ADDRESS_SIZE                                   \
 		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
+
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
 		+ 2 * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
