@@ -467,7 +467,7 @@ static bool NP_AddrNull(NP_Addr addr) {
 }
 
 static void NP_CleanupPackets(NP_DataMessage** queue) {
-	while (*queue != NULL) {
+	while (*queue) {
 		NP_DataMessage* ptr = *queue;
 		*queue = ptr->next;
 		NutPunch_Free(ptr->data);
@@ -532,10 +532,10 @@ void NutPunch_Reset() {
 }
 
 void NutPunch_SetServerAddr(const char* hostname) {
-	if (hostname == NULL)
-		NP_ServerHost[0] = 0;
-	else
+	if (hostname)
 		NutPunch_SNPrintF(NP_ServerHost, sizeof(NP_ServerHost), "%s", hostname);
+	else
+		NP_ServerHost[0] = 0;
 }
 
 static int NP_FieldNameSize(const char* name) {
@@ -558,12 +558,12 @@ static void* NP_GetMetadataFrom(NutPunch_Field* fields, const char* name, int* s
 		if (nameSize != NP_FieldNameSize(ptr->name) || NutPunch_Memcmp(ptr->name, name, nameSize))
 			continue;
 		NutPunch_Memcpy(buf, ptr->data, ptr->size);
-		if (size != NULL)
+		if (size)
 			*size = ptr->size;
 		return buf;
 	}
 none:
-	if (size != NULL)
+	if (size)
 		*size = 0;
 	return NULL;
 }
@@ -947,7 +947,7 @@ NP_MakeHandler(NP_HandleData) {
 
 NP_MakeHandler(NP_HandleAcky) {
 	NP_PacketIdx index = ntohl(*(NP_PacketIdx*)data);
-	for (NP_DataMessage* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next)
+	for (NP_DataMessage* ptr = NP_QueueOut; ptr; ptr = ptr->next)
 		if (ptr->index == index) {
 			ptr->dead = true;
 			return;
@@ -1037,11 +1037,11 @@ static int NP_ReceiveShit() {
 
 static void NP_PruneOutQueue() {
 findNext:
-	for (NP_DataMessage* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next) {
+	for (NP_DataMessage* ptr = NP_QueueOut; ptr; ptr = ptr->next) {
 		if (!ptr->dead)
 			continue;
 
-		for (NP_DataMessage* other = NP_QueueOut; other != NULL; other = other->next)
+		for (NP_DataMessage* other = NP_QueueOut; other; other = other->next)
 			if (other->next == ptr) {
 				other->next = ptr->next;
 				NutPunch_Free(ptr->data);
@@ -1059,7 +1059,7 @@ findNext:
 }
 
 static void NP_FlushOutQueue() {
-	for (NP_DataMessage* cur = NP_QueueOut; cur != NULL; cur = cur->next) {
+	for (NP_DataMessage* cur = NP_QueueOut; cur; cur = cur->next) {
 		if (!NutPunch_PeerAlive(cur->peer)) {
 			cur->dead = true;
 			continue;
@@ -1155,7 +1155,7 @@ int NutPunch_NextMessage(void* out, int* size) {
 		return NUTPUNCH_MAX_PLAYERS;
 	}
 
-	if (size != NULL)
+	if (size)
 		*size = (int)NP_QueueIn->size;
 	NutPunch_Memcpy(out, NP_QueueIn->data, NP_QueueIn->size);
 	NutPunch_Free(NP_QueueIn->data);
