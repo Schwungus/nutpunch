@@ -33,10 +33,10 @@
 #include <NutPunch.h>
 
 #ifdef NUTPUNCH_WINDOSE
-#define SleepMs(ms) Sleep(ms)
+#define sleep_ms(ms) Sleep(ms)
 #else
 #include <time.h>
-static void SleepMs(int ms) {
+static void sleep_ms(int ms) {
 	// Stolen from: <https://stackoverflow.com/a/1157217>
 	struct timespec ts;
 	ts.tv_sec = (ms) / 1000;
@@ -48,8 +48,8 @@ static void SleepMs(int ms) {
 }
 #endif
 
-constexpr const int beatsPerSecond = 60, keepAliveSeconds = 3, keepAliveBeats = keepAliveSeconds * beatsPerSecond,
-		    maxLobbies = 512;
+constexpr const int beats_per_second = 60, keep_alive_seconds = 3,
+		    keep_alive_beats = keep_alive_seconds * beats_per_second, max_lobbies = 512;
 
 struct Lobby;
 static NP_Socket sock = NUTPUNCH_INVALID_SOCKET;
@@ -107,18 +107,18 @@ struct Field : NutPunch_Field {
 		if (!name || !*name || dead())
 			return false;
 
-		int argLen = static_cast<int>(std::strlen(name));
-		if (argLen > NUTPUNCH_FIELD_NAME_MAX)
-			argLen = NUTPUNCH_FIELD_NAME_MAX;
+		int arg_len = static_cast<int>(std::strlen(name));
+		if (arg_len > NUTPUNCH_FIELD_NAME_MAX)
+			arg_len = NUTPUNCH_FIELD_NAME_MAX;
 
-		int ourLen = NUTPUNCH_FIELD_NAME_MAX;
+		int our_len = NUTPUNCH_FIELD_NAME_MAX;
 		for (int i = 1; i < NUTPUNCH_FIELD_NAME_MAX; i++)
 			if (!this->name[i]) {
-				ourLen = i;
+				our_len = i;
 				break;
 			}
 
-		return ourLen == argLen && !std::memcmp(this->name, name, ourLen);
+		return our_len == arg_len && !std::memcmp(this->name, name, our_len);
 	}
 
 	bool matches(const Lobby& lobby, const NutPunch_Filter& filter) const {
@@ -153,18 +153,18 @@ struct Metadata {
 		if (NUTPUNCH_MAX_FIELDS == idx)
 			return;
 
-		int nameSize = static_cast<int>(std::strlen(field.name));
-		if (nameSize > NUTPUNCH_FIELD_NAME_MAX)
-			nameSize = NUTPUNCH_FIELD_NAME_MAX;
+		int name_size = static_cast<int>(std::strlen(field.name));
+		if (name_size > NUTPUNCH_FIELD_NAME_MAX)
+			name_size = NUTPUNCH_FIELD_NAME_MAX;
 
-		int dataSize = field.size;
-		if (dataSize > NUTPUNCH_FIELD_DATA_MAX)
-			dataSize = NUTPUNCH_FIELD_DATA_MAX;
+		int data_size = field.size;
+		if (data_size > NUTPUNCH_FIELD_DATA_MAX)
+			data_size = NUTPUNCH_FIELD_DATA_MAX;
 
 		auto& target = fields[idx];
-		std::memcpy(target.name, field.name, nameSize);
-		std::memcpy(target.data, field.data, dataSize);
-		target.size = dataSize;
+		std::memcpy(target.name, field.name, name_size);
+		std::memcpy(target.data, field.data, data_size);
+		target.size = data_size;
 	}
 
 	void load(const char* ptr) {
@@ -297,7 +297,7 @@ struct Lobby {
 
 	void accept(const int idx, const NP_HeartbeatFlagsStorage flags, const char* meta) {
 		auto& player = players[idx];
-		player.countdown = keepAliveBeats;
+		player.countdown = keep_alive_beats;
 		player.metadata.load(meta), meta += sizeof(Metadata);
 		if (idx == master()) {
 			capacity = (flags & 0xF0) >> 4;
@@ -305,24 +305,24 @@ struct Lobby {
 		}
 	}
 
-	void tick(const int playerIdx) {
-		auto& plr = players[playerIdx];
+	void tick(const int player_idx) {
+		auto& plr = players[player_idx];
 		if (plr.dead())
 			return;
 		plr.countdown--;
 		if (!plr.dead())
 			return;
-		NP_Warn("Peer %d timed out in lobby '%s'", playerIdx + 1, fmt_id());
+		NP_Warn("Peer %d timed out in lobby '%s'", player_idx + 1, fmt_id());
 		plr.reset();
 	}
 
-	void beat(const int playerIdx) {
+	void beat(const int player_idx) {
 		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = "BEAT";
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
 
-		*ptr++ = static_cast<uint8_t>(playerIdx);
+		*ptr++ = static_cast<uint8_t>(player_idx);
 
-		*ptr = static_cast<NP_ResponseFlagsStorage>(playerIdx == master()) * NP_R_Master;
+		*ptr = static_cast<NP_ResponseFlagsStorage>(player_idx == master()) * NP_R_Master;
 		*ptr++ |= (capacity & 0xF) << 4;
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
@@ -335,27 +335,27 @@ struct Lobby {
 		}
 		std::memcpy(ptr, &metadata, sizeof(Metadata));
 
-		auto& player = players[playerIdx];
+		auto& player = players[player_idx];
 		if (player.addr.send(buf, sizeof(buf)) < 0) {
-			NP_Warn("Player %d aborted connection", playerIdx + 1);
+			NP_Warn("Player %d aborted connection", player_idx + 1);
 			player.reset();
 		}
 	}
 
 	int master() {
-		if (NUTPUNCH_MAX_PLAYERS != masterIdx && !players[masterIdx].dead())
-			return masterIdx;
+		if (NUTPUNCH_MAX_PLAYERS != master_idx && !players[master_idx].dead())
+			return master_idx;
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			if (!players[i].dead())
-				return (masterIdx = i);
-		return (masterIdx = NUTPUNCH_MAX_PLAYERS);
+				return (master_idx = i);
+		return (master_idx = NUTPUNCH_MAX_PLAYERS);
 	}
 
 private:
-	int masterIdx = NUTPUNCH_MAX_PLAYERS;
+	int master_idx = NUTPUNCH_MAX_PLAYERS;
 };
 
-static void bindSock() {
+static void bind_sock() {
 	sockaddr_storage addr = {0};
 
 	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -390,36 +390,36 @@ static void bindSock() {
 static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 	static uint8_t buf[NUTPUNCH_HEADER_SIZE + NP_LIST_LEN] = "LIST";
 	uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
-	size_t filterCount = 0;
+	size_t filter_count = 0;
 
-	for (; filterCount < NUTPUNCH_SEARCH_FILTERS_MAX; filterCount++) {
+	for (; filter_count < NUTPUNCH_SEARCH_FILTERS_MAX; filter_count++) {
 		static constexpr const NutPunch_Filter nully = {0};
-		if (!std::memcmp(&filters[filterCount], &nully, sizeof(*filters)))
+		if (!std::memcmp(&filters[filter_count], &nully, sizeof(*filters)))
 			break;
 	}
-	if (!filterCount)
+	if (!filter_count)
 		return;
 
 	std::memset(ptr, 0, (size_t)NP_LIST_LEN);
 	for (const auto& [id, lobby] : lobbies) {
-		for (int f = 0; f < filterCount; f++) {
+		for (int f = 0; f < filter_count; f++) {
 			const auto& filter = filters[f];
 			if (filter.field.alwayszero != 0) {
 				int diff = (int)(uint8_t)filter.special.value;
 				diff -= lobby.special((NutPunch_SpecialField)filter.special.index);
 				if (match_field_value(diff, filter.comparison))
-					goto nextFilter;
-				goto nextLobby;
+					goto next_filter;
+				goto next_lobby;
 			}
 			for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++) {
 				const auto& field = lobby.metadata.fields[m];
 				if (field.dead() || !field.named(filter.field.name))
 					continue;
 				if (field.matches(lobby, filter))
-					goto nextFilter;
+					goto next_filter;
 			}
-			goto nextLobby; // no field matched the filter
-		nextFilter:
+			goto next_lobby; // no field matched the filter
+		next_filter:
 			continue;
 		}
 
@@ -429,7 +429,7 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 		std::memcpy(ptr, id.data(), std::strlen(lobby.fmt_id()));
 		ptr += NUTPUNCH_ID_MAX;
 
-	nextLobby:
+	next_lobby:
 		continue;
 	}
 
@@ -449,10 +449,10 @@ static int receive() {
 
 	int attempts = 0;
 	char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
-	socklen_t addrSize = sizeof(struct sockaddr_in);
+	socklen_t addr_size = sizeof(struct sockaddr_in);
 	Addr addr;
 
-	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.raw), &addrSize);
+	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.raw), &addr_size);
 	if (rcv < 0)
 		switch (NP_SockError()) {
 		case NP_ConnReset:
@@ -482,7 +482,7 @@ static int receive() {
 
 	if ((lobbies.count(id) && !(flags & NP_HB_Join)) || (!lobbies.count(id) && !(flags & NP_HB_Create)))
 		goto exists;
-	if (!lobbies.count(id) && lobbies.size() >= maxLobbies) {
+	if (!lobbies.count(id) && lobbies.size() >= max_lobbies) {
 		addr.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
 		NP_Warn("Reached lobby limit");
 		return RecvKeepGoing;
@@ -549,11 +549,11 @@ int main(int, char*[]) {
 	WSADATA __bitch = {0};
 	WSAStartup(MAKEWORD(2, 2), &__bitch);
 #endif
-	bindSock();
+	bind_sock();
 
 	int result;
 	std::int64_t start = clock(), end, delta;
-	const std::int64_t minDelta = 1000 / beatsPerSecond;
+	const std::int64_t min_delta = 1000 / beats_per_second;
 
 	NP_Info("Running!");
 	for (;;) {
@@ -581,8 +581,8 @@ int main(int, char*[]) {
 		});
 
 		end = clock(), delta = ((end - start) * 1000) / CLOCKS_PER_SEC;
-		if (delta < minDelta)
-			SleepMs(minDelta - delta);
+		if (delta < min_delta)
+			sleep_ms(min_delta - delta);
 		start = clock();
 	}
 

@@ -110,7 +110,8 @@ typedef struct {
 	union {
 		struct {
 			uint8_t alwayszero;
-			char name[NUTPUNCH_FIELD_NAME_MAX], value[NUTPUNCH_FIELD_DATA_MAX];
+			char name[NUTPUNCH_FIELD_NAME_MAX];
+			char value[NUTPUNCH_FIELD_DATA_MAX];
 		} field;
 		struct {
 			uint8_t index;
@@ -424,9 +425,9 @@ static NP_Addr NP_PuncherAddr = {0};
 static char NP_ServerHost[128] = {0};
 
 static NP_DataMessage *NP_QueueIn = NULL, *NP_QueueOut = NULL;
-static NutPunch_Field NP_LobbyMetadataIn[NUTPUNCH_MAX_FIELDS] = {0},
-		      NP_PeerMetadataIn[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0},
-		      NP_LobbyMetadataOut[NUTPUNCH_MAX_FIELDS] = {0}, NP_PeerMetadataOut[NUTPUNCH_MAX_FIELDS] = {0};
+static NutPunch_Field NP_LobbyMetadataIn[NUTPUNCH_MAX_FIELDS] = {0};
+static NutPunch_Field NP_PeerMetadataIn[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0};
+static NutPunch_Field NP_LobbyMetadataOut[NUTPUNCH_MAX_FIELDS] = {0}, NP_PeerMetadataOut[NUTPUNCH_MAX_FIELDS] = {0};
 
 static bool NP_Querying = false;
 static NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
@@ -547,17 +548,17 @@ static int NP_FieldNameSize(const char* name) {
 	return NUTPUNCH_FIELD_NAME_MAX;
 }
 
-static void* NP_GetMetadataFrom(NutPunch_Field* fields, const char* name, int* size) {
+static void* NP_GetMetadataFrom(const NutPunch_Field* fields, const char* name, int* size) {
 	static char buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
 	NP_Memzero(buf);
 
-	int nameSize = NP_FieldNameSize(name);
-	if (!nameSize)
+	int name_size = NP_FieldNameSize(name);
+	if (!name_size)
 		goto none;
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		NutPunch_Field* ptr = &fields[i];
-		if (nameSize != NP_FieldNameSize(ptr->name) || NutPunch_Memcmp(ptr->name, name, nameSize))
+		const NutPunch_Field* ptr = &fields[i];
+		if (name_size != NP_FieldNameSize(ptr->name) || NutPunch_Memcmp(ptr->name, name, name_size))
 			continue;
 		NutPunch_Memcpy(buf, ptr->data, ptr->size);
 		if (size)
@@ -700,17 +701,17 @@ static int NP_BindSocket() {
 	if (!bind(NP_Sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
 		return 1;
 
-	NP_Warn("Failed to bind a socket (%d)", NP_SockError());
+	NP_Warn("Failed to bind a UDP socket (%d)", NP_SockError());
 sockfail:
 	NP_NukeSocket(&NP_Sock);
 	return 0;
 }
 
-static int NutPunch_Connect(const char* lobbyId, int sane) {
+static int NutPunch_Connect(const char* lobby_id, int sane) {
 	NP_LazyInit();
 	NP_NukeLobbyData();
 
-	if (sane && (!lobbyId || !lobbyId[0])) {
+	if (sane && (!lobby_id || !lobby_id[0])) {
 		NP_Warn("Lobby ID cannot be null or empty!");
 		NP_LastStatus = NPS_Error;
 		return 0;
@@ -727,8 +728,8 @@ static int NutPunch_Connect(const char* lobbyId, int sane) {
 	NP_LastStatus = NPS_Online;
 	NP_Memzero(NP_LastError);
 
-	if (lobbyId)
-		NutPunch_SNPrintF(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobbyId);
+	if (lobby_id)
+		NutPunch_SNPrintF(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobby_id);
 
 	return 1;
 }
@@ -923,30 +924,30 @@ NP_MakeHandler(NP_HandleList) {
 }
 
 NP_MakeHandler(NP_HandleData) {
-	int peerIdx = NUTPUNCH_MAX_PLAYERS;
+	int peer_idx = NUTPUNCH_MAX_PLAYERS;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		if (NP_AddrEq(peer, NP_Peers[i])) {
-			peerIdx = i;
+			peer_idx = i;
 			break;
 		}
 	}
-	if (peerIdx == NUTPUNCH_MAX_PLAYERS)
+	if (peer_idx == NUTPUNCH_MAX_PLAYERS)
 		return;
 
-	const NP_PacketIdx netIndex = *(NP_PacketIdx*)data, index = ntohl(netIndex);
+	const NP_PacketIdx net_index = *(NP_PacketIdx*)data, index = ntohl(net_index);
 	size -= sizeof(index), data += sizeof(index);
 
 	if (index) {
-		static char ack[NUTPUNCH_HEADER_SIZE + sizeof(netIndex)] = "ACKY";
-		NutPunch_Memcpy(ack + NUTPUNCH_HEADER_SIZE, &netIndex, sizeof(netIndex));
-		NP_QueueSend(peerIdx, ack, sizeof(ack), 0);
+		static char ack[NUTPUNCH_HEADER_SIZE + sizeof(net_index)] = "ACKY";
+		NutPunch_Memcpy(ack + NUTPUNCH_HEADER_SIZE, &net_index, sizeof(net_index));
+		NP_QueueSend(peer_idx, ack, sizeof(ack), 0);
 	}
 
 	NP_DataMessage* next = NP_QueueIn;
 	NP_QueueIn = (NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
 	NP_QueueIn->data = (char*)NutPunch_Malloc(size);
 	NutPunch_Memcpy(NP_QueueIn->data, data, size);
-	NP_QueueIn->peer = peerIdx, NP_QueueIn->size = size;
+	NP_QueueIn->peer = peer_idx, NP_QueueIn->size = size;
 	NP_QueueIn->next = next;
 }
 
@@ -979,9 +980,9 @@ static int NP_SendHeartbeat() {
 		// TODO: make sure to correct endianness when multibyte flags become a thing.
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags, ptr += sizeof(NP_HeartbeatFlags);
 
-		const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
-		NutPunch_Memcpy(ptr, NP_PeerMetadataOut, metaSize), ptr += metaSize;
-		NutPunch_Memcpy(ptr, NP_LobbyMetadataOut, metaSize), ptr += metaSize;
+		const int meta_size = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
+		NutPunch_Memcpy(ptr, NP_PeerMetadataOut, meta_size), ptr += meta_size;
+		NutPunch_Memcpy(ptr, NP_LobbyMetadataOut, meta_size), ptr += meta_size;
 	}
 
 	if (0 <= sendto(NP_Sock, heartbeat, (int)(ptr - heartbeat), 0, (const struct sockaddr*)&NP_PuncherAddr.raw,
@@ -1004,10 +1005,10 @@ static int NP_ReceiveShit() {
 		return 1;
 
 	struct sockaddr_storage addr = {0};
-	socklen_t addrSize = sizeof(addr);
+	socklen_t addr_size = sizeof(addr);
 
 	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
-	int size = recvfrom(NP_Sock, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &addrSize);
+	int size = recvfrom(NP_Sock, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &addr_size);
 	if (size < 0) {
 		if (NP_SockError() == NP_WouldBlock || NP_SockError() == NP_ConnReset)
 			return 1;
@@ -1166,18 +1167,18 @@ int NutPunch_NextMessage(void* out, int* size) {
 		NutPunch_Memcpy(out, NP_QueueIn->data, NP_QueueIn->size);
 	NutPunch_Free(NP_QueueIn->data);
 
-	int sourcePeer = NP_QueueIn->peer;
-	if (sourcePeer > NUTPUNCH_MAX_PLAYERS)
-		sourcePeer = NUTPUNCH_MAX_PLAYERS;
+	int source_peer = NP_QueueIn->peer;
+	if (source_peer > NUTPUNCH_MAX_PLAYERS)
+		source_peer = NUTPUNCH_MAX_PLAYERS;
 
 	NP_DataMessage* next = NP_QueueIn->next;
 	NutPunch_Free(NP_QueueIn);
 
 	NP_QueueIn = next;
-	return sourcePeer;
+	return source_peer;
 }
 
-static void NP_SendEx(int peer, const void* data, int dataSize, int reliable) {
+static void NP_SendEx(int peer, const void* data, int data_size, int reliable) {
 	if (!data) {
 		NP_Warn("No data?");
 		return;
@@ -1186,20 +1187,20 @@ static void NP_SendEx(int peer, const void* data, int dataSize, int reliable) {
 	static char buf[NUTPUNCH_BUFFER_SIZE] = "DATA";
 	NP_LazyInit();
 
-	if (dataSize > NUTPUNCH_BUFFER_SIZE - 32) {
+	if (data_size > NUTPUNCH_BUFFER_SIZE - 32) {
 		NP_Warn("Ignoring a huge packet");
 		return;
 	}
 
-	static NP_PacketIdx packetIdx = 0;
-	const NP_PacketIdx index = reliable ? ++packetIdx : 0, netIndex = htonl(index);
+	static NP_PacketIdx packet_idx = 0;
+	const NP_PacketIdx index = reliable ? ++packet_idx : 0, net_index = htonl(index);
 
 	char* ptr = buf + NUTPUNCH_HEADER_SIZE;
-	NutPunch_Memcpy(ptr, &netIndex, sizeof(netIndex));
-	ptr += sizeof(netIndex);
+	NutPunch_Memcpy(ptr, &net_index, sizeof(net_index));
+	ptr += sizeof(net_index);
 
-	NutPunch_Memcpy(ptr, data, dataSize);
-	NP_QueueSend(peer, buf, NUTPUNCH_HEADER_SIZE + sizeof(index) + dataSize, index);
+	NutPunch_Memcpy(ptr, data, data_size);
+	NP_QueueSend(peer, buf, NUTPUNCH_HEADER_SIZE + sizeof(index) + data_size, index);
 }
 
 void NutPunch_Send(int peer, const void* data, int size) {
