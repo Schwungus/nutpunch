@@ -140,7 +140,7 @@ Just like in the example above, you can override NutPunch's logging facility bef
 
 If you're dissatisfied with [the public instance](#public-instance), whether from needing to stick to a specific build or fork or whatever, you can host your own. Make sure to read [the introductory pamphlet](#introductory-lecture) before attempting this.
 
-On Windows and Linux, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/stable) and make sure the **UDP port `30001`** is open to the public.
+On Windows and Linux, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/stable) and make sure the **UDP port `30000`** is open to the public.
 
 If you're crazy enough, you may also use [our Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher), e.g. with docker-compose:
 
