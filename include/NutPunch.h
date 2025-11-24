@@ -539,6 +539,8 @@ void NutPunch_SetServerAddr(const char* hostname) {
 }
 
 static int NP_FieldNameSize(const char* name) {
+	if (!name)
+		return 0;
 	for (int i = 0; i < NUTPUNCH_FIELD_NAME_MAX; i++)
 		if (!name[i])
 			return i;
@@ -578,17 +580,20 @@ void* NutPunch_PeerGet(int peer, const char* name, int* size) {
 	return NP_GetMetadataFrom(NP_PeerMetadataIn[peer], name, size);
 }
 
-static void NP_SetMetadataIn(NutPunch_Field* fields, const char* name, int dataSize, const void* data) {
-	int nameSize = NP_FieldNameSize(name);
-	if (!nameSize)
+static void NP_SetMetadataIn(NutPunch_Field* fields, const char* name, int data_size, const void* data) {
+	int name_size = NP_FieldNameSize(name);
+	if (!name_size)
 		return;
 
-	if (dataSize < 1) {
+	if (!data) {
+		NP_Warn("No data?");
+		return;
+	} else if (data_size < 1) {
 		NP_Warn("Invalid metadata field size!");
 		return;
-	} else if (dataSize > NUTPUNCH_FIELD_DATA_MAX) {
-		NP_Warn("Trimming metadata field from %d to %d bytes", dataSize, NUTPUNCH_FIELD_DATA_MAX);
-		dataSize = NUTPUNCH_FIELD_DATA_MAX;
+	} else if (data_size > NUTPUNCH_FIELD_DATA_MAX) {
+		NP_Warn("Trimming metadata field from %d to %d bytes", data_size, NUTPUNCH_FIELD_DATA_MAX);
+		data_size = NUTPUNCH_FIELD_DATA_MAX;
 	}
 
 	static const NutPunch_Field nullfield = {0};
@@ -597,14 +602,14 @@ static void NP_SetMetadataIn(NutPunch_Field* fields, const char* name, int dataS
 
 		if (!NutPunch_Memcmp(field, &nullfield, sizeof(nullfield)))
 			goto set;
-		if (NP_FieldNameSize(field->name) == nameSize && !NutPunch_Memcmp(field->name, name, nameSize))
+		if (NP_FieldNameSize(field->name) == name_size && !NutPunch_Memcmp(field->name, name, name_size))
 			goto set;
 		continue;
 
 	set:
-		NP_Memzero(field->name), NutPunch_Memcpy(field->name, name, nameSize);
-		NP_Memzero(field->data), NutPunch_Memcpy(field->data, data, dataSize);
-		field->size = dataSize;
+		NP_Memzero(field->name), NutPunch_Memcpy(field->name, name, name_size);
+		NP_Memzero(field->data), NutPunch_Memcpy(field->data, data, data_size);
+		field->size = data_size;
 		return;
 	}
 }
@@ -1157,7 +1162,8 @@ int NutPunch_NextMessage(void* out, int* size) {
 
 	if (size)
 		*size = (int)NP_QueueIn->size;
-	NutPunch_Memcpy(out, NP_QueueIn->data, NP_QueueIn->size);
+	if (out)
+		NutPunch_Memcpy(out, NP_QueueIn->data, NP_QueueIn->size);
 	NutPunch_Free(NP_QueueIn->data);
 
 	int sourcePeer = NP_QueueIn->peer;
@@ -1172,6 +1178,11 @@ int NutPunch_NextMessage(void* out, int* size) {
 }
 
 static void NP_SendEx(int peer, const void* data, int dataSize, int reliable) {
+	if (!data) {
+		NP_Warn("No data?");
+		return;
+	}
+
 	static char buf[NUTPUNCH_BUFFER_SIZE] = "DATA";
 	NP_LazyInit();
 
