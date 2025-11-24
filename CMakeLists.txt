@@ -11,11 +11,14 @@ set(BUILD_SHARED_LIBS OFF)
 include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)
 
-option(NUTPUNCH_STAGING "Staging-facing build? Uses a different port from the regular build." OFF)
+option(NUTPUNCH_STAGING
+    "Staging-facing build? Uses a different port from the regular build."
+    OFF)
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_library(NutPunch INTERFACE)
-target_include_directories(NutPunch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(NutPunch INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_definitions(NutPunch INTERFACE _WINSOCK_DEPRECATED_NO_WARNINGS)
 if(WIN32)
     target_link_options(NutPunch INTERFACE -static)
@@ -41,7 +44,8 @@ endif()
 option(NUTPUNCH_BUILD_SERVER "Build NutPuncher?" ON)
 if(NUTPUNCH_BUILD_SERVER)
     add_executable(NutPuncher ${SRC_DIR}/NutPuncher.cpp)
-    set_target_properties(NutPuncher PROPERTIES CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+    set_target_properties(NutPuncher PROPERTIES
+        CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
     target_link_libraries(NutPuncher PRIVATE NutPunch)
     target_link_options(NutPuncher PRIVATE -static)
 endif()
