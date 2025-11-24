@@ -31,10 +31,12 @@ option(NUTPUNCH_TRACING
     OFF)
 
 if(NUTPUNCH_STAGING)
+    message("NutPunch staging-mode enabled")
     target_compile_definitions(NutPunch INTERFACE NUTPUNCH_SERVER_PORT=29999)
 endif()
 
 if(NUTPUNCH_TRACING)
+    message("NutPunch tracing enabled")
     target_compile_definitions(NutPunch INTERFACE NUTPUNCH_TRACING=1)
 endif()
 
