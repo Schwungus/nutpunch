@@ -1102,14 +1102,14 @@ static void NP_FlushOutQueue() {
 
 static void NP_RealUpdate() {
 	if (!NP_SendHeartbeat())
-		goto sockFail;
+		goto sockfail;
 
 	for (;;) {
 		if (NP_LastStatus == NPS_Error) // happens after handling a GTFO
 			return;
 		switch (NP_ReceiveShit()) {
 		case -1:
-			goto sockFail;
+			goto sockfail;
 		case 1:
 			goto send;
 		default:
@@ -1129,7 +1129,7 @@ flush:
 	NP_PruneOutQueue(), NP_FlushOutQueue();
 	return;
 
-sockFail:
+sockfail:
 	NP_NukeLobbyData(), NP_LastStatus = NPS_Error;
 }
 
