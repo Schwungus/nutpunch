@@ -1025,10 +1025,11 @@ static int NP_ReceiveShit() {
 				NP_KillPeer(i);
 				return 0;
 			}
-
 	if (size < NUTPUNCH_HEADER_SIZE)
 		return 0;
+
 	size -= NUTPUNCH_HEADER_SIZE;
+	NP_Trace("RECEIVED %d BYTES OF SHIT", size);
 
 	const NP_Addr peer = {.raw = addr};
 	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
@@ -1127,23 +1128,31 @@ send:
 			static char bye[4] = {'D', 'I', 'S', 'C'};
 			NP_QueueSend(i, bye, sizeof(bye), 0);
 		}
+
 flush:
 	NP_PruneOutQueue(), NP_FlushOutQueue();
 	return;
 
 sockfail:
+	NP_Warn("Something went wrong with your socket!");
 	NP_NukeLobbyData(), NP_LastStatus = NPS_Error;
 }
 
 int NutPunch_Update() {
 	NP_LazyInit();
+
 	if (NP_LastStatus == NPS_Idle || NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return NPS_Idle;
-	NP_LastStatus = NPS_Online, NP_RealUpdate();
+
+	NP_LastStatus = NPS_Online;
+	NP_RealUpdate();
+	NP_Trace("UPDATE OK NICE");
+
 	if (NP_LastStatus == NPS_Error) {
 		NutPunch_Disconnect();
 		return NPS_Error;
 	}
+
 	return NP_LastStatus;
 }
 
