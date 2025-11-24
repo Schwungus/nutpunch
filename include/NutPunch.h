@@ -90,6 +90,7 @@ extern "C" {
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
 		+ 2 * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -188,7 +189,7 @@ void NutPunch_PeerSet(const char* name, int size, const void* data);
 void* NutPunch_PeerGet(int peer, const char* name, int* size);
 
 /// Check if there is a packet waiting in the receiving queue. Retrieve it with `NutPunch_NextMessage()`.
-int NutPunch_HasMessage();
+bool NutPunch_HasMessage();
 
 /// Retrieve the next packet in the receiving queue. Returns the index of the peer who sent it.
 ///
@@ -210,17 +211,17 @@ void NutPunch_SendReliably(int peer, const void* data, int size);
 /// that, see `NutPunch_PeerAlive`.
 int NutPunch_PeerCount();
 
-/// Return 1 if you are connected to the peer with the specified index.
+/// Return true if you are connected to the peer with the specified index.
 ///
 /// If you're iterating over peers, use `NUTPUNCH_MAX_PLAYERS` as the upper index bound, and check their status using
 /// this function.
-int NutPunch_PeerAlive(int peer);
+bool NutPunch_PeerAlive(int peer);
 
 /// Get the local peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
 int NutPunch_LocalPeer();
 
 /// Check if we're the lobby's master.
-int NutPunch_IsMaster();
+bool NutPunch_IsMaster();
 
 /// Call this to gracefully disconnect from the lobby.
 void NutPunch_Disconnect();
@@ -411,7 +412,7 @@ static const NP_MessageType NP_Messages[] = {
 };
 
 static char NP_LastError[512] = "";
-static int NP_InitDone = 0, NP_Closing = 0;
+static bool NP_InitDone = false, NP_Closing = false;
 static int NP_LastStatus = NPS_Idle;
 
 static char NP_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
@@ -427,7 +428,7 @@ static NutPunch_Field NP_LobbyMetadataIn[NUTPUNCH_MAX_FIELDS] = {0},
 		      NP_PeerMetadataIn[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0},
 		      NP_LobbyMetadataOut[NUTPUNCH_MAX_FIELDS] = {0}, NP_PeerMetadataOut[NUTPUNCH_MAX_FIELDS] = {0};
 
-static int NP_Querying = 0;
+static bool NP_Querying = false;
 static NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
 static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_SEARCH_RESULTS_MAX] = {0};
 
@@ -456,11 +457,11 @@ static uint16_t* NP_AddrPort(NP_Addr* addr) {
 	return &((struct sockaddr_in*)&addr->raw)->sin_port;
 }
 
-static int NP_AddrEq(NP_Addr a, NP_Addr b) {
+static bool NP_AddrEq(NP_Addr a, NP_Addr b) {
 	return !NutPunch_Memcmp(&a.raw, &b.raw, 4);
 }
 
-static int NP_AddrNull(NP_Addr addr) {
+static bool NP_AddrNull(NP_Addr addr) {
 	static const uint8_t nulladdr[4] = {0};
 	return !NutPunch_Memcmp(NP_AddrRaw(&addr), nulladdr, sizeof(nulladdr));
 }
@@ -475,7 +476,7 @@ static void NP_CleanupPackets(NP_DataMessage** queue) {
 }
 
 static void NP_NukeLobbyData() {
-	NP_Closing = NP_Querying = 0, NP_ResponseFlags = 0;
+	NP_Closing = NP_Querying = false, NP_ResponseFlags = 0;
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
 	NP_Memzero(NP_LobbyMetadataIn), NP_Memzero(NP_PeerMetadataIn);
 	NP_Memzero(NP_LobbyMetadataOut), NP_Memzero(NP_PeerMetadataOut);
@@ -510,7 +511,7 @@ static void NP_ResetImpl() {
 static void NP_LazyInit() {
 	if (NP_InitDone)
 		return;
-	NP_InitDone = 1;
+	NP_InitDone = true;
 
 #ifdef NUTPUNCH_WINDOSE
 	WSADATA bitch = {0};
@@ -810,7 +811,7 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 	NP_QueueOut = (NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
 	NP_QueueOut->next = next, NP_QueueOut->peer = peer;
 	NP_QueueOut->size = size, NP_QueueOut->bounce = index ? 0 : -1;
-	NP_QueueOut->index = index, NP_QueueOut->dead = 0;
+	NP_QueueOut->index = index, NP_QueueOut->dead = false;
 	NP_QueueOut->data = (char*)NutPunch_Malloc(size);
 	NutPunch_Memcpy(NP_QueueOut->data, data, size);
 }
@@ -860,10 +861,9 @@ static void NP_PrintLocalPeer(const uint8_t* data) {
 }
 
 static void NP_SayShalom(int idx, const uint8_t* data) {
-	if (idx == NP_LocalPeer || NutPunch_PeerAlive(idx))
-		return;
-
 	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
+		return;
+	if (idx == NP_LocalPeer || NutPunch_PeerAlive(idx))
 		return;
 
 	NP_Addr peer = {0};
@@ -887,12 +887,11 @@ NP_MakeHandler(NP_HandleBeat) {
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
-	const int just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS, was_slave = !NutPunch_IsMaster();
-	const int metaSize = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
-	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + metaSize;
+	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS, was_slave = !NutPunch_IsMaster();
+	const int meta_size = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
+	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + meta_size;
 
-	NP_LocalPeer = *data++;
-	NP_ResponseFlags = *data++;
+	NP_LocalPeer = *data++, NP_ResponseFlags = *data++;
 	if (just_joined)
 		NP_PrintLocalPeer(data + NP_LocalPeer * stride);
 	if (NutPunch_IsMaster() && was_slave)
@@ -900,9 +899,9 @@ NP_MakeHandler(NP_HandleBeat) {
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		NP_SayShalom(i, data), data += NUTPUNCH_ADDRESS_SIZE;
-		NutPunch_Memcpy(NP_PeerMetadataIn[i], data, metaSize), data += metaSize;
+		NutPunch_Memcpy(NP_PeerMetadataIn[i], data, meta_size), data += meta_size;
 	}
-	NutPunch_Memcpy(NP_LobbyMetadataIn, data, metaSize);
+	NutPunch_Memcpy(NP_LobbyMetadataIn, data, meta_size);
 }
 
 NP_MakeHandler(NP_HandleList) {
@@ -950,7 +949,7 @@ NP_MakeHandler(NP_HandleAcky) {
 	NP_PacketIdx index = ntohl(*(NP_PacketIdx*)data);
 	for (NP_DataMessage* ptr = NP_QueueOut; ptr != NULL; ptr = ptr->next)
 		if (ptr->index == index) {
-			ptr->dead = 1;
+			ptr->dead = true;
 			return;
 		}
 }
@@ -1062,13 +1061,13 @@ findNext:
 static void NP_FlushOutQueue() {
 	for (NP_DataMessage* cur = NP_QueueOut; cur != NULL; cur = cur->next) {
 		if (!NutPunch_PeerAlive(cur->peer)) {
-			cur->dead = 1;
+			cur->dead = true;
 			continue;
 		}
 
 		// Send & pop normally since a bounce of -1 makes it an unreliable packet.
 		if (cur->bounce < 0)
-			cur->dead = 1;
+			cur->dead = true;
 		// Otherwise, check if it's about to bounce, in order to resend it.
 		else if (cur->bounce > 0)
 			if (--cur->bounce > 0)
@@ -1076,7 +1075,7 @@ static void NP_FlushOutQueue() {
 		cur->bounce = NUTPUNCH_BOUNCE_TICKS;
 
 		if (NP_Sock == NUTPUNCH_INVALID_SOCKET) {
-			cur->dead = 1;
+			cur->dead = true;
 			continue;
 		}
 
@@ -1142,11 +1141,11 @@ int NutPunch_Update() {
 void NutPunch_Disconnect() {
 	NP_Info("Disconnecting from lobby (if any)");
 	if (NP_LastStatus == NPS_Online)
-		NP_Closing = 1, NP_RealUpdate();
+		NP_Closing = true, NP_RealUpdate();
 	NutPunch_Reset();
 }
 
-int NutPunch_HasMessage() {
+bool NutPunch_HasMessage() {
 	return NP_QueueIn != NULL;
 }
 
@@ -1221,17 +1220,17 @@ int NutPunch_PeerCount() {
 	return count;
 }
 
-int NutPunch_PeerAlive(int peer) {
+bool NutPunch_PeerAlive(int peer) {
 	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS || NP_LastStatus != NPS_Online)
-		return 0;
-	return NutPunch_LocalPeer() == peer || *NP_AddrPort(NP_Peers + peer) != 0;
+		return false;
+	return NutPunch_LocalPeer() == peer || 0 != *NP_AddrPort(NP_Peers + peer);
 }
 
 int NutPunch_LocalPeer() {
 	return NP_LocalPeer;
 }
 
-int NutPunch_IsMaster() {
+bool NutPunch_IsMaster() {
 	return 0 != (NP_ResponseFlags & NP_R_Master);
 }
 
