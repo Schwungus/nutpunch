@@ -98,7 +98,8 @@ extern "C" {
 #include <time.h>
 
 typedef struct {
-	char name[NUTPUNCH_FIELD_NAME_MAX], data[NUTPUNCH_FIELD_DATA_MAX];
+	char name[NUTPUNCH_FIELD_NAME_MAX];
+	char data[NUTPUNCH_FIELD_DATA_MAX];
 	uint8_t size;
 } NutPunch_Field; // DOT NOT MOVE OUT, used in `NUTPUNCH_*_SIZE` constants above!!!
 
@@ -387,7 +388,7 @@ typedef struct NP_DataMessage {
 typedef struct {
 	const char identifier[NUTPUNCH_HEADER_SIZE];
 	void (*const handle)(NP_Addr, int, const uint8_t*);
-	const int packetSize;
+	const int packet_size;
 } NP_MessageType;
 
 #define NP_BEAT_LEN (NUTPUNCH_RESPONSE_SIZE - NUTPUNCH_HEADER_SIZE)
@@ -1018,7 +1019,6 @@ static int NP_ReceiveShit() {
 		NP_Warn("Failed to receive from NutPuncher (%d)", NP_SockError());
 		return -1;
 	}
-
 	if (!size) // graceful disconnection
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			if (!NutPunch_Memcmp(&addr, &NP_Peers[i].raw, sizeof(addr))) {
@@ -1035,7 +1035,7 @@ static int NP_ReceiveShit() {
 	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
 		const NP_MessageType* type = &NP_Messages[i];
 		if (!NutPunch_Memcmp(buf, type->identifier, NUTPUNCH_HEADER_SIZE)
-			&& (type->packetSize < 0 || size == type->packetSize))
+			&& (type->packet_size < 0 || size == type->packet_size))
 		{
 			type->handle(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
 			break;
