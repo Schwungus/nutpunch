@@ -516,6 +516,9 @@ static void NP_LazyInit() {
 		return;
 	NP_InitDone = true;
 
+	NP_Trace("IMPORTANT CONSTANTS:");
+	NP_Trace("  RESP = %d, BEAT = %d", NUTPUNCH_RESPONSE_SIZE, NP_BEAT_LEN);
+
 #ifdef NUTPUNCH_WINDOSE
 	WSADATA bitch = {0};
 	WSAStartup(MAKEWORD(2, 2), &bitch);
@@ -1033,11 +1036,11 @@ static int NP_ReceiveShit() {
 
 	const NP_Addr peer = {.raw = addr};
 	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
-		const NP_MessageType* type = &NP_Messages[i];
-		if (!NutPunch_Memcmp(buf, type->identifier, NUTPUNCH_HEADER_SIZE)
-			&& (type->packet_size < 0 || size == type->packet_size))
+		const NP_MessageType type = NP_Messages[i];
+		if (!NutPunch_Memcmp(buf, type.identifier, NUTPUNCH_HEADER_SIZE)
+			&& (type.packet_size < 0 || size == type.packet_size))
 		{
-			type->handle(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
+			type.handle(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
 			break;
 		}
 	}
