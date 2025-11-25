@@ -517,7 +517,7 @@ static void NP_LazyInit() {
 	NP_InitDone = true;
 
 	NP_Trace("IMPORTANT CONSTANTS:");
-	NP_Trace("  RESP = %d, BEAT = %d", NUTPUNCH_RESPONSE_SIZE, NP_BEAT_LEN);
+	NP_Trace("  RESP = %d, BEAT = %d, LIST = %d", NUTPUNCH_RESPONSE_SIZE, NP_BEAT_LEN, NP_LIST_LEN);
 
 #ifdef NUTPUNCH_WINDOSE
 	WSADATA bitch = {0};
@@ -900,6 +900,8 @@ NP_MakeHandler(NP_HandleBeat) {
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
+	NP_Trace("AND EVEN PROCESSED IT!");
+
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS, was_slave = !NutPunch_IsMaster();
 	const int meta_size = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + meta_size;
@@ -918,10 +920,16 @@ NP_MakeHandler(NP_HandleBeat) {
 }
 
 NP_MakeHandler(NP_HandleList) {
+	NP_Trace("RECEIVED A LISTING FROM %s", NP_FormatAddr(peer));
+
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
+
+	NP_Trace("AND EVEN PROCESSED IT!");
+
 	const size_t idlen = NUTPUNCH_ID_MAX;
 	NP_Memzero(NP_Lobbies);
+
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++) {
 		NP_Lobbies[i].players = *(uint8_t*)(data++);
 		NP_Lobbies[i].capacity = *(uint8_t*)(data++);
