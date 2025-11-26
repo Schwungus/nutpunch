@@ -12,16 +12,18 @@ int main(int argc, char* argv[]) {
 		NutPunch_Join(LOBBY);
 	}
 
+	NP_Info("JOINGING>.....");
 	for (;;) {
 		if (NutPunch_Update() == NPS_Error) {
 			NP_Warn("UPDATE WENT WRONG: %s", NutPunch_GetLastError());
 			return EXIT_FAILURE;
 		}
-		if (NutPunch_PeerCount() >= NutPunch_GetMaxPlayers())
+		if (NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS && NutPunch_PeerCount() >= NutPunch_GetMaxPlayers())
 			break;
 		NP_SleepMs(100);
 	}
 
+	NP_Info("SENDING SHIT OUT");
 	for (int peer = 0; peer < NUTPUNCH_MAX_PLAYERS; peer++)
 		if (peer != NutPunch_LocalPeer() && NutPunch_PeerAlive(peer))
 			NutPunch_SendReliably(peer, WOWZA, sizeof(WOWZA));
@@ -33,8 +35,9 @@ int main(int argc, char* argv[]) {
 			int size = sizeof(data), sender = NutPunch_NextMessage(data, &size);
 			printf("from %2d: %s", sender, data);
 		}
-		NP_SleepMs(1000);
+		NP_SleepMs(100);
 	}
 
+	NP_Info("DONE BYE");
 	return EXIT_SUCCESS;
 }
