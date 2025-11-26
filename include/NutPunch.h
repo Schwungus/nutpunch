@@ -1278,6 +1278,22 @@ const char* NutPunch_Basename(const char* path) {
 	return s ? s + 1 : path;
 }
 
+#ifdef NUTPUNCH_WINDOSE
+#define NP_SleepMs(ms) Sleep(ms)
+#else
+#include <time.h>
+static void NP_SleepMs(int ms) {
+	// Stolen from: <https://stackoverflow.com/a/1157217>
+	struct timespec ts;
+	ts.tv_sec = (ms) / 1000;
+	ts.tv_nsec = ((ms) % 1000) * 1000000;
+	int res;
+	do
+		res = nanosleep(&ts, &ts);
+	while (res && errno == EINTR);
+}
+#endif
+
 #endif
 
 #ifdef __cplusplus

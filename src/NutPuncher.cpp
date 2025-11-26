@@ -32,22 +32,6 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
-#ifdef NUTPUNCH_WINDOSE
-#define sleep_ms(ms) Sleep(ms)
-#else
-#include <time.h>
-static void sleep_ms(int ms) {
-	// Stolen from: <https://stackoverflow.com/a/1157217>
-	struct timespec ts;
-	ts.tv_sec = (ms) / 1000;
-	ts.tv_nsec = ((ms) % 1000) * 1000000;
-	int res;
-	do
-		res = nanosleep(&ts, &ts);
-	while (res && errno == EINTR);
-}
-#endif
-
 constexpr const int beats_per_second = 60, keep_alive_seconds = 3,
 		    keep_alive_beats = keep_alive_seconds * beats_per_second, max_lobbies = 512;
 
@@ -582,7 +566,7 @@ int main(int, char*[]) {
 
 		end = clock(), delta = ((end - start) * 1000) / CLOCKS_PER_SEC;
 		if (delta < min_delta)
-			sleep_ms(min_delta - delta);
+			NP_SleepMs(min_delta - delta);
 		start = clock();
 	}
 

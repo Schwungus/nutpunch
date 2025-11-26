@@ -4,22 +4,6 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
-#ifdef NUTPUNCH_WINDOSE
-#define sleep_ms(ms) Sleep(ms)
-#else
-#include <time.h>
-static void sleep_ms(int ms) {
-	// Stolen from: <https://stackoverflow.com/a/1157217>
-	struct timespec ts;
-	ts.tv_sec = (ms) / 1000;
-	ts.tv_nsec = ((ms) % 1000) * 1000000;
-	int res;
-	do
-		res = nanosleep(&ts, &ts);
-	while (res && errno == EINTR);
-}
-#endif
-
 int main(int argc, char* argv[]) {
 	if (argc < 3)
 		goto fail;
@@ -45,7 +29,7 @@ int main(int argc, char* argv[]) {
 	for (int i = 0; i < ms / rate; i++) {
 		if (NPS_Error == NutPunch_Update())
 			goto shit;
-		sleep_ms(ms / rate);
+		NP_SleepMs(ms / rate);
 	}
 
 	int lobby_count = NutPunch_LobbyCount();
