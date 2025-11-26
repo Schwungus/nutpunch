@@ -5,10 +5,19 @@
 #include <NutPunch.h>
 
 #ifdef NUTPUNCH_WINDOSE
-#include <windows.h>
-#define SleepMs(ms) Sleep(ms)
+#define sleep_ms(ms) Sleep(ms)
 #else
-#error FIXME: too lazy to port this one
+#include <time.h>
+static void sleep_ms(int ms) {
+	// Stolen from: <https://stackoverflow.com/a/1157217>
+	struct timespec ts;
+	ts.tv_sec = (ms) / 1000;
+	ts.tv_nsec = ((ms) % 1000) * 1000000;
+	int res;
+	do
+		res = nanosleep(&ts, &ts);
+	while (res && errno == EINTR);
+}
 #endif
 
 int main(int argc, char* argv[]) {
@@ -36,17 +45,17 @@ int main(int argc, char* argv[]) {
 	for (int i = 0; i < ms / rate; i++) {
 		if (NPS_Error == NutPunch_Update())
 			goto shit;
-		SleepMs(ms / rate);
+		sleep_ms(ms / rate);
 	}
 
-	int lobbyCount = NutPunch_LobbyCount();
-	printf("%d %s", lobbyCount, lobbyCount == 1 ? "lobby" : "lobbies");
-	if (lobbyCount)
+	int lobby_count = NutPunch_LobbyCount();
+	printf("%d %s", lobby_count, lobby_count == 1 ? "lobby" : "lobbies");
+	if (lobby_count)
 		printf(":");
 	printf("\n");
-	for (int i = 0; i < lobbyCount; i++)
+	for (int i = 0; i < lobby_count; i++)
 		printf("'%s' ", NutPunch_GetLobby(i)->name);
-	if (lobbyCount)
+	if (lobby_count)
 		printf("\n");
 	return EXIT_SUCCESS;
 
