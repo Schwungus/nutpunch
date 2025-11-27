@@ -5,8 +5,10 @@
 #define WOWZA "FUCK YOU"
 
 int main(int argc, char* argv[]) {
-	if (argc > 1) {
-		int players = strtol(argv[1], NULL, 10);
+	if (argc > 1)
+		NutPunch_SetServerAddr(argv[1]);
+	if (argc > 2) {
+		int players = strtol(argv[2], NULL, 10);
 		NutPunch_Host(LOBBY, players);
 	} else {
 		NutPunch_Join(LOBBY);
