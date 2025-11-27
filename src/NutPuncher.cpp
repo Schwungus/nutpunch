@@ -363,7 +363,7 @@ static void bind_sock() {
 	reinterpret_cast<sockaddr_in*>(&addr)->sin_addr.s_addr = htonl(INADDR_ANY);
 
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
-		NP_Info("Bound an IPv4 socket");
+		NP_Info("Bound to port %d", NUTPUNCH_SERVER_PORT);
 	} else {
 		NP_Warn("Failed to bind a socket. IPv6-only mode is unsupported (%d)", NP_SockError());
 	sockfail:
