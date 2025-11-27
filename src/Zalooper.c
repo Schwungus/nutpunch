@@ -1,8 +1,7 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include "NutPunch.h"
 
-#define LOBBY "Zaloopah"
-#define WOWZA "FUCK YOU"
+static const char *LOBBY = "Zaloopah", *WOWZA = "FUCK YOU";
 
 int main(int argc, char* argv[]) {
 	if (argc > 1)
@@ -10,11 +9,12 @@ int main(int argc, char* argv[]) {
 	if (argc > 2) {
 		int players = strtol(argv[2], NULL, 10);
 		NutPunch_Host(LOBBY, players);
+		NP_Info("HOSTANING>..... for %d", players);
 	} else {
 		NutPunch_Join(LOBBY);
+		NP_Info("JOINGING>.....");
 	}
 
-	NP_Info("JOINGING>.....");
 	for (;;) {
 		if (NutPunch_Update() == NPS_Error) {
 			NP_Warn("UPDATE WENT WRONG: %s", NutPunch_GetLastError());
@@ -28,18 +28,20 @@ int main(int argc, char* argv[]) {
 	NP_Info("SENDING SHIT OUT");
 	for (int peer = 0; peer < NUTPUNCH_MAX_PLAYERS; peer++)
 		if (peer != NutPunch_LocalPeer() && NutPunch_PeerAlive(peer))
-			NutPunch_SendReliably(peer, WOWZA, sizeof(WOWZA));
+			NutPunch_SendReliably(peer, WOWZA, (int)strlen(WOWZA));
 
 	for (int i = 0; i < 30; i++) {
 		NutPunch_Update();
 		while (NutPunch_HasMessage()) {
-			char data[sizeof(WOWZA)] = "";
+			static char data[32] = "";
+			memset(data, 0, sizeof(data));
 			int size = sizeof(data), sender = NutPunch_NextMessage(data, &size);
-			printf("from %2d: %s", sender, data);
+			NP_Info("From %02d: %s", sender, data);
 		}
 		NP_SleepMs(100);
 	}
 
+	NutPunch_Cleanup();
 	NP_Info("DONE BYE");
 	return EXIT_SUCCESS;
 }
