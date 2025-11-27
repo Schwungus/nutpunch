@@ -1,7 +1,7 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include "NutPunch.h"
 
-static const char *LOBBY = "Zaloopah", *WOWZA = "FUCK YOU";
+static const char *LOBBY = "Zalooping", *WOWZA = "FUCK YOU";
 
 int main(int argc, char* argv[]) {
 	if (argc > 1)
