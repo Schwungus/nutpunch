@@ -16,10 +16,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	for (;;) {
-		if (NutPunch_Update() == NPS_Error) {
-			NP_Warn("UPDATE WENT WRONG: %s", NutPunch_GetLastError());
-			return EXIT_FAILURE;
-		}
+		if (NutPunch_Update() == NPS_Error)
+			goto fuck;
 		if (NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS && NutPunch_PeerCount() >= NutPunch_GetMaxPlayers())
 			break;
 		NP_SleepMs(100);
@@ -31,7 +29,8 @@ int main(int argc, char* argv[]) {
 			NutPunch_SendReliably(peer, WOWZA, (int)strlen(WOWZA));
 
 	for (int i = 0; i < 30; i++) {
-		NutPunch_Update();
+		if (NutPunch_Update() == NPS_Error)
+			goto fuck;
 		while (NutPunch_HasMessage()) {
 			static char data[32] = "";
 			memset(data, 0, sizeof(data));
@@ -44,4 +43,8 @@ int main(int argc, char* argv[]) {
 	NutPunch_Cleanup();
 	NP_Info("DONE BYE");
 	return EXIT_SUCCESS;
+
+fuck:
+	NP_Warn("UPDATE WENT WRONG: %s", NutPunch_GetLastError());
+	return EXIT_FAILURE;
 }
