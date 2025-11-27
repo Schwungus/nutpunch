@@ -679,14 +679,14 @@ static int NP_MakeReuseAddr(NP_Socket sock) {
 
 static int NP_BindSocket() {
 	const clock_t range = NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1;
-	NP_LazyInit();
-
 	NP_Addr local = {0};
+
+	NP_LazyInit();
 	NP_NukeSocket(&NP_Sock), NP_Sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
 	if (NP_Sock == NUTPUNCH_INVALID_SOCKET) {
 		NP_Warn("Failed to create the underlying UDP socket (%d)", NP_SockError());
-		return 0;
+		goto sockfail;
 	}
 
 	if (!NP_MakeReuseAddr(NP_Sock)) {
