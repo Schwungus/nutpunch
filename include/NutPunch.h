@@ -740,12 +740,14 @@ static int NutPunch_Connect(const char* lobby_id, bool sane) {
 }
 
 int NutPunch_Host(const char* lobby_id, int players) {
+	NP_LazyInit();
 	NP_HeartbeatFlags = NP_HB_Join | NP_HB_Create;
 	NutPunch_SetMaxPlayers(players);
 	return NutPunch_Connect(lobby_id, true);
 }
 
 int NutPunch_Join(const char* lobby_id) {
+	NP_LazyInit();
 	NP_HeartbeatFlags = NP_HB_Join;
 	return NutPunch_Connect(lobby_id, true);
 }
@@ -773,6 +775,8 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
 		NP_Warn("Filter count exceeded in `NutPunch_FindLobbies`; truncating...");
 		filter_count = NUTPUNCH_SEARCH_FILTERS_MAX;
 	}
+
+	NP_LazyInit();
 	NP_Querying = NutPunch_Connect(NULL, false);
 	NutPunch_Memcpy(NP_Filters, filters, filter_count * sizeof(*filters));
 }
