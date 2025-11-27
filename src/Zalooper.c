@@ -1,7 +1,7 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include "NutPunch.h"
 
-#define LOBBY "Zaloopa"
+#define LOBBY "Zaloopah"
 #define WOWZA "FUCK YOU"
 
 int main(int argc, char* argv[]) {
