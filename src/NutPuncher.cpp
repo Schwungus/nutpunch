@@ -464,8 +464,13 @@ static int receive() {
 	if (!flags) // wtf do you want??
 		return RecvKeepGoing;
 
-	if ((lobbies.count(id) && !(flags & NP_HB_Join)) || (!lobbies.count(id) && !(flags & NP_HB_Create)))
+	if (lobbies.count(id) && !(flags & NP_HB_Join))
 		goto exists;
+	if (!lobbies.count(id) && !(flags & NP_HB_Create)) {
+		addr.gtfo(NPE_NoSuchLobby);
+		return RecvKeepGoing;
+	}
+
 	if (!lobbies.count(id) && lobbies.size() >= max_lobbies) {
 		addr.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
 		NP_Warn("Reached lobby limit");
