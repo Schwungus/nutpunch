@@ -848,9 +848,6 @@ NP_MakeHandler(NP_HandleGTFO) {
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
-	NP_LastStatus = NPS_Error;
-	NutPunch_Disconnect();
-
 	switch (*data) {
 	case NPE_NoSuchLobby:
 		NP_Warn("Lobby doesn't exist");
@@ -865,6 +862,8 @@ NP_MakeHandler(NP_HandleGTFO) {
 		NP_Warn("Unidentified error");
 		break;
 	}
+
+	NP_LastStatus = NPS_Error;
 }
 
 static void NP_PrintLocalPeer(const uint8_t* data) {
