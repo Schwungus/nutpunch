@@ -143,8 +143,11 @@ enum {
 
 enum {
 	NPE_Ok,
+	NPE_Sybau,
 	NPE_NoSuchLobby,
 	NPE_LobbyExists,
+	NPE_LobbyFull,
+	NPE_Max,
 };
 
 /// Set a custom NutPuncher server address.
@@ -848,21 +851,18 @@ NP_MakeHandler(NP_HandleGTFO) {
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
-	switch (*data) {
-	case NPE_NoSuchLobby:
-		NP_Warn("Lobby doesn't exist");
-		break;
-	case NPE_LobbyExists:
-		NP_Warn("Lobby already exists");
-		break;
-	case NPE_Ok:
-		NP_Warn("wtf bro");
-		break;
-	default:
-		NP_Warn("Unidentified error");
-		break;
-	}
+	// Have to work around designated array initializers for NutPuncher to compile...
+	const char* msg[NPE_Max] = {0};
+	msg[NPE_NoSuchLobby] = "Lobby doesn't exist";
+	msg[NPE_LobbyExists] = "Lobby already exists";
+	msg[NPE_LobbyFull] = "Lobby is full";
+	msg[NPE_Sybau] = "sybau :wilted_rose:";
 
+	int idx = *data;
+	if (idx <= NPE_Ok || idx >= NPE_Max)
+		NP_Warn("Unidentified error");
+	else
+		NP_Warn("%s", msg[idx]);
 	NP_LastStatus = NPS_Error;
 }
 

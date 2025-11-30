@@ -461,8 +461,10 @@ static int receive() {
 	auto flags = *reinterpret_cast<const NP_HeartbeatFlagsStorage*>(ptr);
 	ptr += sizeof(flags);
 
-	if (!flags) // wtf do you want??
+	if (!flags) { // wtf do you want??
+		addr.gtfo(NPE_Sybau);
 		return RecvKeepGoing;
+	}
 
 	if (lobbies.count(id) && !(flags & NP_HB_Join))
 		goto exists;
@@ -506,14 +508,14 @@ static int receive() {
 				continue;
 		}
 
+		NP_Info("Peer %d joined lobby '%s'", i + 1, fmt_lobby_id(id));
 		players[i].addr = addr;
 		lobbies[id].accept(i, flags, ptr);
 
-		NP_Info("Peer %d joined lobby '%s'", i + 1, fmt_lobby_id(id));
 		return RecvKeepGoing;
 	}
 
-	NP_Info("Lobby '%s' is full!", fmt_lobby_id(id));
+	addr.gtfo(NPE_LobbyFull);
 	return RecvKeepGoing;
 
 exists:
