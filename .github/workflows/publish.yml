@@ -90,7 +90,7 @@ jobs:
       BINARY: /usr/local/bin/NutPuncher-${{ github.ref_name }}
     steps:
       - name: Deploy
-        uses: appleboy/ssh-action@v1.2.3
+        uses: appleboy/ssh-action@v1.2.4
         with:
           host: nutpunch.schwung.us
           username: root
