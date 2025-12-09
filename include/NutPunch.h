@@ -53,6 +53,11 @@ extern "C" {
 #define NUTPUNCH_SERVER_PORT (30000)
 #endif
 
+#ifndef NUTPUNCH_TIMEOUT_SECS
+/// How many seconds to wait for NutPuncher to respond before disconnecting.
+#define NUTPUNCH_TIMEOUT_SECS 5
+#endif
+
 /// The maximum length of a lobby identifier excluding the null terminator. Not customizable.
 #define NUTPUNCH_ID_MAX (32)
 
@@ -404,7 +409,7 @@ typedef struct {
 NP_MakeHandler(NP_HandleShalom);
 NP_MakeHandler(NP_HandleDisconnect);
 NP_MakeHandler(NP_HandleGTFO);
-NP_MakeHandler(NP_HandleBeat);
+NP_MakeHandler(NP_HandleBeating);
 NP_MakeHandler(NP_HandleList);
 NP_MakeHandler(NP_HandleAcky);
 NP_MakeHandler(NP_HandleData);
@@ -413,13 +418,15 @@ static const NP_MessageType NP_Messages[] = {
 	{{'S', 'H', 'L', 'M'}, NP_HandleShalom,     1          },
 	{{'D', 'I', 'S', 'C'}, NP_HandleDisconnect, 0          },
 	{{'G', 'T', 'F', 'O'}, NP_HandleGTFO,       1          },
-	{{'B', 'E', 'A', 'T'}, NP_HandleBeat,       NP_BEAT_LEN},
+	{{'B', 'E', 'A', 'T'}, NP_HandleBeating,    NP_BEAT_LEN},
 	{{'L', 'I', 'S', 'T'}, NP_HandleList,       NP_LIST_LEN},
 	{{'A', 'C', 'K', 'Y'}, NP_HandleAcky,       NP_ACKY_LEN},
 	{{'D', 'A', 'T', 'A'}, NP_HandleData,       -1         },
 };
 
 static char NP_LastError[512] = "";
+static clock_t NP_LastBeating = 0;
+
 static bool NP_InitDone = false, NP_Closing = false;
 static int NP_LastStatus = NPS_Idle;
 
@@ -512,6 +519,7 @@ static void NP_NukeSocket(NP_Socket* sock) {
 }
 
 static void NP_ResetImpl() {
+	NP_LastBeating = clock();
 	NP_NukeRemote(), NP_NukeLobbyData();
 	NP_NukeSocket(&NP_Sock);
 }
@@ -899,13 +907,14 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	NP_Trace("SENT HI %s (%d)", NP_FormatAddr(peer), result >= 0 ? 0 : NP_SockError());
 }
 
-NP_MakeHandler(NP_HandleBeat) {
+NP_MakeHandler(NP_HandleBeating) {
 	NP_Trace("RECEIVED A BEATING FROM %s", NP_FormatAddr(peer));
 
 	if (!NP_AddrEq(peer, NP_PuncherAddr))
 		return;
 
 	NP_Trace("AND EVEN PROCESSED IT!");
+	NP_LastBeating = clock();
 
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS, was_slave = !NutPunch_IsMaster();
 	const int meta_size = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
@@ -1120,6 +1129,11 @@ static void NP_FlushOutQueue() {
 }
 
 static void NP_RealUpdate() {
+	if (clock() - NP_LastBeating >= NUTPUNCH_TIMEOUT_SECS * CLOCKS_PER_SEC) {
+		NP_Warn("NutPuncher connection timed out!");
+		goto error;
+	}
+
 	if (!NP_SendHeartbeat())
 		goto sockfail;
 
@@ -1151,6 +1165,7 @@ flush:
 
 sockfail:
 	NP_Warn("Something went wrong with your socket!");
+error:
 	NP_NukeLobbyData(), NP_LastStatus = NPS_Error;
 }
 
