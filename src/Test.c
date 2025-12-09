@@ -8,6 +8,7 @@ static FILE* logfile = NULL; // gotta use a logfile since we're drawing to the c
 	do { fprintf(logfile, msg "\n", ##__VA_ARGS__), fflush(logfile); } while (0);
 
 #define NUTPUNCH_IMPLEMENTATION
+// #define NUTPUNCH_TRACING
 #include <NutPunch.h>
 
 #define POOR_IMPLEMENTATION
