@@ -5,7 +5,9 @@
 
 static FILE* logfile = NULL; // gotta use a logfile since we're drawing to the console
 #define NutPunch_Log(msg, ...)                                                                                         \
-	do { fprintf(logfile, msg "\n", ##__VA_ARGS__), fflush(logfile); } while (0);
+	do {                                                                                                           \
+		fprintf(logfile, msg "\n", ##__VA_ARGS__), fflush(logfile);                                            \
+	} while (0);
 
 #define NUTPUNCH_IMPLEMENTATION
 // #define NUTPUNCH_TRACING
@@ -183,11 +185,9 @@ int main(int argc, char* argv[]) {
 		move_our_dot();
 		send_shit();
 
-		if (NPS_Error == status)
-			NP_Warn("%s", NutPunch_GetLastError());
-		else if (NPS_Online == status)
+		if (NPS_Online == status)
 			draw_players();
-		else
+		else if (NPS_Error != status)
 			maybe_join_netgame();
 		if (poor_key_pressed(POOR_K)) {
 			NutPunch_Reset();
