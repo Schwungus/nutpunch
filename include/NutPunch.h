@@ -91,11 +91,13 @@ extern "C" {
 	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
 		+ 2 * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 
+#ifndef NUTPUNCH_NOSTD
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
+#endif
 
 typedef struct {
 	char name[NUTPUNCH_FIELD_NAME_MAX];
