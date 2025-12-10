@@ -830,7 +830,7 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 }
 
 static void NP_KillPeer(int peer) {
-	NutPunch_Memset(NP_Peers + peer, 0, sizeof(*NP_Peers));
+	NP_Memzero2(NP_Peers + peer);
 }
 
 static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx index) {
