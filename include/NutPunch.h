@@ -385,10 +385,7 @@ typedef int64_t NP_Socket;
 #endif
 
 typedef uint32_t NP_PacketIdx;
-
-typedef struct {
-	struct sockaddr_storage raw;
-} NP_Addr;
+typedef struct sockaddr_storage NP_Addr;
 
 typedef struct {
 	NP_Addr addr;
@@ -470,19 +467,19 @@ enum {
 };
 
 static uint16_t* NP_AddrFamily(NP_Addr* addr) {
-	return (uint16_t*)&((struct sockaddr_in*)&addr->raw)->sin_family;
+	return (uint16_t*)&((struct sockaddr_in*)addr)->sin_family;
 }
 
 static uint32_t* NP_AddrRaw(NP_Addr* addr) {
-	return (uint32_t*)&((struct sockaddr_in*)&addr->raw)->sin_addr.s_addr;
+	return (uint32_t*)&((struct sockaddr_in*)addr)->sin_addr.s_addr;
 }
 
 static uint16_t* NP_AddrPort(NP_Addr* addr) {
-	return &((struct sockaddr_in*)&addr->raw)->sin_port;
+	return &((struct sockaddr_in*)addr)->sin_port;
 }
 
 static bool NP_AddrEq(NP_Addr a, NP_Addr b) {
-	return !NutPunch_Memcmp(&a.raw, &b.raw, 4);
+	return !NutPunch_Memcmp(&a, &b, 4);
 }
 
 static bool NP_AddrNull(NP_Addr addr) {
@@ -673,8 +670,8 @@ static int NP_ResolveNutpuncher() {
 		return 0;
 	}
 
-	NP_Memzero2(&NP_PuncherAddr.raw);
-	NutPunch_Memcpy(&NP_PuncherAddr.raw, resolved->ai_addr, resolved->ai_addrlen);
+	NP_Memzero2(&NP_PuncherAddr);
+	NutPunch_Memcpy(&NP_PuncherAddr, resolved->ai_addr, resolved->ai_addrlen);
 	freeaddrinfo(resolved);
 
 	NP_Info("Resolved NutPuncher address");
@@ -725,7 +722,7 @@ static int NP_BindSocket() {
 	*NP_AddrPort(&local) = htons(NUTPUNCH_PORT_MIN + clock() % range);
 	*NP_AddrRaw(&local) = htonl(INADDR_ANY);
 
-	if (!bind(NP_Sock, (struct sockaddr*)&local.raw, sizeof(local.raw)))
+	if (!bind(NP_Sock, (struct sockaddr*)&local, sizeof(local)))
 		return 1;
 
 	NP_Warn("Failed to bind a UDP socket (%d)", NP_SockError());
@@ -822,7 +819,7 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 #ifdef NUTPUNCH_WINDOSE
 	// Can't use inet_ntop directly since we're keeping compatibility with WinXP, and that doesn't have it.
 	DWORD size = (DWORD)sizeof(buf);
-	WSAAddressToString((struct sockaddr*)&addr.raw, sizeof(struct sockaddr_storage), NULL, buf, &size);
+	WSAAddressToString((struct sockaddr*)&addr, sizeof(NP_Addr), NULL, buf, &size);
 #else
 	static char inet[64] = "";
 	NP_Memzero(inet), inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, inet, sizeof(inet));
@@ -925,8 +922,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
 	shalom[NUTPUNCH_HEADER_SIZE] = NP_LocalPeer;
 
-	int result = sendto(
-		NP_Sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer_addr.raw, sizeof(peer_addr.raw));
+	int result = sendto(NP_Sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer_addr, sizeof(peer_addr));
 	NP_Trace("SENT HI %s (%d)", NP_FormatAddr(peer_addr), result >= 0 ? 0 : NP_SockError());
 }
 
@@ -1039,8 +1035,8 @@ static int NP_SendHeartbeat() {
 		NutPunch_Memcpy(ptr, NP_LobbyMetadataOut, meta_size), ptr += meta_size;
 	}
 
-	if (0 <= sendto(NP_Sock, heartbeat, (int)(ptr - heartbeat), 0, (const struct sockaddr*)&NP_PuncherAddr.raw,
-		    sizeof(NP_PuncherAddr.raw)))
+	const int len = (int)(ptr - heartbeat);
+	if (0 <= sendto(NP_Sock, heartbeat, len, 0, (struct sockaddr*)&NP_PuncherAddr, sizeof(NP_PuncherAddr)))
 		return 1;
 
 	switch (NP_SockError()) {
@@ -1058,7 +1054,7 @@ static int NP_ReceiveShit() {
 	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return 1;
 
-	struct sockaddr_storage addr = {0};
+	NP_Addr addr = {0};
 	socklen_t addr_size = sizeof(addr);
 
 	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
@@ -1071,7 +1067,7 @@ static int NP_ReceiveShit() {
 	}
 	if (!size) // graceful disconnection
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (!NutPunch_Memcmp(&addr, &NP_Peers[i].addr.raw, sizeof(addr))) {
+			if (!NutPunch_Memcmp(&addr, &NP_Peers[i].addr, sizeof(addr))) {
 				NP_KillPeer(i);
 				return 0;
 			}
@@ -1081,14 +1077,13 @@ static int NP_ReceiveShit() {
 	size -= NUTPUNCH_HEADER_SIZE;
 	NP_Trace("RECEIVED %d BYTES OF SHIT", size);
 
-	const NP_Addr peer = {.raw = addr};
 	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
 		const NP_MessageType type = NP_Messages[i];
 		if (!NutPunch_Memcmp(buf, type.identifier, NUTPUNCH_HEADER_SIZE)
 			&& (type.packet_size < 0 || size == type.packet_size))
 		{
 			NP_Message msg = {0};
-			msg.addr = peer, msg.size = size;
+			msg.addr = addr, msg.size = size;
 			msg.data = (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE);
 			type.handle(msg);
 			break;
@@ -1143,9 +1138,7 @@ static void NP_FlushOutQueue() {
 		}
 
 		NP_Addr addr = NP_Peers[cur->peer].addr;
-		int result
-			= sendto(NP_Sock, cur->data, (int)cur->size, 0, (struct sockaddr*)&addr.raw, sizeof(addr.raw));
-
+		int result = sendto(NP_Sock, cur->data, (int)cur->size, 0, (struct sockaddr*)&addr, sizeof(addr));
 		if (!result)
 			NP_KillPeer(cur->peer);
 		if (result >= 0 || NP_SockError() == NP_WouldBlock || NP_SockError() == NP_ConnReset)

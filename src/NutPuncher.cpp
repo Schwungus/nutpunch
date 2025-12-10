@@ -176,20 +176,20 @@ private:
 
 struct Addr : NP_Addr {
 	Addr() {
-		std::memset(&raw, 0, sizeof(raw));
+		std::memset(this, 0, sizeof(*this));
 	}
 
 	sockaddr_in* v4() {
-		return reinterpret_cast<sockaddr_in*>(&raw);
+		return reinterpret_cast<sockaddr_in*>(this);
 	}
 
 	const sockaddr_in* v4() const {
-		return reinterpret_cast<const sockaddr_in*>(&raw);
+		return reinterpret_cast<const sockaddr_in*>(this);
 	}
 
 	template <typename T> int send(const T buf[], size_t size) const {
 		return sendto(sock, reinterpret_cast<const char*>(buf), static_cast<int>(size), 0,
-			reinterpret_cast<const sockaddr*>(&raw), sizeof(raw));
+			reinterpret_cast<const sockaddr*>(this), sizeof(*this));
 	}
 
 	int gtfo(uint8_t error) const {
@@ -340,7 +340,7 @@ private:
 };
 
 static void bind_sock() {
-	sockaddr_storage addr = {0};
+	NP_Addr addr = {0};
 
 	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == NUTPUNCH_INVALID_SOCKET) {
@@ -433,7 +433,7 @@ static int receive() {
 	socklen_t addr_size = sizeof(struct sockaddr_in);
 	Addr addr;
 
-	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr.raw), &addr_size);
+	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr), &addr_size);
 	if (rcv < 0)
 		switch (NP_SockError()) {
 		case NP_ConnReset:
@@ -487,7 +487,7 @@ static int receive() {
 
 	players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!players[i].dead() && !std::memcmp(&players[i].addr.raw, &addr.raw, sizeof(addr.raw))) {
+		if (!players[i].dead() && !std::memcmp(&players[i].addr, &addr, sizeof(addr))) {
 			lobbies[id].accept(i, flags, ptr);
 			return RecvKeepGoing;
 		}
