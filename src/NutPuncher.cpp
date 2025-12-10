@@ -526,7 +526,7 @@ static int receive() {
 		}
 
 		NP_Info("Peer %d joined lobby '%s'", i + 1, fmt_lobby_id(id));
-		players[i].public_addr = addr;
+		players[i].public_addr = addr, players[i].internal_addr = internal_addr;
 		lobbies[id].accept(i, flags, ptr);
 
 		return RecvKeepGoing;
