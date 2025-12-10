@@ -1035,7 +1035,7 @@ static int NP_SendHeartbeat() {
 		socklen_t addr_size = sizeof(internal_addr);
 		getsockname(NP_Sock, (struct sockaddr*)&internal_addr, &addr_size);
 		NutPunch_Memcpy(ptr, NP_AddrRaw(&internal_addr), 4), ptr += 4;
-		NutPunch_Memcpy(ptr, NP_AddrPort(&internal_addr), 4), ptr += 2;
+		NutPunch_Memcpy(ptr, NP_AddrPort(&internal_addr), 2), ptr += 2;
 
 		// TODO: make sure to correct endianness when multibyte flags become a thing.
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags, ptr += sizeof(NP_HeartbeatFlags);
