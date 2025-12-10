@@ -1,4 +1,5 @@
 #define NUTPUNCH_IMPLEMENTATION
+#define NUTPUNCH_TRACING
 #include "NutPunch.h"
 
 static const char *LOBBY = "Zalooping", *WOWZA = "FUCK YOU";
