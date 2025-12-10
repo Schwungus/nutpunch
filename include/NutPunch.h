@@ -105,9 +105,10 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
-#include <time.h>
 #endif
+
+// we still depend on `time.h` through `clock_t` and `clock()` though.
+#include <time.h>
 
 typedef struct {
 	char name[NUTPUNCH_FIELD_NAME_MAX];
@@ -292,6 +293,7 @@ const char* NutPunch_GetLastError();
 const char* NutPunch_Basename(const char* path);
 
 #ifndef NutPunch_Log
+#include <stdio.h>
 #define NutPunch_Log(msg, ...)                                                                                         \
 	do {                                                                                                           \
 		fprintf(stdout, "(%s:%d) " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);            \

@@ -80,6 +80,7 @@ Then `#include <NutPunch.h>` wherever you need to use it. Here's a really simple
 
 ```c
 #include <stdlib.h> // for EXIT_SUCCESS
+
 #include <NutPunch.h>
 
 int main(int argc, char* argv[]) {
@@ -117,12 +118,15 @@ SDL3 example:
 #include <SDL3/SDL_stdinc.h>
 
 #define NUTPUNCH_IMPLEMENTATION
+#define NUTPUNCH_NOSTD
+
 #define NutPunch_SNPrintF SDL_snprintf
 #define NutPunch_Memcmp SDL_memcmp
 #define NutPunch_Memset SDL_memset
 #define NutPunch_Memcpy SDL_memcpy
 #define NutPunch_Malloc SDL_malloc
 #define NutPunch_Free SDL_free
+
 #include <NutPunch.h>
 ```
 
@@ -132,7 +136,10 @@ Just like in the example above, you can override NutPunch's logging facility bef
 
 ```c
 #define NUTPUNCH_IMPLEMENTATION
+
+#include <stdio.h>
 #define NutPunch_Log(...) printf(__VA_ARGS__)
+
 #include <NutPunch.h>
 ```
 
