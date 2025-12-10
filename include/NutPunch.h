@@ -405,8 +405,14 @@ typedef struct NP_DataMessage {
 } NP_DataMessage;
 
 typedef struct {
+	NP_Addr addr;
+	int size;
+	const uint8_t* data;
+} NP_Message;
+
+typedef struct {
 	const char identifier[NUTPUNCH_HEADER_SIZE];
-	void (*const handle)(NP_Addr, int, const uint8_t*);
+	void (*const handle)(NP_Message);
 	const int packet_size;
 } NP_MessageType;
 
@@ -414,14 +420,8 @@ typedef struct {
 #define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (2 + NUTPUNCH_ID_MAX))
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
-#define NP_MakeHandler(name) static void name(NP_Addr peer_addr, int size, const uint8_t* data)
-NP_MakeHandler(NP_HandleShalom);
-NP_MakeHandler(NP_HandleDisconnect);
-NP_MakeHandler(NP_HandleGTFO);
-NP_MakeHandler(NP_HandleBeating);
-NP_MakeHandler(NP_HandleList);
-NP_MakeHandler(NP_HandleAcky);
-NP_MakeHandler(NP_HandleData);
+static void NP_HandleShalom(NP_Message), NP_HandleDisconnect(NP_Message), NP_HandleGTFO(NP_Message),
+	NP_HandleBeating(NP_Message), NP_HandleList(NP_Message), NP_HandleAcky(NP_Message), NP_HandleData(NP_Message);
 
 static const NP_MessageType NP_Messages[] = {
 	{{'S', 'H', 'L', 'M'}, NP_HandleShalom,     1          },
@@ -853,37 +853,37 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 	NutPunch_Memcpy(NP_QueueOut->data, data, size);
 }
 
-NP_MakeHandler(NP_HandleShalom) {
-	const uint8_t idx = *data;
+static void NP_HandleShalom(NP_Message msg) {
+	const uint8_t idx = *msg.data;
 	if (idx < NUTPUNCH_MAX_PLAYERS) {
-		NP_Peers[idx].addr = peer_addr;
+		NP_Peers[idx].addr = msg.addr;
 		NP_Peers[idx].last_beating = clock();
 	}
-	NP_Trace("SHALOM %d = %s", idx, NP_FormatAddr(peer_addr));
+	NP_Trace("SHALOM %d = %s", idx, NP_FormatAddr(msg.addr));
 }
 
-NP_MakeHandler(NP_HandleDisconnect) {
+static void NP_HandleDisconnect(NP_Message msg) {
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (NP_AddrEq(peer_addr, NP_Peers[i].addr))
+		if (NP_AddrEq(msg.addr, NP_Peers[i].addr))
 			NP_KillPeer(i);
 }
 
-NP_MakeHandler(NP_HandleGTFO) {
-	if (!NP_AddrEq(peer_addr, NP_PuncherAddr))
+static void NP_HandleGTFO(NP_Message msg) {
+	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
 
 	// Have to work around designated array initializers for NutPuncher to compile...
-	const char* msg[NPE_Max] = {0};
-	msg[NPE_NoSuchLobby] = "Lobby doesn't exist";
-	msg[NPE_LobbyExists] = "Lobby already exists";
-	msg[NPE_LobbyFull] = "Lobby is full";
-	msg[NPE_Sybau] = "sybau :wilted_rose:";
+	const char* errors[NPE_Max] = {0};
+	errors[NPE_NoSuchLobby] = "Lobby doesn't exist";
+	errors[NPE_LobbyExists] = "Lobby already exists";
+	errors[NPE_LobbyFull] = "Lobby is full";
+	errors[NPE_Sybau] = "sybau :wilted_rose:";
 
-	int idx = *data;
+	int idx = msg.data[0];
 	if (idx <= NPE_Ok || idx >= NPE_Max)
 		NP_Warn("Unidentified error");
 	else
-		NP_Warn("%s", msg[idx]);
+		NP_Warn("%s", errors[idx]);
 	NP_LastStatus = NPS_Error;
 }
 
@@ -930,10 +930,10 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	NP_Trace("SENT HI %s (%d)", NP_FormatAddr(peer_addr), result >= 0 ? 0 : NP_SockError());
 }
 
-NP_MakeHandler(NP_HandleBeating) {
-	NP_Trace("RECEIVED A BEATING FROM %s", NP_FormatAddr(peer_addr));
+static void NP_HandleBeating(NP_Message msg) {
+	NP_Trace("RECEIVED A BEATING FROM %s", NP_FormatAddr(msg.addr));
 
-	if (!NP_AddrEq(peer_addr, NP_PuncherAddr))
+	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
 
 	NP_Trace("AND EVEN PROCESSED IT!");
@@ -943,23 +943,23 @@ NP_MakeHandler(NP_HandleBeating) {
 	const int meta_size = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + meta_size;
 
-	NP_LocalPeer = *data++, NP_ResponseFlags = *data++;
+	NP_LocalPeer = *msg.data++, NP_ResponseFlags = *msg.data++;
 	if (just_joined)
-		NP_PrintLocalPeer(data + NP_LocalPeer * stride);
+		NP_PrintLocalPeer(msg.data + NP_LocalPeer * stride);
 	if (NutPunch_IsMaster() && was_slave)
 		NP_Info("We're the lobby's master now");
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		NP_SayShalom(i, data), data += NUTPUNCH_ADDRESS_SIZE;
-		NutPunch_Memcpy(NP_PeerMetadataIn[i], data, meta_size), data += meta_size;
+		NP_SayShalom(i, msg.data), msg.data += NUTPUNCH_ADDRESS_SIZE;
+		NutPunch_Memcpy(NP_PeerMetadataIn[i], msg.data, meta_size), msg.data += meta_size;
 	}
-	NutPunch_Memcpy(NP_LobbyMetadataIn, data, meta_size);
+	NutPunch_Memcpy(NP_LobbyMetadataIn, msg.data, meta_size);
 }
 
-NP_MakeHandler(NP_HandleList) {
-	NP_Trace("RECEIVED A LISTING FROM %s", NP_FormatAddr(peer_addr));
+static void NP_HandleList(NP_Message msg) {
+	NP_Trace("RECEIVED A LISTING FROM %s", NP_FormatAddr(msg.addr));
 
-	if (!NP_AddrEq(peer_addr, NP_PuncherAddr))
+	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
 
 	NP_Trace("AND EVEN PROCESSED IT!");
@@ -968,17 +968,17 @@ NP_MakeHandler(NP_HandleList) {
 	NP_Memzero(NP_Lobbies);
 
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++) {
-		NP_Lobbies[i].players = *(uint8_t*)(data++);
-		NP_Lobbies[i].capacity = *(uint8_t*)(data++);
-		NutPunch_Memcpy(NP_Lobbies[i].name, data, idlen), data += idlen;
+		NP_Lobbies[i].players = *(uint8_t*)(msg.data++);
+		NP_Lobbies[i].capacity = *(uint8_t*)(msg.data++);
+		NutPunch_Memcpy(NP_Lobbies[i].name, msg.data, idlen), msg.data += idlen;
 		NP_Lobbies[i].name[NUTPUNCH_ID_MAX] = '\0';
 	}
 }
 
-NP_MakeHandler(NP_HandleData) {
+static void NP_HandleData(NP_Message msg) {
 	int peer_idx = NUTPUNCH_MAX_PLAYERS;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (NP_AddrEq(peer_addr, NP_Peers[i].addr)) {
+		if (NP_AddrEq(msg.addr, NP_Peers[i].addr)) {
 			peer_idx = i;
 			break;
 		}
@@ -988,8 +988,8 @@ NP_MakeHandler(NP_HandleData) {
 
 	NP_Peers[peer_idx].last_beating = clock();
 
-	const NP_PacketIdx net_index = *(NP_PacketIdx*)data, index = ntohl(net_index);
-	size -= sizeof(index), data += sizeof(index);
+	const NP_PacketIdx net_index = *(NP_PacketIdx*)msg.data, index = ntohl(net_index);
+	msg.size -= sizeof(index), msg.data += sizeof(index);
 
 	if (index) {
 		static char ack[NUTPUNCH_HEADER_SIZE + sizeof(net_index)] = "ACKY";
@@ -999,14 +999,14 @@ NP_MakeHandler(NP_HandleData) {
 
 	NP_DataMessage* next = NP_QueueIn;
 	NP_QueueIn = (NP_DataMessage*)NutPunch_Malloc(sizeof(*next));
-	NP_QueueIn->data = (char*)NutPunch_Malloc(size);
-	NutPunch_Memcpy(NP_QueueIn->data, data, size);
-	NP_QueueIn->peer = peer_idx, NP_QueueIn->size = size;
+	NP_QueueIn->data = (char*)NutPunch_Malloc(msg.size);
+	NutPunch_Memcpy(NP_QueueIn->data, msg.data, msg.size);
+	NP_QueueIn->peer = peer_idx, NP_QueueIn->size = msg.size;
 	NP_QueueIn->next = next;
 }
 
-NP_MakeHandler(NP_HandleAcky) {
-	NP_PacketIdx index = ntohl(*(NP_PacketIdx*)data);
+static void NP_HandleAcky(NP_Message msg) {
+	NP_PacketIdx index = ntohl(*(NP_PacketIdx*)msg.data);
 	for (NP_DataMessage* ptr = NP_QueueOut; ptr; ptr = ptr->next)
 		if (ptr->index == index) {
 			ptr->dead = true;
@@ -1087,7 +1087,10 @@ static int NP_ReceiveShit() {
 		if (!NutPunch_Memcmp(buf, type.identifier, NUTPUNCH_HEADER_SIZE)
 			&& (type.packet_size < 0 || size == type.packet_size))
 		{
-			type.handle(peer, size, (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE));
+			NP_Message msg = {0};
+			msg.addr = peer, msg.size = size;
+			msg.data = (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE);
+			type.handle(msg);
 			break;
 		}
 	}
