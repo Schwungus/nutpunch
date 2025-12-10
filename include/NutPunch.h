@@ -254,7 +254,7 @@ void NutPunch_Disconnect();
 /// ```
 /// NutPunch_Filter filters[2] = {0};
 ///
-/// // 2 players capacity:
+/// // exactly 2 players capacity:
 /// filters[0].special.index = NPSF_Capacity;
 /// filters[0].special.value = 2;
 /// filters[0].comparison = NPF_Eq;
@@ -1071,7 +1071,7 @@ static int NP_ReceiveShit() {
 }
 
 static void NP_PruneOutQueue() {
-findNext:
+find_next:
 	for (NP_DataMessage* ptr = NP_QueueOut; ptr; ptr = ptr->next) {
 		if (!ptr->dead)
 			continue;
@@ -1081,7 +1081,7 @@ findNext:
 				other->next = ptr->next;
 				NutPunch_Free(ptr->data);
 				NutPunch_Free(ptr);
-				goto findNext;
+				goto find_next;
 			}
 
 		if (ptr == NP_QueueOut)
@@ -1089,7 +1089,7 @@ findNext:
 		else
 			NP_QueueOut->next = ptr->next;
 		NutPunch_Free(ptr->data), NutPunch_Free(ptr);
-		goto findNext;
+		goto find_next;
 	}
 }
 
@@ -1128,7 +1128,7 @@ static void NP_FlushOutQueue() {
 	}
 }
 
-static void NP_RealUpdate() {
+static void NP_NetworkUpdate() {
 	if (clock() - NP_LastBeating >= NUTPUNCH_TIMEOUT_SECS * CLOCKS_PER_SEC) {
 		NP_Warn("NutPuncher connection timed out!");
 		goto error;
@@ -1166,7 +1166,7 @@ flush:
 sockfail:
 	NP_Warn("Something went wrong with your socket!");
 error:
-	NP_NukeLobbyData(), NP_LastStatus = NPS_Error;
+	NP_LastStatus = NPS_Error;
 }
 
 int NutPunch_Update() {
@@ -1176,7 +1176,7 @@ int NutPunch_Update() {
 		return NPS_Idle;
 
 	NP_LastStatus = NPS_Online;
-	NP_RealUpdate();
+	NP_NetworkUpdate();
 	NP_Trace("UPDATE OK NICE");
 
 	if (NP_LastStatus == NPS_Error) {
@@ -1190,7 +1190,7 @@ int NutPunch_Update() {
 void NutPunch_Disconnect() {
 	NP_Info("Disconnecting from lobby (if any)");
 	if (NP_LastStatus == NPS_Online)
-		NP_Closing = true, NP_RealUpdate();
+		NP_Closing = true, NP_NetworkUpdate();
 	NutPunch_Reset();
 }
 
