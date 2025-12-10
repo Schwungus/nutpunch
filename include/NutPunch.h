@@ -53,9 +53,14 @@ extern "C" {
 #define NUTPUNCH_SERVER_PORT (30000)
 #endif
 
-#ifndef NUTPUNCH_TIMEOUT_SECS
+#ifndef NUTPUNCH_SERVER_TIMEOUT_SECS
 /// How many seconds to wait for NutPuncher to respond before disconnecting.
-#define NUTPUNCH_TIMEOUT_SECS 5
+#define NUTPUNCH_SERVER_TIMEOUT_SECS 3
+#endif
+
+#ifndef NUTPUNCH_PEER_TIMEOUT_SECS
+/// How many seconds to wait for a peer to respond before timing out.
+#define NUTPUNCH_PEER_TIMEOUT_SECS 5
 #endif
 
 /// The maximum length of a lobby identifier excluding the null terminator. Not customizable.
@@ -385,6 +390,11 @@ typedef struct {
 	struct sockaddr_storage raw;
 } NP_Addr;
 
+typedef struct {
+	NP_Addr addr;
+	clock_t last_beating, first_shalom;
+} NP_Peer;
+
 typedef struct NP_DataMessage {
 	char* data;
 	struct NP_DataMessage* next;
@@ -404,7 +414,7 @@ typedef struct {
 #define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (2 + NUTPUNCH_ID_MAX))
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
-#define NP_MakeHandler(name) static void name(NP_Addr peer, int size, const uint8_t* data)
+#define NP_MakeHandler(name) static void name(NP_Addr peer_addr, int size, const uint8_t* data)
 NP_MakeHandler(NP_HandleShalom);
 NP_MakeHandler(NP_HandleDisconnect);
 NP_MakeHandler(NP_HandleGTFO);
@@ -430,7 +440,7 @@ static bool NP_InitDone = false, NP_Closing = false;
 static int NP_LastStatus = NPS_Idle;
 
 static char NP_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
-static NP_Addr NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
+static NP_Peer NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static uint8_t NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
 
 static NP_Socket NP_Sock = NUTPUNCH_INVALID_SOCKET;
@@ -845,19 +855,21 @@ static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx inde
 
 NP_MakeHandler(NP_HandleShalom) {
 	const uint8_t idx = *data;
-	if (idx < NUTPUNCH_MAX_PLAYERS)
-		NP_Peers[idx] = peer;
-	NP_Trace("SHALOM %d = %s", idx, NP_FormatAddr(peer));
+	if (idx < NUTPUNCH_MAX_PLAYERS) {
+		NP_Peers[idx].addr = peer_addr;
+		NP_Peers[idx].last_beating = clock();
+	}
+	NP_Trace("SHALOM %d = %s", idx, NP_FormatAddr(peer_addr));
 }
 
 NP_MakeHandler(NP_HandleDisconnect) {
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (NP_AddrEq(peer, NP_Peers[i]))
+		if (NP_AddrEq(peer_addr, NP_Peers[i].addr))
 			NP_KillPeer(i);
 }
 
 NP_MakeHandler(NP_HandleGTFO) {
-	if (!NP_AddrEq(peer, NP_PuncherAddr))
+	if (!NP_AddrEq(peer_addr, NP_PuncherAddr))
 		return;
 
 	// Have to work around designated array initializers for NutPuncher to compile...
@@ -886,30 +898,42 @@ static void NP_PrintLocalPeer(const uint8_t* data) {
 static void NP_SayShalom(int idx, const uint8_t* data) {
 	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return;
-	if (idx == NP_LocalPeer || NutPunch_PeerAlive(idx))
+
+	if (NutPunch_PeerAlive(idx) || idx == NP_LocalPeer)
 		return;
 
-	NP_Addr peer = {0};
-	*NP_AddrFamily(&peer) = AF_INET;
-	NutPunch_Memcpy(NP_AddrRaw(&peer), data, 4), data += 4;
+	NP_Addr peer_addr = {0};
+	*NP_AddrFamily(&peer_addr) = AF_INET;
+	NutPunch_Memcpy(NP_AddrRaw(&peer_addr), data, 4), data += 4;
 
-	uint16_t* port = NP_AddrPort(&peer);
+	uint16_t* port = NP_AddrPort(&peer_addr);
 	*port = *(uint16_t*)data, data += 2;
 
-	if (NP_AddrNull(peer) || !*port)
+	if (NP_AddrNull(peer_addr) || !*port)
 		return;
+
+	const clock_t now = clock(), peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
+	if (!NutPunch_PeerAlive(idx) && NP_Peers[idx].first_shalom && now - NP_Peers[idx].first_shalom >= peer_timeout)
+	{
+		NP_Warn("Cannot establish a connection to peer %d", idx + 1);
+		NP_LastStatus = NPS_Error;
+		return;
+	}
+	if (!NP_Peers[idx].first_shalom)
+		NP_Peers[idx].first_shalom = now;
 
 	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
 	shalom[NUTPUNCH_HEADER_SIZE] = NP_LocalPeer;
 
-	int result = sendto(NP_Sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
-	NP_Trace("SENT HI %s (%d)", NP_FormatAddr(peer), result >= 0 ? 0 : NP_SockError());
+	int result = sendto(
+		NP_Sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer_addr.raw, sizeof(peer_addr.raw));
+	NP_Trace("SENT HI %s (%d)", NP_FormatAddr(peer_addr), result >= 0 ? 0 : NP_SockError());
 }
 
 NP_MakeHandler(NP_HandleBeating) {
-	NP_Trace("RECEIVED A BEATING FROM %s", NP_FormatAddr(peer));
+	NP_Trace("RECEIVED A BEATING FROM %s", NP_FormatAddr(peer_addr));
 
-	if (!NP_AddrEq(peer, NP_PuncherAddr))
+	if (!NP_AddrEq(peer_addr, NP_PuncherAddr))
 		return;
 
 	NP_Trace("AND EVEN PROCESSED IT!");
@@ -933,9 +957,9 @@ NP_MakeHandler(NP_HandleBeating) {
 }
 
 NP_MakeHandler(NP_HandleList) {
-	NP_Trace("RECEIVED A LISTING FROM %s", NP_FormatAddr(peer));
+	NP_Trace("RECEIVED A LISTING FROM %s", NP_FormatAddr(peer_addr));
 
-	if (!NP_AddrEq(peer, NP_PuncherAddr))
+	if (!NP_AddrEq(peer_addr, NP_PuncherAddr))
 		return;
 
 	NP_Trace("AND EVEN PROCESSED IT!");
@@ -954,13 +978,15 @@ NP_MakeHandler(NP_HandleList) {
 NP_MakeHandler(NP_HandleData) {
 	int peer_idx = NUTPUNCH_MAX_PLAYERS;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (NP_AddrEq(peer, NP_Peers[i])) {
+		if (NP_AddrEq(peer_addr, NP_Peers[i].addr)) {
 			peer_idx = i;
 			break;
 		}
 	}
 	if (peer_idx == NUTPUNCH_MAX_PLAYERS)
 		return;
+
+	NP_Peers[peer_idx].last_beating = clock();
 
 	const NP_PacketIdx net_index = *(NP_PacketIdx*)data, index = ntohl(net_index);
 	size -= sizeof(index), data += sizeof(index);
@@ -1045,7 +1071,7 @@ static int NP_ReceiveShit() {
 	}
 	if (!size) // graceful disconnection
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (!NutPunch_Memcmp(&addr, &NP_Peers[i].raw, sizeof(addr))) {
+			if (!NutPunch_Memcmp(&addr, &NP_Peers[i].addr.raw, sizeof(addr))) {
 				NP_KillPeer(i);
 				return 0;
 			}
@@ -1113,9 +1139,9 @@ static void NP_FlushOutQueue() {
 			continue;
 		}
 
-		NP_Addr peer = NP_Peers[cur->peer];
+		NP_Addr addr = NP_Peers[cur->peer].addr;
 		int result
-			= sendto(NP_Sock, cur->data, (int)cur->size, 0, (struct sockaddr*)&peer.raw, sizeof(peer.raw));
+			= sendto(NP_Sock, cur->data, (int)cur->size, 0, (struct sockaddr*)&addr.raw, sizeof(addr.raw));
 
 		if (!result)
 			NP_KillPeer(cur->peer);
@@ -1128,10 +1154,21 @@ static void NP_FlushOutQueue() {
 }
 
 static void NP_NetworkUpdate() {
-	if (clock() - NP_LastBeating >= NUTPUNCH_TIMEOUT_SECS * CLOCKS_PER_SEC) {
+	const clock_t now = clock(), server_timeout = NUTPUNCH_SERVER_TIMEOUT_SECS * CLOCKS_PER_SEC,
+		      peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
+
+	if (now - NP_LastBeating >= server_timeout) {
 		NP_Warn("NutPuncher connection timed out!");
 		goto error;
 	}
+
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+		if (NutPunch_PeerAlive(i) && i != NutPunch_LocalPeer()
+			&& now - NP_Peers[i].last_beating >= peer_timeout)
+		{
+			NP_Info("Peer %d timed out", i + 1);
+			NP_KillPeer(i);
+		}
 
 	if (!NP_SendHeartbeat())
 		goto sockfail;
@@ -1278,7 +1315,7 @@ int NutPunch_PeerCount() {
 bool NutPunch_PeerAlive(int peer) {
 	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS || NP_LastStatus != NPS_Online)
 		return false;
-	return NutPunch_LocalPeer() == peer || 0 != *NP_AddrPort(NP_Peers + peer);
+	return NutPunch_LocalPeer() == peer || 0 != *NP_AddrPort(&NP_Peers[peer].addr);
 }
 
 int NutPunch_LocalPeer() {
