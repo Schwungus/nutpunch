@@ -94,11 +94,11 @@ extern "C" {
 #define NUTPUNCH_ADDRESS_SIZE (6)
 
 #define NUTPUNCH_RESPONSE_SIZE                                                                                         \
-	(NUTPUNCH_HEADER_SIZE + 1 + 1 + NUTPUNCH_MAX_PLAYERS * NUTPUNCH_ADDRESS_SIZE                                   \
+	(NUTPUNCH_HEADER_SIZE + 1 + 1 + NUTPUNCH_MAX_PLAYERS * 2 * NUTPUNCH_ADDRESS_SIZE                               \
 		+ (NUTPUNCH_MAX_PLAYERS + 1) * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 
 #define NUTPUNCH_HEARTBEAT_SIZE                                                                                        \
-	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + (int)sizeof(NP_HeartbeatFlagsStorage)                                \
+	(NUTPUNCH_HEADER_SIZE + NUTPUNCH_ID_MAX + NUTPUNCH_ADDRESS_SIZE + (int)sizeof(NP_HeartbeatFlagsStorage)        \
 		+ 2 * NUTPUNCH_MAX_FIELDS * (int)sizeof(NutPunch_Field))
 
 #ifndef NUTPUNCH_NOSTD
@@ -924,8 +924,9 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
 	shalom[NUTPUNCH_HEADER_SIZE] = NP_LocalPeer;
 
-	int result = sendto(NP_Sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer_addr, sizeof(peer_addr));
-	NP_Trace("SENT HI %s (%d)", NP_FormatAddr(peer_addr), result >= 0 ? 0 : NP_SockError());
+	for (int i = 0; i < 5; i++)
+		sendto(NP_Sock, (char*)shalom, sizeof(shalom), 0, (struct sockaddr*)&peer_addr, sizeof(peer_addr));
+	NP_Trace("SENT HI %s", NP_FormatAddr(peer_addr));
 }
 
 static void NP_HandleBeating(NP_Message msg) {
@@ -939,7 +940,7 @@ static void NP_HandleBeating(NP_Message msg) {
 
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS, was_slave = !NutPunch_IsMaster();
 	const int meta_size = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
-	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + meta_size;
+	const ptrdiff_t stride = 2 * NUTPUNCH_ADDRESS_SIZE + meta_size;
 
 	NP_LocalPeer = *msg.data++, NP_ResponseFlags = *msg.data++;
 	if (just_joined)
@@ -948,6 +949,7 @@ static void NP_HandleBeating(NP_Message msg) {
 		NP_Info("We're the lobby's master now");
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+		NP_SayShalom(i, msg.data), msg.data += NUTPUNCH_ADDRESS_SIZE;
 		NP_SayShalom(i, msg.data), msg.data += NUTPUNCH_ADDRESS_SIZE;
 		NutPunch_Memcpy(NP_PeerMetadataIn[i], msg.data, meta_size), msg.data += meta_size;
 	}
@@ -1028,6 +1030,12 @@ static int NP_SendHeartbeat() {
 
 		NutPunch_Memset(ptr, 0, NUTPUNCH_ID_MAX);
 		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX), ptr += NUTPUNCH_ID_MAX;
+
+		NP_Addr internal_addr = {0};
+		int addr_len = sizeof(internal_addr);
+		getsockname(NP_Sock, (struct sockaddr*)&internal_addr, &addr_len);
+		NutPunch_Memcpy(ptr, NP_AddrRaw(&internal_addr), 4), ptr += 4;
+		NutPunch_Memcpy(ptr, NP_AddrPort(&internal_addr), 4), ptr += 2;
 
 		// TODO: make sure to correct endianness when multibyte flags become a thing.
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags, ptr += sizeof(NP_HeartbeatFlags);

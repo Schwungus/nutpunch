@@ -179,6 +179,10 @@ struct Addr : NP_Addr {
 		std::memset(this, 0, sizeof(*this));
 	}
 
+	Addr(sockaddr_in v4) {
+		std::memcpy(this, &v4, sizeof(v4));
+	}
+
 	sockaddr_in* v4() {
 		return reinterpret_cast<sockaddr_in*>(this);
 	}
@@ -209,10 +213,22 @@ struct Addr : NP_Addr {
 		std::memcpy(ptr, &v4()->sin_addr, 4), ptr += 4;
 		std::memcpy(ptr, &v4()->sin_port, 2), ptr += 2;
 	}
+
+	static Addr load(const uint8_t* ptr) {
+		return load(reinterpret_cast<const char*>(ptr));
+	}
+
+	static Addr load(const char* ptr) {
+		sockaddr_in addr = {0};
+		addr.sin_family = AF_INET;
+		std::memcpy(&addr.sin_addr, ptr, 4), ptr += 4;
+		std::memcpy(&addr.sin_port, ptr, 2), ptr += 2;
+		return Addr(addr);
+	}
 };
 
 struct Player {
-	Addr addr;
+	Addr public_addr, internal_addr;
 	std::uint32_t countdown;
 	Metadata metadata;
 
@@ -220,11 +236,11 @@ struct Player {
 
 	bool dead() const {
 		static constexpr const char zero[sizeof(Addr)] = {0};
-		return countdown < 1 || !std::memcmp(&addr, zero, sizeof(addr));
+		return countdown < 1 || !std::memcmp(&public_addr, zero, sizeof(public_addr));
 	}
 
 	void reset() {
-		std::memset(&addr, 0, sizeof(addr));
+		std::memset(&public_addr, 0, sizeof(public_addr));
 		metadata.reset();
 		countdown = 0;
 	}
@@ -312,7 +328,8 @@ struct Lobby {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& player = players[i];
 
-			player.addr.dump(ptr), ptr += NUTPUNCH_ADDRESS_SIZE;
+			player.public_addr.dump(ptr), ptr += NUTPUNCH_ADDRESS_SIZE;
+			player.internal_addr.dump(ptr), ptr += NUTPUNCH_ADDRESS_SIZE;
 			std::memset(ptr, 0, sizeof(Metadata));
 			std::memcpy(ptr, &player.metadata, sizeof(Metadata));
 			ptr += sizeof(Metadata);
@@ -320,7 +337,7 @@ struct Lobby {
 		std::memcpy(ptr, &metadata, sizeof(Metadata));
 
 		auto& player = players[player_idx];
-		if (player.addr.send(buf, sizeof(buf)) < 0) {
+		if (player.public_addr.send(buf, sizeof(buf)) < 0) {
 			NP_Warn("Player %d aborted connection", player_idx + 1);
 			player.reset();
 		}
@@ -340,7 +357,7 @@ private:
 };
 
 static void bind_sock() {
-	NP_Addr addr = {0};
+	Addr addr;
 
 	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == NUTPUNCH_INVALID_SOCKET) {
@@ -358,9 +375,9 @@ static void bind_sock() {
 		goto sockfail;
 	}
 
-	reinterpret_cast<sockaddr_in*>(&addr)->sin_family = AF_INET;
-	reinterpret_cast<sockaddr_in*>(&addr)->sin_port = htons(NUTPUNCH_SERVER_PORT);
-	reinterpret_cast<sockaddr_in*>(&addr)->sin_addr.s_addr = htonl(INADDR_ANY);
+	addr.v4()->sin_family = AF_INET;
+	addr.v4()->sin_port = htons(NUTPUNCH_SERVER_PORT);
+	addr.v4()->sin_addr.s_addr = htonl(INADDR_ANY);
 
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
 		NP_Info("Bound to port %d", NUTPUNCH_SERVER_PORT);
@@ -430,7 +447,7 @@ static int receive() {
 
 	int attempts = 0;
 	char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
-	socklen_t addr_size = sizeof(struct sockaddr_in);
+	socklen_t addr_size = sizeof(sockaddr_in);
 	Addr addr;
 
 	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr), &addr_size);
@@ -454,6 +471,9 @@ static int receive() {
 
 	static char id[NUTPUNCH_ID_MAX + 1] = {0};
 	std::memcpy(id, ptr, NUTPUNCH_ID_MAX), ptr += NUTPUNCH_ID_MAX;
+
+	Addr internal_addr = Addr::load(ptr);
+	ptr += NUTPUNCH_ADDRESS_SIZE;
 
 	auto flags = *reinterpret_cast<const NP_HeartbeatFlagsStorage*>(ptr);
 	ptr += sizeof(flags);
@@ -479,7 +499,7 @@ static int receive() {
 		// Match against existing peers to prevent creating multiple lobbies with the same master.
 		for (const auto& [lobbyId, lobby] : lobbies)
 			for (const auto& player : lobby.players)
-				if (!player.dead() && !std::memcmp(&player.addr, &addr, sizeof(addr)))
+				if (!player.dead() && !std::memcmp(&player.public_addr, &addr, sizeof(addr)))
 					return RecvKeepGoing; // fuck you...
 		lobbies.insert({id, Lobby(id)});
 		NP_Info("Created lobby '%s'", fmt_lobby_id(id));
@@ -487,7 +507,7 @@ static int receive() {
 
 	players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!players[i].dead() && !std::memcmp(&players[i].addr, &addr, sizeof(addr))) {
+		if (!players[i].dead() && !std::memcmp(&players[i].public_addr, &addr, sizeof(addr))) {
 			lobbies[id].accept(i, flags, ptr);
 			return RecvKeepGoing;
 		}
@@ -506,7 +526,7 @@ static int receive() {
 		}
 
 		NP_Info("Peer %d joined lobby '%s'", i + 1, fmt_lobby_id(id));
-		players[i].addr = addr;
+		players[i].public_addr = addr;
 		lobbies[id].accept(i, flags, ptr);
 
 		return RecvKeepGoing;
