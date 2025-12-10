@@ -105,7 +105,7 @@ struct Field : NutPunch_Field {
 		return our_len == arg_len && !std::memcmp(this->name, name, our_len);
 	}
 
-	bool matches(const Lobby& lobby, const NutPunch_Filter& filter) const {
+	bool matches(const NutPunch_Filter& filter) const {
 		const int diff = std::memcmp(data, filter.field.value, size);
 		return match_field_value(diff, filter.comparison);
 	}
@@ -257,7 +257,7 @@ struct Lobby {
 		}
 	}
 
-	int special(NutPunch_SpecialField idx) const {
+	int special(uint8_t idx) const {
 		switch (idx) {
 		case NPSF_Capacity:
 			return capacity;
@@ -389,8 +389,8 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 		for (int f = 0; f < filter_count; f++) {
 			const auto& filter = filters[f];
 			if (filter.field.alwayszero != 0) {
-				int diff = (int)(uint8_t)filter.special.value;
-				diff -= lobby.special((NutPunch_SpecialField)filter.special.index);
+				int diff = static_cast<int>(filter.special.value);
+				diff -= lobby.special(filter.special.index);
 				if (match_field_value(diff, filter.comparison))
 					goto next_filter;
 				goto next_lobby;
@@ -399,7 +399,7 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 				const auto& field = lobby.metadata.fields[m];
 				if (field.dead() || !field.named(filter.field.name))
 					continue;
-				if (field.matches(lobby, filter))
+				if (field.matches(filter))
 					goto next_filter;
 			}
 			goto next_lobby; // no field matched the filter
@@ -421,10 +421,7 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 		addr.send(buf, sizeof(buf));
 }
 
-enum {
-	RecvKeepGoing = 0,
-	RecvDone = -1,
-};
+constexpr const int RecvKeepGoing = 0, RecvDone = -1;
 
 static int receive() {
 	if (sock == NUTPUNCH_INVALID_SOCKET)
@@ -534,15 +531,14 @@ struct cleanup {
 };
 
 int main(int, char*[]) {
-	cleanup __cleanup;
+	cleanup _cleanup;
 
 #ifdef NUTPUNCH_WINDOSE
-	WSADATA __bitch = {0};
-	WSAStartup(MAKEWORD(2, 2), &__bitch);
+	WSADATA _bitch = {0};
+	WSAStartup(MAKEWORD(2, 2), &_bitch);
 #endif
 	bind_sock();
 
-	int result;
 	std::int64_t start = clock(), end, delta;
 	const std::int64_t min_delta = 1000 / beats_per_second;
 
@@ -553,8 +549,11 @@ int main(int, char*[]) {
 			return EXIT_FAILURE;
 		}
 
-		while ((result = receive()) == RecvKeepGoing)
-			;
+		int result;
+		do
+			result = receive();
+		while (result == RecvKeepGoing);
+
 		if (result > 0) {
 			NP_Warn("Failed to receive data (code %d)", result);
 			sock = NUTPUNCH_INVALID_SOCKET;

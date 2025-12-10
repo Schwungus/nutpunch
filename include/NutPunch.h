@@ -298,7 +298,6 @@ const char* NutPunch_Basename(const char* path);
 
 #ifdef NUTPUNCH_WINDOSE
 
-#define _UNICODE
 #include <windows.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
