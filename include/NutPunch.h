@@ -1032,8 +1032,8 @@ static int NP_SendHeartbeat() {
 		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX), ptr += NUTPUNCH_ID_MAX;
 
 		NP_Addr internal_addr = {0};
-		int addr_len = sizeof(internal_addr);
-		getsockname(NP_Sock, (struct sockaddr*)&internal_addr, &addr_len);
+		socklen_t addr_size = sizeof(internal_addr);
+		getsockname(NP_Sock, (struct sockaddr*)&internal_addr, &addr_size);
 		NutPunch_Memcpy(ptr, NP_AddrRaw(&internal_addr), 4), ptr += 4;
 		NutPunch_Memcpy(ptr, NP_AddrPort(&internal_addr), 4), ptr += 2;
 
