@@ -197,8 +197,7 @@ void NutPunch_LobbySet(const char* name, int size, const void* data);
 /// The resulting pointer is actually a static allocation, so don't rely too much on it; its data will change after the
 /// next `NutPunch_LobbyGet` call.
 ///
-/// Note: you cannot query a lobby's metadata if you aren't connected to it. That's what `NutPunch_FindLobbies` uses
-/// filters for.
+/// You cannot query a lobby's metadata you aren't connected to. That's what `NutPunch_FindLobbies` uses filters for.
 void* NutPunch_LobbyGet(const char* name, int* size);
 
 /// Request your peer-specific metadata to be set. Works the same way as `NutPunch_LobbySet` otherwise.
@@ -914,7 +913,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	const clock_t now = clock(), peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
 	if (!NutPunch_PeerAlive(idx) && NP_Peers[idx].first_shalom && now - NP_Peers[idx].first_shalom >= peer_timeout)
 	{
-		NP_Warn("Cannot establish a connection to peer %d", idx + 1);
+		NP_Warn("Failed to establish a connection to peer %d", idx + 1);
 		NP_LastStatus = NPS_Error;
 		return;
 	}
