@@ -167,12 +167,12 @@ enum {
 void NutPunch_SetServerAddr(const char* hostname);
 
 /// Join a lobby by its ID. If no lobby exists with this ID, spit an error status out of `NutPunch_Update()`.
-int NutPunch_Join(const char* lobby_id);
+bool NutPunch_Join(const char* lobby_id);
 
 /// Host a lobby with the specified ID and maximum player count.
 ///
 /// If the lobby already exists, an error status spits out of `NutPunch_Update()` rather than immediately.
-int NutPunch_Host(const char* lobby_id, int players);
+bool NutPunch_Host(const char* lobby_id, int players);
 
 /// Change the maximum player count after calling `NutPunch_Host`.
 void NutPunch_SetMaxPlayers(int players);
@@ -648,7 +648,7 @@ void NutPunch_LobbySet(const char* name, int size, const void* data) {
 	NP_SetMetadataIn(NP_LobbyMetadataOut, name, size, data);
 }
 
-static int NP_ResolveNutpuncher() {
+static bool NP_ResolveNutpuncher() {
 	NP_LazyInit();
 
 	struct addrinfo *resolved = NULL, hints = {0};
@@ -664,11 +664,11 @@ static int NP_ResolveNutpuncher() {
 
 	if (getaddrinfo(NP_ServerHost, portfmt, &hints, &resolved)) {
 		NP_Warn("NutPuncher server address failed to resolve");
-		return 0;
+		return false;
 	}
 	if (!resolved) {
 		NP_Warn("Couldn't resolve NutPuncher address");
-		return 0;
+		return false;
 	}
 
 	NP_Memzero2(&NP_PuncherAddr);
@@ -676,10 +676,10 @@ static int NP_ResolveNutpuncher() {
 	freeaddrinfo(resolved);
 
 	NP_Info("Resolved NutPuncher address");
-	return 1;
+	return true;
 }
 
-static int NP_MakeNonblocking(NP_Socket sock) {
+static bool NP_MakeNonblocking(NP_Socket sock) {
 #ifdef NUTPUNCH_WINDOSE
 	u_long argp = 1;
 	return !ioctlsocket(sock, FIONBIO, &argp);
@@ -688,7 +688,7 @@ static int NP_MakeNonblocking(NP_Socket sock) {
 #endif
 }
 
-static int NP_MakeReuseAddr(NP_Socket sock) {
+static bool NP_MakeReuseAddr(NP_Socket sock) {
 #ifdef NUTPUNCH_WINDOSE
 	const u_long argp = 1;
 #else
@@ -697,7 +697,7 @@ static int NP_MakeReuseAddr(NP_Socket sock) {
 	return !setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&argp, sizeof(argp));
 }
 
-static int NP_BindSocket() {
+static bool NP_BindSocket() {
 	const clock_t range = NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1;
 	NP_Addr local = {0};
 
@@ -724,28 +724,28 @@ static int NP_BindSocket() {
 	*NP_AddrRaw(&local) = htonl(INADDR_ANY);
 
 	if (!bind(NP_Sock, (struct sockaddr*)&local, sizeof(local)))
-		return 1;
+		return true;
 
 	NP_Warn("Failed to bind a UDP socket (%d)", NP_SockError());
 sockfail:
 	NP_NukeSocket(&NP_Sock);
-	return 0;
+	return false;
 }
 
-static int NutPunch_Connect(const char* lobby_id, bool sane) {
+static bool NutPunch_Connect(const char* lobby_id, bool sane) {
 	NP_LazyInit();
 	NP_NukeLobbyData();
 
 	if (sane && (!lobby_id || !lobby_id[0])) {
 		NP_Warn("Lobby ID cannot be null or empty!");
 		NP_LastStatus = NPS_Error;
-		return 0;
+		return false;
 	}
 
 	NP_Memzero2(&NP_PuncherAddr);
 	if (!NP_BindSocket()) {
 		NutPunch_Reset(), NP_LastStatus = NPS_Error;
-		return 0;
+		return false;
 	}
 	NP_ResolveNutpuncher();
 
@@ -756,17 +756,17 @@ static int NutPunch_Connect(const char* lobby_id, bool sane) {
 	if (lobby_id)
 		NutPunch_SNPrintF(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobby_id);
 
-	return 1;
+	return true;
 }
 
-int NutPunch_Host(const char* lobby_id, int players) {
+bool NutPunch_Host(const char* lobby_id, int players) {
 	NP_LazyInit();
 	NP_HeartbeatFlags = NP_HB_Join | NP_HB_Create;
 	NutPunch_SetMaxPlayers(players);
 	return NutPunch_Connect(lobby_id, true);
 }
 
-int NutPunch_Join(const char* lobby_id) {
+bool NutPunch_Join(const char* lobby_id) {
 	NP_LazyInit();
 	NP_HeartbeatFlags = NP_HB_Join;
 	return NutPunch_Connect(lobby_id, true);
@@ -1013,9 +1013,9 @@ static void NP_HandleAcky(NP_Message msg) {
 		}
 }
 
-static int NP_SendHeartbeat() {
+static bool NP_SendHeartbeat() {
 	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
-		return 1;
+		return true;
 
 	static char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
 	NP_Memzero(heartbeat);
@@ -1040,17 +1040,17 @@ static int NP_SendHeartbeat() {
 
 	const int len = (int)(ptr - heartbeat);
 	if (0 <= sendto(NP_Sock, heartbeat, len, 0, (struct sockaddr*)&NP_PuncherAddr, sizeof(NP_PuncherAddr)))
-		return 1;
+		return true;
 
 	switch (NP_SockError()) {
 	case NP_WouldBlock:
 	case NP_ConnReset:
-		return 1;
+		return true;
 	default:
 		NP_Warn("Failed to send heartbeat to NutPuncher (%d)", NP_SockError());
 	}
 
-	return 0;
+	return false;
 }
 
 static int NP_ReceiveShit() {
