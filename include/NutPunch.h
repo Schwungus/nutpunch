@@ -961,6 +961,7 @@ static void NP_HandleList(NP_Message msg) {
 		return;
 
 	NP_Trace("AND EVEN PROCESSED IT!");
+	NP_LastBeating = clock();
 
 	const size_t idlen = NUTPUNCH_ID_MAX;
 	NP_Memzero(NP_Lobbies);
