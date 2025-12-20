@@ -11,6 +11,8 @@ NutPunch is a UDP hole-punching library for REAL men (and women). Header-only. B
 
 Comes with a [public instance](#public-instance) for out-of-the-box integration.
 
+:heavy_check_mark: [Schwungus](https://github.com/Schwungus)-certified.
+
 ## Troubleshooting
 
 UDP hole-punching can be finnicky at times, especially in non-standard networking environments. For that reason, this troubleshooting section comes before all else. If you're having connectivity issues **in a game powered by NutPunch**, please **make sure** the following conditions are met before you start throwing hooks and jabs at the developers:
