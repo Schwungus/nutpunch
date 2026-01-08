@@ -747,6 +747,7 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
 		NutPunch_Reset(), NP_LastStatus = NPS_Error;
 		return false;
 	}
+	NP_LastBeating = clock();
 	NP_ResolveNutpuncher();
 
 	NP_Info("Ready to send heartbeats");
