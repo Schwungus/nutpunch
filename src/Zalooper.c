@@ -19,8 +19,9 @@ int main(int argc, char* argv[]) {
 	for (;;) {
 		if (NutPunch_Update() == NPS_Error)
 			goto fuck;
-		if (NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS && NutPunch_PeerCount() >= NutPunch_GetMaxPlayers())
-			break;
+		if (NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS)
+			if (NutPunch_PeerCount() >= NutPunch_GetMaxPlayers())
+				break;
 		NP_SleepMs(100);
 	}
 

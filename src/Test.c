@@ -4,10 +4,8 @@
 #include <string.h>
 
 static FILE* logfile = NULL; // gotta use a logfile since we're drawing to the console
-#define NutPunch_Log(msg, ...)                                                                                         \
-	do {                                                                                                           \
-		fprintf(logfile, msg "\n", ##__VA_ARGS__), fflush(logfile);                                            \
-	} while (0);
+#define NutPunch_Log(msg, ...)                                                                     \
+	do { fprintf(logfile, msg "\n", ##__VA_ARGS__), fflush(logfile); } while (0);
 
 #define NUTPUNCH_IMPLEMENTATION
 // #define NUTPUNCH_TRACING
@@ -23,7 +21,8 @@ struct Player {
 	int32_t x, y;
 };
 
-static const char* randomNames[] = {"Fimon", "Trollga", "Marsoyob", "Ficus", "Caccus", "Skibidi69er", "Caulksucker"};
+static const char* randomNames[]
+	= {"Fimon", "Trollga", "Marsoyob", "Ficus", "Caccus", "Skibidi69er", "Caulksucker"};
 static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
 
 static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
