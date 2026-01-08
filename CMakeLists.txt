@@ -46,11 +46,10 @@ endif()
 
 option(NUTPUNCH_BUILD_TESTS "Build NutPunch test binary?" ON)
 if(NUTPUNCH_BUILD_TESTS)
-    set(BUILD_TOYS OFF CACHE INTERNAL "Fuck poormans")
     FetchContent_Declare(
         poormans
         GIT_REPOSITORY https://github.com/nonk123/poormans.git
-        GIT_TAG 65217ce89bfd4bc272954a858fc496007a457bf4)
+        GIT_TAG 0f83761b9f4304f8194a1f2fc9ed4f51d47070ba)
     FetchContent_MakeAvailable(poormans)
 
     add_executable(NutPunchTest ${SRC_DIR}/Test.c)
