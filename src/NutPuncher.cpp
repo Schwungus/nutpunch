@@ -32,7 +32,7 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
-constexpr const int beats_per_second = 60, keep_alive_seconds = 3,
+constexpr const int beats_per_second = 60, keep_alive_seconds = 10,
 		    keep_alive_beats = keep_alive_seconds * beats_per_second, max_lobbies = 512;
 
 struct Lobby;

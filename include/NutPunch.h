@@ -55,12 +55,12 @@ extern "C" {
 
 #ifndef NUTPUNCH_SERVER_TIMEOUT_SECS
 /// How many seconds to wait for NutPuncher to respond before disconnecting.
-#define NUTPUNCH_SERVER_TIMEOUT_SECS 3
+#define NUTPUNCH_SERVER_TIMEOUT_SECS 10
 #endif
 
 #ifndef NUTPUNCH_PEER_TIMEOUT_SECS
 /// How many seconds to wait for a peer to respond before timing out.
-#define NUTPUNCH_PEER_TIMEOUT_SECS 5
+#define NUTPUNCH_PEER_TIMEOUT_SECS 10
 #endif
 
 /// The maximum length of a lobby identifier excluding the null terminator. Not customizable.
