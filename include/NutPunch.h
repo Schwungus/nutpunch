@@ -380,8 +380,9 @@ typedef int64_t NP_Socket;
 #ifdef NUTPUNCH_TRACING
 #define NP_Trace(...) NutPunch_Log("TRACE: " __VA_ARGS__)
 #else
-#define NP_Trace(...)                                                                              \
-	do { break; } while (0)
+// clang-format off
+#define NP_Trace(...) do {} while (0)
+// clang-format on
 #endif
 
 typedef uint32_t NP_PacketIdx;

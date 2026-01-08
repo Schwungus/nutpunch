@@ -4,8 +4,10 @@
 #include <string.h>
 
 static FILE* logfile = NULL; // gotta use a logfile since we're drawing to the console
-#define NutPunch_Log(msg, ...)                                                                     \
-	do { fprintf(logfile, msg "\n", ##__VA_ARGS__), fflush(logfile); } while (0);
+
+// clang-format off
+#define NutPunch_Log(msg, ...) do { fprintf(logfile, msg "\n", ##__VA_ARGS__), fflush(logfile); } while (0);
+// clang-format on
 
 #define NUTPUNCH_IMPLEMENTATION
 // #define NUTPUNCH_TRACING
