@@ -1189,6 +1189,7 @@ static void NP_FlushOutQueue() {
 
 static void NP_SendGoodbyes() {
 	static char bye[4] = {'D', 'I', 'S', 'C'};
+	NP_SendTimesTo(10, NP_PuncherAddr, bye, sizeof(bye));
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 		NP_QueueSendTimes(10, i, bye, sizeof(bye), 0);
 }
