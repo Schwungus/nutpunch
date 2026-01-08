@@ -20,19 +20,15 @@ set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_library(NutPunch INTERFACE)
 target_include_directories(NutPunch INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_definitions(NutPunch INTERFACE _WINSOCK_DEPRECATED_NO_WARNINGS)
+target_compile_definitions(NutPunch INTERFACE
+    _WINSOCK_DEPRECATED_NO_WARNINGS=1)
 if(WIN32)
     target_link_options(NutPunch INTERFACE -static)
     target_link_libraries(NutPunch INTERFACE ws2_32)
 endif()
 
-option(NUTPUNCH_STAGING
-    "Staging-facing build? Uses a different port from the regular build."
-    OFF)
-
-option(NUTPUNCH_TRACING
-    "Enable extra debug logging?"
-    OFF)
+option(NUTPUNCH_STAGING "Staging-facing build? Uses a different port from the regular build.")
+option(NUTPUNCH_TRACING "Enable extra debug logging?")
 
 if(NUTPUNCH_STAGING)
     message("NutPunch staging-mode enabled")
@@ -46,8 +42,7 @@ endif()
 
 option(NUTPUNCH_BUILD_TESTS "Build NutPunch test binary?" ON)
 if(NUTPUNCH_BUILD_TESTS)
-    FetchContent_Declare(
-        poormans
+    FetchContent_Declare(poormans
         GIT_REPOSITORY https://github.com/nonk123/poormans.git
         GIT_TAG 0f83761b9f4304f8194a1f2fc9ed4f51d47070ba)
     FetchContent_MakeAvailable(poormans)
@@ -71,7 +66,7 @@ if(NUTPUNCH_BUILD_LOBBYIST)
     target_link_libraries(NutPunchLobbyist PRIVATE NutPunch)
 endif()
 
-option(NUTPUNCH_BUILD_ZALOOPER "Build zalooper test binary?" OFF)
+option(NUTPUNCH_BUILD_ZALOOPER "Build zalooper test binary?")
 if(NUTPUNCH_BUILD_ZALOOPER)
     add_executable(Zalooper ${SRC_DIR}/Zalooper.c)
     target_link_libraries(Zalooper PRIVATE NutPunch)

@@ -43,7 +43,8 @@ static const char* fmt_lobby_id(const char* id) {
 	static char buf[NUTPUNCH_ID_MAX + 1] = {0};
 	for (int i = 0; i < NUTPUNCH_ID_MAX; i++) {
 		char c = id[i];
-		if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-' || c == '_')
+		if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-'
+			|| c == '_')
 			buf[i] = c;
 		else if (!c) {
 			buf[i] = 0;
@@ -409,10 +410,29 @@ static void bind_sock() {
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
 		NP_Info("Bound to port %d", NUTPUNCH_SERVER_PORT);
 	} else {
-		NP_Warn("Failed to bind a socket. IPv6-only mode is unsupported (%d)", NP_SockError());
+		NP_Warn("Failed to bind a socket. IPv6-only mode is unsupported (%d)",
+			NP_SockError());
 	sockfail:
 		NP_NukeSocket(&sock);
 	}
+}
+
+static bool create_lobby(const char* id, const Addr& addr) {
+	if (lobbies.size() >= max_lobbies) {
+		addr.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
+		NP_Warn("Reached lobby limit");
+		return false;
+	}
+
+	// Match against existing peers to prevent creating multiple lobbies with the same master.
+	for (const auto& [lobbyId, lobby] : lobbies)
+		for (const auto& player : lobby.players)
+			if (!player.dead() && player.addr == addr)
+				return true; // fuck you...
+
+	lobbies.insert({id, Lobby(id)});
+	NP_Info("Created lobby '%s'", fmt_lobby_id(id));
+	return true;
 }
 
 static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
@@ -459,7 +479,8 @@ static int receive() {
 	socklen_t addr_size = sizeof(struct sockaddr_in);
 	Addr addr;
 
-	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, reinterpret_cast<sockaddr*>(&addr), &addr_size);
+	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0,
+		reinterpret_cast<sockaddr*>(&addr), &addr_size);
 	if (rcv < 0)
 		switch (NP_SockError()) {
 		case NP_ConnReset:
@@ -474,10 +495,12 @@ static int receive() {
 		return RecvKeepGoing; // junk...
 	const char* ptr = heartbeat + NUTPUNCH_HEADER_SIZE;
 
-	if (!std::memcmp(heartbeat, "LIST", NUTPUNCH_HEADER_SIZE) && rcv == NUTPUNCH_HEADER_SIZE + sizeof(NP_Filters)) {
-		send_lobbies(addr, reinterpret_cast<const NutPunch_Filter*>(ptr));
-		return RecvKeepGoing;
-	}
+	if (!std::memcmp(heartbeat, "LIST", NUTPUNCH_HEADER_SIZE))
+		if (rcv == NUTPUNCH_HEADER_SIZE + sizeof(NP_Filters)) {
+			const auto* filters = reinterpret_cast<const NutPunch_Filter*>(ptr);
+			send_lobbies(addr, filters);
+			return RecvKeepGoing;
+		}
 	if (!std::memcmp(heartbeat, "DISC", NUTPUNCH_HEADER_SIZE)) {
 		kill_bro(addr);
 		return RecvKeepGoing;
@@ -503,20 +526,9 @@ static int receive() {
 		return RecvKeepGoing;
 	}
 
-	if (!lobbies.count(id) && lobbies.size() >= max_lobbies) {
-		addr.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
-		NP_Warn("Reached lobby limit");
-		return RecvKeepGoing;
-	}
-	if (!lobbies.count(id)) {
-		// Match against existing peers to prevent creating multiple lobbies with the same master.
-		for (const auto& [lobbyId, lobby] : lobbies)
-			for (const auto& player : lobby.players)
-				if (!player.dead() && player.addr == addr)
-					return RecvKeepGoing; // fuck you...
-		lobbies.insert({id, Lobby(id)});
-		NP_Info("Created lobby '%s'", fmt_lobby_id(id));
-	}
+	if (!lobbies.count(id))
+		if (!create_lobby(id, addr))
+			return RecvKeepGoing;
 
 	players = lobbies[id].players;
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {

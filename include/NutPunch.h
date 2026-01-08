@@ -23,8 +23,6 @@
 //
 // For more information, please refer to <https://unlicense.org>
 
-#pragma once
-
 #ifndef NUTPUNCH_H
 #define NUTPUNCH_H
 
@@ -158,12 +156,14 @@ enum {
 /// Set a custom NutPuncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
 
-/// Join a lobby by its ID. If no lobby exists with this ID, spit an error status out of `NutPunch_Update()`.
+/// Join a lobby by its ID. If no lobby exists with this ID, spit an error status out of
+/// `NutPunch_Update()`.
 bool NutPunch_Join(const char* lobby_id);
 
 /// Host a lobby with the specified ID and maximum player count.
 ///
-/// If the lobby already exists, an error status spits out of `NutPunch_Update()` rather than immediately.
+/// If the lobby already exists, an error status spits out of `NutPunch_Update()` rather than
+/// immediately.
 bool NutPunch_Host(const char* lobby_id, int players);
 
 /// Change the maximum player count after calling `NutPunch_Host`.
@@ -178,35 +178,39 @@ void NutPunch_Cleanup();
 /// Call this every frame to update nutpunch. Returns one of the `NPS_*` constants.
 int NutPunch_Update();
 
-/// Request lobby metadata to be set. Can be called multiple times in a row. Will send out metadata changes on
-/// `NutPunch_Update()`, and won't do anything unless you're the lobby's master.
+/// Request lobby metadata to be set. Can be called multiple times in a row. Will send out metadata
+/// changes on `NutPunch_Update()`, and won't do anything unless you're the lobby's master.
 ///
-/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for limitations on the amount of data you can squeeze.
+/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for limitations on the amount of
+/// data you can squeeze.
 void NutPunch_LobbySet(const char* name, int size, const void* data);
 
 /// Request lobby metadata. Sets `size` to the field's actual size if the pointer isn't `NULL`.
 ///
-/// The resulting pointer is actually a static allocation, so don't rely too much on it; its data will change after the
-/// next `NutPunch_LobbyGet` call.
+/// The resulting pointer is actually a static allocation, so don't rely too much on it; its data
+/// will change after the next `NutPunch_LobbyGet` call.
 ///
-/// You cannot query a lobby's metadata you aren't connected to. That's what `NutPunch_FindLobbies` uses filters for.
+/// You cannot query a lobby's metadata you aren't connected to. That's what `NutPunch_FindLobbies`
+/// uses filters for.
 void* NutPunch_LobbyGet(const char* name, int* size);
 
-/// Request your peer-specific metadata to be set. Works the same way as `NutPunch_LobbySet` otherwise.
+/// Request your peer-specific metadata to be set. Works the same way as `NutPunch_LobbySet`
+/// otherwise.
 void NutPunch_PeerSet(const char* name, int size, const void* data);
 
 /// Request metadata for a specific peer. Works the same way as `NutPunch_LobbyGet` otherwise.
 void* NutPunch_PeerGet(int peer, const char* name, int* size);
 
-/// Check if there is a packet waiting in the receiving queue. Retrieve it with `NutPunch_NextMessage()`.
+/// Check if there is a packet waiting in the receiving queue. Retrieve it with
+/// `NutPunch_NextMessage()`.
 bool NutPunch_HasMessage();
 
 /// Retrieve the next packet in the receiving queue. Returns the index of the peer who sent it.
 ///
 /// In case of an error, logs it and returns `NUTPUNCH_MAX_PLAYERS`.
 ///
-/// Size must be set to the output buffer's size. Passing an output buffer that is too small to contain the message data
-/// is considered an error.
+/// Size must be set to the output buffer's size. Passing an output buffer that is too small to
+/// contain the message data is considered an error.
 int NutPunch_NextMessage(void* out, int* size);
 
 /// Send data to specified peer. For reliable packet delivery, use `NutPunch_SendReliably`.
@@ -217,14 +221,14 @@ void NutPunch_SendReliably(int peer, const void* data, int size);
 
 /// Count how many "live" peers we have a route to, including our local peer.
 ///
-/// Do not use this as an upper bound for iterating over peers; they can come in any order and with gaps in-between. For
-/// that, see `NutPunch_PeerAlive`.
+/// Do not use this as an upper bound for iterating over peers; they can come in any order and with
+/// gaps in-between. For that, see `NutPunch_PeerAlive`.
 int NutPunch_PeerCount();
 
 /// Return true if you are connected to the peer with the specified index.
 ///
-/// If you're iterating over peers, use `NUTPUNCH_MAX_PLAYERS` as the upper index bound, and check their status using
-/// this function.
+/// If you're iterating over peers, use `NUTPUNCH_MAX_PLAYERS` as the upper index bound, and check
+/// their status using this function.
 bool NutPunch_PeerAlive(int peer);
 
 /// Get the local peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
@@ -238,15 +242,17 @@ void NutPunch_Disconnect();
 
 /// Query the lobbies list given a set of filters. Use `NutPunch_GetLobby` to retrieve the results.
 ///
-/// The list of lobbies will update after a few ticks of `NutPunch_Update`. Don't expect immediate results.
+/// The list of lobbies will update after a few ticks of `NutPunch_Update`. Don't expect immediate
+/// results.
 ///
-/// Each filter consists of either a special or a named metadata field, with a corresponding value to compare it to. All
-/// filters must match in order for a lobby to be listed.
+/// Each filter consists of either a special or a named metadata field, with a corresponding value
+/// to compare it to. All filters must match in order for a lobby to be listed.
 ///
 /// Bitwise-or the `NPF_*` constants to set a filter's comparison flags.
 ///
-/// To query "special" fields such as lobby capacity, use one of the `NPSF_*` constants with an `int8_t` value to
-/// compare it against. For example, to query lobbies for exactly a 2-player duo to play:
+/// To query "special" fields such as lobby capacity, use one of the `NPSF_*` constants with an
+/// `int8_t` value to compare it against. For example, to query lobbies for exactly a 2-player duo
+/// to play:
 ///
 /// ```
 /// NutPunch_Filter filters[2] = {0};
@@ -264,14 +270,15 @@ void NutPunch_Disconnect();
 /// NutPunch_FindLobbies(2, &filters);
 /// ```
 ///
-/// To query metadata fields, `memcpy` their names and values into the filter's `field` property. The comparison will be
-/// performed bytewise in a fashion similar to `memcmp`.
+/// To query metadata fields, `memcpy` their names and values into the filter's `field` property.
+/// The comparison will be performed bytewise in a fashion similar to `memcmp`.
 void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters);
 
 /// Extract lobby info after `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
 const NutPunch_LobbyInfo* NutPunch_GetLobby(int index);
 
-/// Count how many lobbies were found after `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
+/// Count how many lobbies were found after `NutPunch_FindLobbies`. Updates every call to
+/// `NutPunch_Update`.
 int NutPunch_LobbyCount();
 
 /// Use this to reset the underlying socket in case of an inexplicable error.
@@ -285,10 +292,11 @@ const char* NutPunch_Basename(const char* path);
 
 #ifndef NutPunch_Log
 #include <stdio.h>
-#define NutPunch_Log(msg, ...)                                                                                         \
-	do {                                                                                                           \
-		fprintf(stdout, "(%s:%d) " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);            \
-		fflush(stdout);                                                                                        \
+#define NutPunch_Log(msg, ...)                                                                     \
+	do {                                                                                       \
+		fprintf(stdout, "(%s:%d) " msg "\n", NutPunch_Basename(__FILE__), __LINE__,        \
+			##__VA_ARGS__);                                                            \
+		fflush(stdout);                                                                    \
 	} while (0)
 #endif
 
@@ -363,18 +371,17 @@ typedef int64_t NP_Socket;
 #define NP_Memzero2(ptr) NutPunch_Memset(ptr, 0, sizeof(*(ptr)))
 
 #define NP_Info(...) NutPunch_Log("INFO: " __VA_ARGS__)
-#define NP_Warn(...)                                                                                                   \
-	do {                                                                                                           \
-		NutPunch_Log("WARN: " __VA_ARGS__);                                                                    \
-		NutPunch_SNPrintF(NP_LastError, sizeof(NP_LastError), __VA_ARGS__);                                    \
+#define NP_Warn(...)                                                                               \
+	do {                                                                                       \
+		NutPunch_Log("WARN: " __VA_ARGS__);                                                \
+		NutPunch_SNPrintF(NP_LastError, sizeof(NP_LastError), __VA_ARGS__);                \
 	} while (0)
 
 #ifdef NUTPUNCH_TRACING
 #define NP_Trace(...) NutPunch_Log("TRACE: " __VA_ARGS__)
 #else
-#define NP_Trace(...)                                                                                                  \
-	do {                                                                                                           \
-	} while (0)
+#define NP_Trace(...)                                                                              \
+	do { break; } while (0)
 #endif
 
 typedef uint32_t NP_PacketIdx;
@@ -436,8 +443,9 @@ typedef struct {
 #define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (2 + NUTPUNCH_ID_MAX))
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
-static void NP_HandleShalom(NP_Message), NP_HandleDisconnection(NP_Message), NP_HandleGTFO(NP_Message),
-	NP_HandleBeating(NP_Message), NP_HandleList(NP_Message), NP_HandleAcky(NP_Message), NP_HandleData(NP_Message);
+static void NP_HandleShalom(NP_Message), NP_HandleDisconnection(NP_Message),
+	NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message), NP_HandleList(NP_Message),
+	NP_HandleAcky(NP_Message), NP_HandleData(NP_Message);
 
 static const NP_MessageType NP_Messages[] = {
 	{"SHLM", 1,           NP_HandleShalom       },
@@ -466,7 +474,8 @@ static char NP_ServerHost[128] = {0};
 static NP_Data *NP_QueueIn = NULL, *NP_QueueOut = NULL;
 static NutPunch_Field NP_LobbyMetadataIn[NUTPUNCH_MAX_FIELDS] = {0};
 static NutPunch_Field NP_PeerMetadataIn[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0};
-static NutPunch_Field NP_LobbyMetadataOut[NUTPUNCH_MAX_FIELDS] = {0}, NP_PeerMetadataOut[NUTPUNCH_MAX_FIELDS] = {0};
+static NutPunch_Field NP_LobbyMetadataOut[NUTPUNCH_MAX_FIELDS] = {0},
+		      NP_PeerMetadataOut[NUTPUNCH_MAX_FIELDS] = {0};
 
 static bool NP_Querying = false;
 static NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
@@ -552,9 +561,6 @@ static void NP_LazyInit() {
 		return;
 	NP_InitDone = true;
 
-	NP_Trace("IMPORTANT CONSTANTS:");
-	NP_Trace("  RESP = %d, BEAT = %d, LIST = %d", sizeof(NP_Response), NP_BEAT_LEN, NP_LIST_LEN);
-
 #ifdef NUTPUNCH_WINDOSE
 	WSADATA bitch = {0};
 	WSAStartup(MAKEWORD(2, 2), &bitch);
@@ -599,7 +605,8 @@ static void* NP_GetMetadataFrom(const NutPunch_Field* fields, const char* name, 
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		const NutPunch_Field* ptr = &fields[i];
-		if (name_size != NP_FieldNameSize(ptr->name) || NutPunch_Memcmp(ptr->name, name, name_size))
+		if (name_size != NP_FieldNameSize(ptr->name)
+			|| NutPunch_Memcmp(ptr->name, name, name_size))
 			continue;
 		NutPunch_Memcpy(buf, ptr->data, ptr->size);
 		if (size)
@@ -622,7 +629,8 @@ void* NutPunch_PeerGet(int peer, const char* name, int* size) {
 	return NP_GetMetadataFrom(NP_PeerMetadataIn[peer], name, size);
 }
 
-static void NP_SetMetadataIn(NutPunch_Field* fields, const char* name, int data_size, const void* data) {
+static void NP_SetMetadataIn(
+	NutPunch_Field* fields, const char* name, int data_size, const void* data) {
 	int name_size = NP_FieldNameSize(name);
 	if (!name_size)
 		return;
@@ -634,7 +642,8 @@ static void NP_SetMetadataIn(NutPunch_Field* fields, const char* name, int data_
 		NP_Warn("Invalid metadata field size!");
 		return;
 	} else if (data_size > NUTPUNCH_FIELD_DATA_MAX) {
-		NP_Warn("Trimming metadata field from %d to %d bytes", data_size, NUTPUNCH_FIELD_DATA_MAX);
+		NP_Warn("Trimming metadata field from %d to %d bytes", data_size,
+			NUTPUNCH_FIELD_DATA_MAX);
 		data_size = NUTPUNCH_FIELD_DATA_MAX;
 	}
 
@@ -644,8 +653,9 @@ static void NP_SetMetadataIn(NutPunch_Field* fields, const char* name, int data_
 
 		if (!NutPunch_Memcmp(field, &nullfield, sizeof(nullfield)))
 			goto set;
-		if (NP_FieldNameSize(field->name) == name_size && !NutPunch_Memcmp(field->name, name, name_size))
-			goto set;
+		if (NP_FieldNameSize(field->name) == name_size)
+			if (!NutPunch_Memcmp(field->name, name, name_size))
+				goto set;
 		continue;
 
 	set:
@@ -835,12 +845,14 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 	NP_Memzero(buf);
 
 #ifdef NUTPUNCH_WINDOSE
-	// Can't use inet_ntop directly since we're keeping compatibility with WinXP, and that doesn't have it.
+	// Can't use inet_ntop directly since we're keeping compatibility with WinXP, and that
+	// doesn't have it.
 	DWORD size = (DWORD)sizeof(buf);
 	WSAAddressToString((struct sockaddr*)&addr, sizeof(NP_Addr), NULL, buf, &size);
 #else
 	static char inet[64] = "";
-	NP_Memzero(inet), inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, inet, sizeof(inet));
+	NP_Memzero(inet);
+	inet_ntop(AF_INET, &((struct sockaddr_in*)&addr)->sin_addr, inet, sizeof(inet));
 	NutPunch_SNPrintF(buf, sizeof(buf), "%s port %d", inet, ntohs(*NP_AddrPort(&addr)));
 #endif
 
@@ -942,8 +954,9 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 		return;
 
 	NP_Peer* peer = &NP_Peers[idx];
-	const clock_t now = clock(), peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
-	if (!NutPunch_PeerAlive(idx) && peer->first_shalom && now - peer->first_shalom >= peer_timeout) {
+	const clock_t now = clock(), timeout_period = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
+	const bool timed_out = peer->first_shalom && now - peer->first_shalom >= timeout_period;
+	if (!NutPunch_PeerAlive(idx) && timed_out) {
 		NP_Warn("Failed to establish a connection to peer %d", idx + 1);
 		NP_LastStatus = NPS_Error;
 		return;
@@ -967,7 +980,8 @@ static void NP_HandleBeating(NP_Message msg) {
 	NP_Trace("AND EVEN PROCESSED IT!");
 	NP_LastBeating = clock();
 
-	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS, was_slave = !NutPunch_IsMaster();
+	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS,
+		   was_slave = !NutPunch_IsMaster();
 	const int meta_size = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + meta_size;
 
@@ -1061,7 +1075,8 @@ static bool NP_SendHeartbeat() {
 		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX), ptr += NUTPUNCH_ID_MAX;
 
 		// TODO: make sure to correct endianness when multibyte flags become a thing.
-		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags, ptr += sizeof(NP_HeartbeatFlags);
+		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags,
+		ptr += sizeof(NP_HeartbeatFlags);
 
 		const int meta_size = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
 		NutPunch_Memcpy(ptr, NP_PeerMetadataOut, meta_size), ptr += meta_size;
@@ -1119,13 +1134,15 @@ static NP_ReceiveStatus NP_ReceiveShit() {
 	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
 		const NP_MessageType type = NP_Messages[i];
 		const bool len_match = type.packet_size == NP_ANY_LEN || size == type.packet_size;
-		if (!NutPunch_Memcmp(buf, type.identifier, NUTPUNCH_HEADER_SIZE) && len_match) {
-			NP_Message msg = {0};
-			msg.addr = addr, msg.size = size;
-			msg.data = (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE);
-			type.handler(msg);
-			break;
-		}
+
+		if (NutPunch_Memcmp(buf, type.identifier, NUTPUNCH_HEADER_SIZE) || !len_match)
+			continue;
+
+		NP_Message msg = {0};
+		msg.addr = addr, msg.size = size;
+		msg.data = (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE);
+		type.handler(msg);
+		return NP_RS_Next;
 	}
 
 	return NP_RS_Next;
@@ -1179,7 +1196,8 @@ static void NP_FlushOutQueue() {
 		int result = NP_SendTo(addr, cur->data, (int)cur->size);
 		if (!result)
 			NP_KillPeer(cur->peer);
-		if (result >= 0 || NP_SockError() == NP_WouldBlock || NP_SockError() == NP_ConnReset)
+		if (result >= 0 || NP_SockError() == NP_WouldBlock
+			|| NP_SockError() == NP_ConnReset)
 			continue;
 		NP_Warn("Failed to send data to peer #%d (%d)", cur->peer + 1, NP_SockError());
 		NP_NukeLobbyData();
