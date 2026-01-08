@@ -1203,13 +1203,13 @@ static void NP_NetworkUpdate() {
 		goto error;
 	}
 
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-		if (NutPunch_PeerAlive(i) && i != NutPunch_LocalPeer()
-			&& now - NP_Peers[i].last_beating >= peer_timeout)
-		{
-			NP_Info("Peer %d timed out", i + 1);
-			NP_KillPeer(i);
-		}
+	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+		const bool timed_out = now - NP_Peers[i].last_beating >= peer_timeout;
+		if (i == NutPunch_LocalPeer() || !NutPunch_PeerAlive(i) || !timed_out)
+			continue;
+		NP_Info("Peer %d timed out", i + 1);
+		NP_KillPeer(i);
+	}
 
 	if (!NP_SendHeartbeat())
 		goto sockfail;
