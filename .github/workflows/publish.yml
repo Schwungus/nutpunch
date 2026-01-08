@@ -71,7 +71,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Configure
-        run: cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D NUTPUNCH_BUILD_TESTS=OFF -D NUTPUNCH_BUILD_LOBBYIST=OFF ${{ github.ref_name == 'staging' && '-D NUTPUNCH_STAGING=ON' || '' }}
+        run: cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D NUTPUNCH_BUILD_SERVER=ON ${{ github.ref_name == 'staging' && '-D NUTPUNCH_STAGING=ON' || '' }}
       - name: Build
         run: cmake --build build --target NutPuncher
       - name: Rename binary artifact

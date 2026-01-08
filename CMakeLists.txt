@@ -40,7 +40,7 @@ if(NUTPUNCH_TRACING)
     target_compile_definitions(NutPunch INTERFACE NUTPUNCH_TRACING=1)
 endif()
 
-option(NUTPUNCH_BUILD_TESTS "Build NutPunch test binary?" ON)
+option(NUTPUNCH_BUILD_TESTS "Build NutPunch test binary?")
 if(NUTPUNCH_BUILD_TESTS)
     FetchContent_Declare(poormans
         GIT_REPOSITORY https://github.com/nonk123/poormans.git
@@ -51,7 +51,7 @@ if(NUTPUNCH_BUILD_TESTS)
     target_link_libraries(NutPunchTest PRIVATE NutPunch poormans)
 endif()
 
-option(NUTPUNCH_BUILD_SERVER "Build NutPuncher?" ON)
+option(NUTPUNCH_BUILD_SERVER "Build NutPuncher?")
 if(NUTPUNCH_BUILD_SERVER)
     add_executable(NutPuncher ${SRC_DIR}/NutPuncher.cpp)
     set_target_properties(NutPuncher PROPERTIES
@@ -60,7 +60,7 @@ if(NUTPUNCH_BUILD_SERVER)
     target_link_options(NutPuncher PRIVATE -static)
 endif()
 
-option(NUTPUNCH_BUILD_LOBBYIST "Build lobbyist?" ON)
+option(NUTPUNCH_BUILD_LOBBYIST "Build lobbyist?")
 if(NUTPUNCH_BUILD_LOBBYIST)
     add_executable(NutPunchLobbyist ${SRC_DIR}/Lobbyist.c)
     target_link_libraries(NutPunchLobbyist PRIVATE NutPunch)
