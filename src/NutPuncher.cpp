@@ -301,7 +301,7 @@ struct Lobby {
 	}
 
 	void beat(const int player_idx) {
-		static uint8_t buf[NUTPUNCH_RESPONSE_SIZE] = "BEAT";
+		static uint8_t buf[sizeof(NP_Response)] = "BEAT";
 		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
 
 		*ptr++ = static_cast<uint8_t>(player_idx);
@@ -429,7 +429,7 @@ static int receive() {
 	Player* players = nullptr;
 
 	int attempts = 0;
-	char heartbeat[NUTPUNCH_HEARTBEAT_SIZE] = {0};
+	char heartbeat[sizeof(NP_Heartbeat)] = {0};
 	socklen_t addr_size = sizeof(struct sockaddr_in);
 	Addr addr;
 
@@ -449,7 +449,7 @@ static int receive() {
 		send_lobbies(addr, reinterpret_cast<const NutPunch_Filter*>(ptr));
 		return RecvKeepGoing;
 	}
-	if (std::memcmp(heartbeat, "JOIN", NUTPUNCH_HEADER_SIZE) || rcv != NUTPUNCH_HEARTBEAT_SIZE)
+	if (std::memcmp(heartbeat, "JOIN", NUTPUNCH_HEADER_SIZE) || rcv != sizeof(NP_Heartbeat))
 		return RecvKeepGoing; // most likely junk...
 
 	static char id[NUTPUNCH_ID_MAX + 1] = {0};
