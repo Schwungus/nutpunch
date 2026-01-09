@@ -379,11 +379,9 @@ typedef int64_t NP_Socket;
 
 #ifdef NUTPUNCH_TRACING
 #define NP_Trace(...) NutPunch_Log("TRACE: " __VA_ARGS__)
-#else
-// clang-format off
+#else // clang-format off
 #define NP_Trace(...) do {} while (0)
-// clang-format on
-#endif
+#endif // clang-format on
 
 typedef uint32_t NP_PacketIdx;
 typedef struct sockaddr_storage NP_Addr;
