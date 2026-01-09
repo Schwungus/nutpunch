@@ -131,27 +131,27 @@ typedef struct {
 	int players, capacity;
 } NutPunch_LobbyInfo;
 
-enum {
+typedef enum {
 	NPS_Error,
 	NPS_Idle,
 	NPS_Online,
-};
+} NutPunch_UpdateStatus;
 
-enum {
+typedef enum {
 	NPF_Not = 1 << 0,
 	NPF_Eq = 1 << 1,
 	NPF_Less = 1 << 2,
 	NPF_Greater = 1 << 3,
-};
+} NutPunch_Operator;
 
-enum {
+typedef enum {
 	NPE_Ok,
 	NPE_Sybau,
 	NPE_NoSuchLobby,
 	NPE_LobbyExists,
 	NPE_LobbyFull,
 	NPE_Max,
-};
+} NutPunch_ErrorCode;
 
 /// Set a custom NutPuncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
@@ -176,7 +176,7 @@ int NutPunch_GetMaxPlayers();
 void NutPunch_Cleanup();
 
 /// Call this every frame to update nutpunch. Returns one of the `NPS_*` constants.
-int NutPunch_Update();
+NutPunch_UpdateStatus NutPunch_Update();
 
 /// Request lobby metadata to be set. Can be called multiple times in a row. Will send out metadata
 /// changes on `NutPunch_Update()`, and won't do anything unless you're the lobby's master.
@@ -460,7 +460,7 @@ static char NP_LastError[512] = "";
 static clock_t NP_LastBeating = 0;
 
 static bool NP_InitDone = false, NP_Closing = false;
-static int NP_LastStatus = NPS_Idle;
+static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
 static char NP_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
 static NP_Peer NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
@@ -1257,14 +1257,13 @@ error:
 	NP_LastStatus = NPS_Error;
 }
 
-int NutPunch_Update() {
+NutPunch_UpdateStatus NutPunch_Update() {
 	NP_LazyInit();
 
 	if (NP_LastStatus == NPS_Idle || NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return NPS_Idle;
 
-	NP_LastStatus = NPS_Online;
-	NP_NetworkUpdate();
+	NP_LastStatus = NPS_Online, NP_NetworkUpdate();
 	NP_Trace("UPDATE OK NICE");
 
 	if (NP_LastStatus == NPS_Error) {
