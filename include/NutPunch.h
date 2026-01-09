@@ -426,16 +426,18 @@ typedef struct {
 	const uint8_t* data;
 } NP_Message;
 
+typedef NutPunch_Field NP_Metadata[NUTPUNCH_MAX_FIELDS];
+
 typedef union {
 	struct {
 		uint8_t header[NUTPUNCH_HEADER_SIZE], local_peer;
 		NP_ResponseFlagsStorage flags;
 		struct {
-			char ip[4];
+			uint8_t ip[4];
 			uint16_t port;
-			NutPunch_Field metadata[NUTPUNCH_MAX_FIELDS];
+			NP_Metadata metadata;
 		} peers[NUTPUNCH_MAX_PLAYERS];
-		NutPunch_Field metadata[NUTPUNCH_MAX_FIELDS];
+		NP_Metadata metadata;
 	} heartbeat;
 	struct {
 		uint8_t header[NUTPUNCH_HEADER_SIZE];
@@ -447,8 +449,7 @@ typedef struct {
 	uint8_t header[NUTPUNCH_HEADER_SIZE];
 	char id[NUTPUNCH_ID_MAX];
 	NP_HeartbeatFlagsStorage flags;
-	NutPunch_Field peer_metadata[NUTPUNCH_MAX_FIELDS],
-		lobby_metadata[NUTPUNCH_MAX_FIELDS];
+	NP_Metadata peer_metadata, lobby_metadata;
 } NP_Heartbeat;
 
 typedef struct {
@@ -492,12 +493,9 @@ static NP_Addr NP_PuncherAddr = {0};
 static char NP_ServerHost[128] = {0};
 
 static NP_Data *NP_QueueIn = NULL, *NP_QueueOut = NULL;
-static NutPunch_Field NP_LobbyMetadataIn[NUTPUNCH_MAX_FIELDS] = {0};
-static NutPunch_Field NP_LobbyMetadataOut[NUTPUNCH_MAX_FIELDS] = {0},
-		      NP_PeerMetadataOut[NUTPUNCH_MAX_FIELDS] = {0};
-// clang-format off
-static NutPunch_Field NP_PeerMetadataIn[NUTPUNCH_MAX_PLAYERS][NUTPUNCH_MAX_FIELDS] = {0};
-// clang-format on
+static NP_Metadata NP_PeerMetadataIn[NUTPUNCH_MAX_PLAYERS] = {0};
+static NP_Metadata NP_LobbyMetadataIn = {0}, NP_LobbyMetadataOut = {0},
+		   NP_PeerMetadataOut = {0};
 
 static bool NP_Querying = false;
 static NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
@@ -1025,8 +1023,7 @@ static void NP_HandleBeating(NP_Message msg) {
 
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS,
 		   was_slave = !NutPunch_IsMaster();
-	const int meta_size = NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
-	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + meta_size;
+	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE + sizeof(NP_Metadata);
 
 	NP_LocalPeer = *msg.data++, NP_ResponseFlags = *msg.data++;
 	if (just_joined)
@@ -1038,10 +1035,12 @@ static void NP_HandleBeating(NP_Message msg) {
 		NP_SayShalom(i, msg.data);
 		msg.data += NUTPUNCH_ADDRESS_SIZE;
 
-		NutPunch_Memcpy(NP_PeerMetadataIn[i], msg.data, meta_size);
-		msg.data += meta_size;
+		NP_Metadata* pm = &NP_PeerMetadataIn[i];
+		NutPunch_Memcpy(pm, msg.data, sizeof(NP_Metadata));
+		msg.data += sizeof(NP_Metadata);
 	}
-	NutPunch_Memcpy(NP_LobbyMetadataIn, msg.data, meta_size);
+
+	NutPunch_Memcpy(NP_LobbyMetadataIn, msg.data, sizeof(NP_Metadata));
 }
 
 static void NP_HandleList(NP_Message msg) {
@@ -1136,8 +1135,7 @@ static bool NP_SendHeartbeat() {
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags,
 		ptr += sizeof(NP_HeartbeatFlags);
 
-		const int meta_size
-			= NUTPUNCH_MAX_FIELDS * sizeof(NutPunch_Field);
+		const int meta_size = sizeof(NP_Metadata);
 
 		NutPunch_Memcpy(ptr, NP_PeerMetadataOut, meta_size);
 		ptr += meta_size;
