@@ -368,7 +368,7 @@ typedef int64_t NP_Socket;
 #endif
 
 #define NP_Memzero(array) NutPunch_Memset(array, 0, sizeof(array))
-#define NP_Memzero2(ptr) NutPunch_Memset(ptr, 0, sizeof(*(ptr)))
+#define NP_MemzeroRef(ref) NutPunch_Memset(&(ref), 0, sizeof(ref))
 
 #define NP_Info(...) NutPunch_Log("INFO: " __VA_ARGS__)
 #define NP_Warn(...)                                                                               \
@@ -532,7 +532,7 @@ static void NP_NukeLobbyData() {
 
 static void NP_NukeRemote() {
 	NP_LobbyId[0] = 0, NP_HeartbeatFlags = 0;
-	NP_Memzero2(&NP_PuncherAddr), NP_Memzero(NP_Peers);
+	NP_MemzeroRef(NP_PuncherAddr), NP_Memzero(NP_Peers);
 	NP_Memzero(NP_PeerMetadataIn), NP_Memzero(NP_Filters);
 	NP_LastStatus = NPS_Idle;
 }
@@ -696,7 +696,7 @@ static bool NP_ResolveNutpuncher() {
 		return false;
 	}
 
-	NP_Memzero2(&NP_PuncherAddr);
+	NP_MemzeroRef(NP_PuncherAddr);
 	NutPunch_Memcpy(&NP_PuncherAddr, resolved->ai_addr, resolved->ai_addrlen);
 	freeaddrinfo(resolved);
 
@@ -767,7 +767,7 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
 		return false;
 	}
 
-	NP_Memzero2(&NP_PuncherAddr);
+	NP_MemzeroRef(NP_PuncherAddr);
 	if (!NP_BindSocket()) {
 		NutPunch_Reset(), NP_LastStatus = NPS_Error;
 		return false;
@@ -859,7 +859,7 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 }
 
 static void NP_KillPeer(int peer) {
-	NP_Memzero2(NP_Peers + peer);
+	NP_MemzeroRef(NP_Peers[peer]);
 }
 
 static void NP_QueueSend(int peer, const void* data, int size, NP_PacketIdx index) {
