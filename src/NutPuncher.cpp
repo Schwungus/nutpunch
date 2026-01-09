@@ -344,14 +344,15 @@ struct Lobby {
 		}
 	}
 
-	void kill_bro(const NP_Addr addr) {
+	bool kill_bro(const NP_Addr addr) {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			if (players[i].dead() || players[i].addr != addr)
 				continue;
 			NP_Warn("Player %d disconnected gracefully", i + 1);
 			players[i].reset();
-			break;
+			return true;
 		}
+		return false;
 	}
 
 	bool match_against(
@@ -482,7 +483,8 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 
 static void kill_bro(Addr addr) {
 	for (auto& [id, lobby] : lobbies)
-		lobby.kill_bro(addr);
+		if (lobby.kill_bro(addr))
+			break;
 }
 
 constexpr const int RecvKeepGoing = 0, RecvDone = -1;
