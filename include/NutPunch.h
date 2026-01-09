@@ -65,10 +65,10 @@ extern "C" {
 #define NUTPUNCH_BUFFER_SIZE (8192)
 
 /// The maximum amount of results `NutPunch_LobbyList` can provide.
-#define NUTPUNCH_SEARCH_RESULTS_MAX (32)
+#define NUTPUNCH_MAX_SEARCH_RESULTS (32)
 
 /// The maximum amount of filters you can pass to `NutPunch_FindLobbies`.
-#define NUTPUNCH_SEARCH_FILTERS_MAX (8)
+#define NUTPUNCH_MAX_SEARCH_FILTERS (8)
 
 /// Maximum length of a metadata field name.
 #define NUTPUNCH_FIELD_NAME_MAX (8)
@@ -440,7 +440,7 @@ typedef union {
 	} heartbeat;
 	struct {
 		NP_Header header;
-		NutPunch_LobbyInfo lobbies[NUTPUNCH_SEARCH_RESULTS_MAX];
+		NutPunch_LobbyInfo lobbies[NUTPUNCH_MAX_SEARCH_RESULTS];
 	} list;
 } NP_Response;
 
@@ -459,7 +459,7 @@ typedef struct {
 
 #define NP_ANY_LEN (-1)
 #define NP_BEAT_LEN (sizeof(NP_Response) - sizeof(NP_Header))
-#define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (2 + sizeof(NutPunch_Id)))
+#define NP_LIST_LEN (NUTPUNCH_MAX_SEARCH_RESULTS * (2 + sizeof(NutPunch_Id)))
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
 static void NP_HandleShalom(NP_Message), NP_HandleDisconnection(NP_Message),
@@ -497,8 +497,8 @@ static NP_Metadata NP_LobbyMetadataIn = {0}, NP_LobbyMetadataOut = {0},
 		   NP_PeerMetadataOut = {0};
 
 static bool NP_Querying = false;
-static NutPunch_Filter NP_Filters[NUTPUNCH_SEARCH_FILTERS_MAX] = {0};
-static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_SEARCH_RESULTS_MAX] = {0};
+static NutPunch_Filter NP_Filters[NUTPUNCH_MAX_SEARCH_FILTERS] = {0};
+static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_MAX_SEARCH_RESULTS] = {0};
 
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
@@ -855,10 +855,10 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
 		return;
 	}
 
-	if (filter_count > NUTPUNCH_SEARCH_FILTERS_MAX) {
+	if (filter_count > NUTPUNCH_MAX_SEARCH_FILTERS) {
 		NP_Warn("Filter count exceeded in `NutPunch_FindLobbies`; "
 			"truncating the input");
-		filter_count = NUTPUNCH_SEARCH_FILTERS_MAX;
+		filter_count = NUTPUNCH_MAX_SEARCH_FILTERS;
 	}
 
 	NP_LazyInit();
@@ -1054,7 +1054,7 @@ static void NP_HandleList(NP_Message msg) {
 	const size_t idlen = sizeof(NutPunch_Id);
 	NP_Memzero(NP_Lobbies);
 
-	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++) {
+	for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
 		NP_Lobbies[i].players = *(uint8_t*)(msg.data++);
 		NP_Lobbies[i].capacity = *(uint8_t*)(msg.data++);
 
@@ -1432,10 +1432,10 @@ const NutPunch_LobbyInfo* NutPunch_GetLobby(int index) {
 int NutPunch_LobbyCount() {
 	NP_LazyInit();
 	static const NutPunch_Id nully = {0};
-	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++)
+	for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++)
 		if (!NutPunch_Memcmp(NP_Lobbies[i].name, nully, sizeof(nully)))
 			return i;
-	return NUTPUNCH_SEARCH_RESULTS_MAX;
+	return NUTPUNCH_MAX_SEARCH_RESULTS;
 }
 
 int NutPunch_PeerCount() {

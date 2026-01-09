@@ -458,7 +458,7 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 	uint8_t* ptr = buf + sizeof(NP_Header);
 	size_t filter_count = 0;
 
-	for (; filter_count < NUTPUNCH_SEARCH_FILTERS_MAX; filter_count++) {
+	for (; filter_count < NUTPUNCH_MAX_SEARCH_FILTERS; filter_count++) {
 		static constexpr const NutPunch_Filter nully = {0};
 		if (!std::memcmp(
 			    &filters[filter_count], &nully, sizeof(*filters)))
