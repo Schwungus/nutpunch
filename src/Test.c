@@ -3,7 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-static FILE* logfile = NULL; // gotta use a logfile since we're drawing to the console
+// gotta use a logfile since we're drawing to the console
+static FILE* logfile = NULL;
 
 // clang-format off
 #define NutPunch_Log(msg, ...) do { fprintf(logfile, msg "\n", ##__VA_ARGS__), fflush(logfile); } while (0);
@@ -23,8 +24,8 @@ struct Player {
 	int32_t x, y;
 };
 
-static const char* randomNames[]
-	= {"Fimon", "Trollga", "Marsoyob", "Ficus", "Caccus", "Skibidi69er", "Caulksucker"};
+static const char* randomNames[] = {"Fimon", "Trollga", "Marsoyob", "Ficus",
+	"Caccus", "Skibidi69er", "Caulksucker"};
 static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
 
 static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
@@ -75,7 +76,8 @@ static void draw_players() {
 static void receive_shit() {
 	static uint8_t data[512] = {0};
 	while (NutPunch_HasMessage()) {
-		int size = sizeof(data), peer = NutPunch_NextMessage(data, &size);
+		int size = sizeof(data),
+		    peer = NutPunch_NextMessage(data, &size);
 		if (peer == NUTPUNCH_MAX_PLAYERS)
 			continue;
 		if (size == PAYLOAD_SIZE) {
@@ -95,7 +97,8 @@ static void chat_with(int idx) {
 		return;
 	NutPunch_SNPrintF(name1, sizeof(name1), "%s", theirName);
 
-	const char* ourName = NutPunch_PeerGet(NutPunch_LocalPeer(), "NAME", NULL);
+	const char* ourName
+		= NutPunch_PeerGet(NutPunch_LocalPeer(), "NAME", NULL);
 	if (ourName == NULL)
 		return;
 	NutPunch_SNPrintF(name2, sizeof(name2), "%s", ourName);
@@ -124,8 +127,10 @@ static void send_shit() {
 static void move_our_dot() {
 	if (NutPunch_LocalPeer() == NUTPUNCH_MAX_PLAYERS)
 		return;
-	players[NutPunch_LocalPeer()].x += poor_key_down(POOR_D) - poor_key_down(POOR_A);
-	players[NutPunch_LocalPeer()].y += poor_key_down(POOR_S) - poor_key_down(POOR_W);
+	players[NutPunch_LocalPeer()].x
+		+= poor_key_down(POOR_D) - poor_key_down(POOR_A);
+	players[NutPunch_LocalPeer()].y
+		+= poor_key_down(POOR_S) - poor_key_down(POOR_W);
 }
 
 static void draw_debug_bits(int status) {
@@ -165,7 +170,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	static char fname[256] = "";
-	NutPunch_SNPrintF(fname, sizeof(fname), "log%s.txt", argc > 3 ? argv[3] : "");
+	NutPunch_SNPrintF(
+		fname, sizeof(fname), "log%s.txt", argc > 3 ? argv[3] : "");
 
 	logfile = fopen(fname, "w");
 	if (!logfile) {

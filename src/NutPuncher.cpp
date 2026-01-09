@@ -33,7 +33,8 @@
 #include <NutPunch.h>
 
 constexpr const int beats_per_second = 60, keep_alive_seconds = 10,
-		    keep_alive_beats = keep_alive_seconds * beats_per_second, max_lobbies = 512;
+		    keep_alive_beats = keep_alive_seconds * beats_per_second,
+		    max_lobbies = 512;
 
 struct Lobby;
 static NP_Socket sock = NUTPUNCH_INVALID_SOCKET;
@@ -43,8 +44,8 @@ static const char* fmt_lobby_id(const char* id) {
 	static char buf[NUTPUNCH_ID_MAX + 1] = {0};
 	for (int i = 0; i < NUTPUNCH_ID_MAX; i++) {
 		char c = id[i];
-		if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-'
-			|| c == '_')
+		if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+			|| c >= '0' && c <= '9' || c == '-' || c == '_')
 			buf[i] = c;
 		else if (!c) {
 			buf[i] = 0;
@@ -103,7 +104,8 @@ struct Field : NutPunch_Field {
 				break;
 			}
 
-		return our_len == arg_len && !std::memcmp(this->name, name, our_len);
+		return our_len == arg_len
+		       && !std::memcmp(this->name, name, our_len);
 	}
 
 	bool matches(const NutPunch_Filter& filter) const {
@@ -165,10 +167,12 @@ private:
 	int index_of(const char* name) {
 		if (!name || !*name)
 			return NUTPUNCH_MAX_FIELDS;
-		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // first matching
+		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
+			// first matching
 			if (fields[i].named(name))
 				return i;
-		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) // or first uninitialized
+		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
+			// or first uninitialized
 			if (fields[i].dead())
 				return i;
 		return NUTPUNCH_MAX_FIELDS; // or bust
@@ -199,7 +203,8 @@ struct Addr : NP_Addr {
 	}
 
 	template <typename T> int send(const T buf[], size_t size) const {
-		return sendto(sock, reinterpret_cast<const char*>(buf), static_cast<int>(size), 0,
+		return sendto(sock, reinterpret_cast<const char*>(buf),
+			static_cast<int>(size), 0,
 			reinterpret_cast<const sockaddr*>(this), sizeof(*this));
 	}
 
@@ -290,7 +295,8 @@ struct Lobby {
 		return count;
 	}
 
-	void accept(const int idx, const NP_HeartbeatFlagsStorage flags, const char* meta) {
+	void accept(const int idx, const NP_HeartbeatFlagsStorage flags,
+		const char* meta) {
 		auto& player = players[idx];
 		player.countdown = keep_alive_beats;
 		player.metadata.load(meta), meta += sizeof(Metadata);
@@ -317,7 +323,8 @@ struct Lobby {
 
 		*ptr++ = static_cast<uint8_t>(idx);
 
-		*ptr = static_cast<NP_ResponseFlagsStorage>(idx == master()) * NP_R_Master;
+		*ptr = static_cast<NP_ResponseFlagsStorage>(idx == master())
+		       * NP_R_Master;
 		*ptr++ |= (capacity & 0xF) << 4;
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
@@ -338,19 +345,22 @@ struct Lobby {
 	}
 
 	void kill_bro(const NP_Addr addr) {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (!players[i].dead() && players[i].addr == addr) {
-				NP_Warn("Player %d disconnected gracefully", i + 1);
-				players[i].reset();
-				break;
-			}
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+			if (players[i].dead() || players[i].addr != addr)
+				continue;
+			NP_Warn("Player %d disconnected gracefully", i + 1);
+			players[i].reset();
+			break;
+		}
 	}
 
-	bool match_against(const NutPunch_Filter* filters, int filter_count) const {
+	bool match_against(
+		const NutPunch_Filter* filters, int filter_count) const {
 		for (int f = 0; f < filter_count; f++) {
 			const auto& filter = filters[f];
 			if (filter.field.alwayszero != 0) {
-				int diff = static_cast<int>(filter.special.value);
+				int diff = static_cast<int>(
+					filter.special.value);
 				diff -= special(filter.special.index);
 				if (match_field_value(diff, filter.comparison))
 					goto next_filter;
@@ -358,7 +368,8 @@ struct Lobby {
 			}
 			for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++) {
 				const auto& field = metadata.fields[m];
-				if (field.dead() || !field.named(filter.field.name))
+				if (field.dead()
+					|| !field.named(filter.field.name))
 					continue;
 				if (field.matches(filter))
 					goto next_filter;
@@ -372,7 +383,8 @@ struct Lobby {
 	}
 
 	int master() {
-		if (NUTPUNCH_MAX_PLAYERS != master_idx && !players[master_idx].dead())
+		if (NUTPUNCH_MAX_PLAYERS != master_idx
+			&& !players[master_idx].dead())
 			return master_idx;
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			if (!players[i].dead())
@@ -389,17 +401,20 @@ static void bind_sock() {
 
 	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == NUTPUNCH_INVALID_SOCKET) {
-		NP_Warn("Failed to create the underlying UDP socket (%d)", NP_SockError());
+		const int err = NP_SockError();
+		NP_Warn("Failed to create the underlying UDP socket (%d)", err);
 		return;
 	}
 
 	if (!NP_MakeReuseAddr(sock)) {
-		NP_Warn("Failed to set socket reuseaddr option (%d)", NP_SockError());
+		const int err = NP_SockError();
+		NP_Warn("Failed to set socket reuseaddr option (%d)", err);
 		goto sockfail;
 	}
 
 	if (!NP_MakeNonblocking(sock)) {
-		NP_Warn("Failed to set socket to non-blocking mode (%d)", NP_SockError());
+		const int err = NP_SockError();
+		NP_Warn("Failed to set socket to non-blocking mode (%d)", err);
 		goto sockfail;
 	}
 
@@ -410,7 +425,8 @@ static void bind_sock() {
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
 		NP_Info("Bound to port %d", NUTPUNCH_SERVER_PORT);
 	} else {
-		NP_Warn("Failed to bind a socket. IPv6-only mode is unsupported (%d)",
+		NP_Warn("Failed to bind a socket. IPv6-only mode is "
+			"unsupported (%d)",
 			NP_SockError());
 	sockfail:
 		NP_NukeSocket(&sock);
@@ -424,7 +440,8 @@ static bool create_lobby(const char* id, const Addr& addr) {
 		return false;
 	}
 
-	// Match against existing peers to prevent creating multiple lobbies with the same master.
+	// Match against existing peers to prevent creating multiple lobbies
+	// with the same master.
 	for (const auto& [lobbyId, lobby] : lobbies)
 		for (const auto& player : lobby.players)
 			if (!player.dead() && player.addr == addr)
@@ -442,7 +459,8 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 
 	for (; filter_count < NUTPUNCH_SEARCH_FILTERS_MAX; filter_count++) {
 		static constexpr const NutPunch_Filter nully = {0};
-		if (!std::memcmp(&filters[filter_count], &nully, sizeof(*filters)))
+		if (!std::memcmp(
+			    &filters[filter_count], &nully, sizeof(*filters)))
 			break;
 	}
 	if (!filter_count)
@@ -497,7 +515,8 @@ static int receive() {
 
 	if (!std::memcmp(heartbeat, "LIST", NUTPUNCH_HEADER_SIZE))
 		if (rcv == NUTPUNCH_HEADER_SIZE + sizeof(NP_Filters)) {
-			const auto* filters = reinterpret_cast<const NutPunch_Filter*>(ptr);
+			const auto* filters
+				= reinterpret_cast<const NutPunch_Filter*>(ptr);
 			send_lobbies(addr, filters);
 			return RecvKeepGoing;
 		}
@@ -505,7 +524,8 @@ static int receive() {
 		kill_bro(addr);
 		return RecvKeepGoing;
 	}
-	if (rcv != sizeof(NP_Heartbeat) || std::memcmp(heartbeat, "JOIN", NUTPUNCH_HEADER_SIZE))
+	if (rcv != sizeof(NP_Heartbeat)
+		|| std::memcmp(heartbeat, "JOIN", NUTPUNCH_HEADER_SIZE))
 		return RecvKeepGoing; // most likely junk...
 
 	static char id[NUTPUNCH_ID_MAX + 1] = {0};

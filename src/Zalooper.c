@@ -36,7 +36,8 @@ int main(int argc, char* argv[]) {
 		while (NutPunch_HasMessage()) {
 			static char data[32] = "";
 			memset(data, 0, sizeof(data));
-			int size = sizeof(data), sender = NutPunch_NextMessage(data, &size);
+			int size = sizeof(data),
+			    sender = NutPunch_NextMessage(data, &size);
 			NP_Info("From %02d: %s", sender, data);
 		}
 		NP_SleepMs(100);
