@@ -61,10 +61,6 @@ extern "C" {
 #define NUTPUNCH_PEER_TIMEOUT_SECS (10)
 #endif
 
-/// The maximum length of a lobby identifier excluding the null terminator. Not
-/// customizable.
-#define NUTPUNCH_ID_MAX (32)
-
 /// How many bytes to reserve for every network packet.
 #define NUTPUNCH_BUFFER_SIZE (8192)
 
@@ -100,6 +96,8 @@ extern "C" {
 // we still depend on `time.h` through `clock_t` and `clock()` though.
 #include <time.h>
 
+typedef char NutPunch_Id[32];
+
 typedef struct {
 	char name[NUTPUNCH_FIELD_NAME_MAX];
 	char data[NUTPUNCH_FIELD_DATA_MAX];
@@ -127,7 +125,7 @@ typedef struct {
 } NutPunch_Filter;
 
 typedef struct {
-	char name[NUTPUNCH_ID_MAX + 1];
+	char name[sizeof(NutPunch_Id) + 1];
 	int players, capacity;
 } NutPunch_LobbyInfo;
 
@@ -448,7 +446,7 @@ typedef union {
 
 typedef struct {
 	NP_Header header;
-	char id[NUTPUNCH_ID_MAX];
+	NutPunch_Id id;
 	NP_HeartbeatFlagsStorage flags;
 	NP_Metadata peer_metadata, lobby_metadata;
 } NP_Heartbeat;
@@ -461,7 +459,7 @@ typedef struct {
 
 #define NP_ANY_LEN (-1)
 #define NP_BEAT_LEN (sizeof(NP_Response) - sizeof(NP_Header))
-#define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (2 + NUTPUNCH_ID_MAX))
+#define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (2 + sizeof(NutPunch_Id)))
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
 static void NP_HandleShalom(NP_Message), NP_HandleDisconnection(NP_Message),
@@ -485,7 +483,7 @@ static clock_t NP_LastBeating = 0;
 static bool NP_InitDone = false, NP_Closing = false;
 static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
-static char NP_LobbyId[NUTPUNCH_ID_MAX + 1] = {0};
+static char NP_LobbyId[sizeof(NutPunch_Id) + 1] = {0};
 static NP_Peer NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static uint8_t NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
 
@@ -1053,7 +1051,7 @@ static void NP_HandleList(NP_Message msg) {
 	NP_Trace("AND EVEN PROCESSED IT!");
 	NP_LastBeating = clock();
 
-	const size_t idlen = NUTPUNCH_ID_MAX;
+	const size_t idlen = sizeof(NutPunch_Id);
 	NP_Memzero(NP_Lobbies);
 
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++) {
@@ -1061,8 +1059,7 @@ static void NP_HandleList(NP_Message msg) {
 		NP_Lobbies[i].capacity = *(uint8_t*)(msg.data++);
 
 		NutPunch_Memcpy(NP_Lobbies[i].name, msg.data, idlen);
-		NP_Lobbies[i].name[NUTPUNCH_ID_MAX] = '\0';
-		msg.data += idlen;
+		NP_Lobbies[i].name[idlen] = '\0', msg.data += idlen;
 	}
 }
 
@@ -1127,9 +1124,9 @@ static bool NP_SendHeartbeat() {
 		NutPunch_Memcpy(ptr, "JOIN", sizeof(NP_Header));
 		ptr += sizeof(NP_Header);
 
-		NutPunch_Memset(ptr, 0, NUTPUNCH_ID_MAX);
-		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX);
-		ptr += NUTPUNCH_ID_MAX;
+		NutPunch_Memset(ptr, 0, sizeof(NutPunch_Id));
+		NutPunch_Memcpy(ptr, NP_LobbyId, sizeof(NutPunch_Id));
+		ptr += sizeof(NutPunch_Id);
 
 		// TODO: make sure to correct endianness when multibyte flags
 		// become a thing.
@@ -1434,7 +1431,7 @@ const NutPunch_LobbyInfo* NutPunch_GetLobby(int index) {
 
 int NutPunch_LobbyCount() {
 	NP_LazyInit();
-	static const char nully[NUTPUNCH_ID_MAX] = {0};
+	static const NutPunch_Id nully = {0};
 	for (int i = 0; i < NUTPUNCH_SEARCH_RESULTS_MAX; i++)
 		if (!NutPunch_Memcmp(NP_Lobbies[i].name, nully, sizeof(nully)))
 			return i;

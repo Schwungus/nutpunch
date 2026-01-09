@@ -41,8 +41,8 @@ static NP_Socket sock = NUTPUNCH_INVALID_SOCKET;
 static std::map<std::string, Lobby> lobbies;
 
 static const char* fmt_lobby_id(const char* id) {
-	static char buf[NUTPUNCH_ID_MAX + 1] = {0};
-	for (int i = 0; i < NUTPUNCH_ID_MAX; i++) {
+	static char buf[sizeof(NutPunch_Id) + 1] = {0};
+	for (int i = 0; i < sizeof(NutPunch_Id); i++) {
 		char c = id[i];
 		if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 			|| c >= '0' && c <= '9' || c == '-' || c == '_')
@@ -53,7 +53,7 @@ static const char* fmt_lobby_id(const char* id) {
 		} else
 			buf[i] = ' ';
 	}
-	for (int i = NUTPUNCH_ID_MAX; i >= 0; i--)
+	for (int i = sizeof(NutPunch_Id); i >= 0; i--)
 		if (buf[i] != ' ' && buf[i] != 0) {
 			buf[i + 1] = '\0';
 			return buf;
@@ -247,7 +247,7 @@ struct Player {
 };
 
 struct Lobby {
-	char id[NUTPUNCH_ID_MAX];
+	NutPunch_Id id;
 	uint8_t capacity;
 	Player players[NUTPUNCH_MAX_PLAYERS];
 	Metadata metadata;
@@ -472,9 +472,9 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 		if (!lobby.match_against(filters, filter_count))
 			continue;
 		*ptr++ = lobby.gamers(), *ptr++ = lobby.capacity;
-		std::memset(ptr, 0, NUTPUNCH_ID_MAX);
+		std::memset(ptr, 0, sizeof(NutPunch_Id));
 		std::memcpy(ptr, id.data(), std::strlen(lobby.fmt_id()));
-		ptr += NUTPUNCH_ID_MAX;
+		ptr += sizeof(NutPunch_Id);
 	}
 
 	for (int i = 0; i < 5; i++)
@@ -530,8 +530,9 @@ static int receive() {
 		|| std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
 		return RecvKeepGoing; // most likely junk...
 
-	static char id[NUTPUNCH_ID_MAX + 1] = {0};
-	std::memcpy(id, ptr, NUTPUNCH_ID_MAX), ptr += NUTPUNCH_ID_MAX;
+	static char id[sizeof(NutPunch_Id) + 1] = {0};
+	std::memcpy(id, ptr, sizeof(NutPunch_Id));
+	ptr += sizeof(NutPunch_Id);
 
 	auto flags = *reinterpret_cast<const NP_HeartbeatFlagsStorage*>(ptr);
 	ptr += sizeof(flags);
