@@ -210,8 +210,8 @@ struct Addr : NP_Addr {
 
 	int gtfo(uint8_t error) const {
 		int status = 0;
-		static uint8_t buf[NUTPUNCH_HEADER_SIZE + 1] = "GTFO";
-		buf[NUTPUNCH_HEADER_SIZE] = error;
+		static uint8_t buf[sizeof(NP_Header) + 1] = "GTFO";
+		buf[sizeof(NP_Header)] = error;
 		for (int i = 0; i < 5; i++)
 			status |= send(buf, sizeof(buf));
 		return status;
@@ -319,7 +319,7 @@ struct Lobby {
 
 	void beat(const int idx) {
 		static uint8_t buf[sizeof(NP_Response)] = "BEAT";
-		uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
+		uint8_t* ptr = buf + sizeof(NP_Header);
 
 		*ptr++ = static_cast<uint8_t>(idx);
 
@@ -454,8 +454,8 @@ static bool create_lobby(const char* id, const Addr& addr) {
 }
 
 static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
-	static uint8_t buf[NUTPUNCH_HEADER_SIZE + NP_LIST_LEN] = "LIST";
-	uint8_t* ptr = buf + NUTPUNCH_HEADER_SIZE;
+	static uint8_t buf[sizeof(NP_Header) + NP_LIST_LEN] = "LIST";
+	uint8_t* ptr = buf + sizeof(NP_Header);
 	size_t filter_count = 0;
 
 	for (; filter_count < NUTPUNCH_SEARCH_FILTERS_MAX; filter_count++) {
@@ -511,23 +511,23 @@ static int receive() {
 			return NP_SockError();
 		}
 
-	if (rcv < NUTPUNCH_HEADER_SIZE)
+	if (rcv < sizeof(NP_Header))
 		return RecvKeepGoing; // junk...
-	const char* ptr = heartbeat + NUTPUNCH_HEADER_SIZE;
+	const char* ptr = heartbeat + sizeof(NP_Header);
 
-	if (!std::memcmp(heartbeat, "LIST", NUTPUNCH_HEADER_SIZE))
-		if (rcv == NUTPUNCH_HEADER_SIZE + sizeof(NP_Filters)) {
+	if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header)))
+		if (rcv == sizeof(NP_Header) + sizeof(NP_Filters)) {
 			const auto* filters
 				= reinterpret_cast<const NutPunch_Filter*>(ptr);
 			send_lobbies(addr, filters);
 			return RecvKeepGoing;
 		}
-	if (!std::memcmp(heartbeat, "DISC", NUTPUNCH_HEADER_SIZE)) {
+	if (!std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {
 		kill_bro(addr);
 		return RecvKeepGoing;
 	}
 	if (rcv != sizeof(NP_Heartbeat)
-		|| std::memcmp(heartbeat, "JOIN", NUTPUNCH_HEADER_SIZE))
+		|| std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
 		return RecvKeepGoing; // most likely junk...
 
 	static char id[NUTPUNCH_ID_MAX + 1] = {0};

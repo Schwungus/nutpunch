@@ -89,7 +89,6 @@ extern "C" {
 #define NUTPUNCH_PORT_MIN ((uint16_t)(NUTPUNCH_SERVER_PORT + 1))
 #define NUTPUNCH_PORT_MAX ((uint16_t)(NUTPUNCH_PORT_MIN + 512))
 
-#define NUTPUNCH_HEADER_SIZE (4)
 #define NUTPUNCH_ADDRESS_SIZE (6)
 
 #ifndef NUTPUNCH_NOSTD
@@ -426,11 +425,13 @@ typedef struct {
 	const uint8_t* data;
 } NP_Message;
 
+typedef uint8_t NP_Header[4];
 typedef NutPunch_Field NP_Metadata[NUTPUNCH_MAX_FIELDS];
 
 typedef union {
 	struct {
-		uint8_t header[NUTPUNCH_HEADER_SIZE], local_peer;
+		NP_Header header;
+		uint8_t local_peer;
 		NP_ResponseFlagsStorage flags;
 		struct {
 			uint8_t ip[4];
@@ -440,26 +441,26 @@ typedef union {
 		NP_Metadata metadata;
 	} heartbeat;
 	struct {
-		uint8_t header[NUTPUNCH_HEADER_SIZE];
+		NP_Header header;
 		NutPunch_LobbyInfo lobbies[NUTPUNCH_SEARCH_RESULTS_MAX];
 	} list;
 } NP_Response;
 
 typedef struct {
-	uint8_t header[NUTPUNCH_HEADER_SIZE];
+	NP_Header header;
 	char id[NUTPUNCH_ID_MAX];
 	NP_HeartbeatFlagsStorage flags;
 	NP_Metadata peer_metadata, lobby_metadata;
 } NP_Heartbeat;
 
 typedef struct {
-	const char identifier[NUTPUNCH_HEADER_SIZE + 1];
+	const char identifier[sizeof(NP_Header) + 1];
 	const int packet_size;
 	void (*const handler)(NP_Message);
 } NP_MessageType;
 
 #define NP_ANY_LEN (-1)
-#define NP_BEAT_LEN (sizeof(NP_Response) - NUTPUNCH_HEADER_SIZE)
+#define NP_BEAT_LEN (sizeof(NP_Response) - sizeof(NP_Header))
 #define NP_LIST_LEN (NUTPUNCH_SEARCH_RESULTS_MAX * (2 + NUTPUNCH_ID_MAX))
 #define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
@@ -1005,8 +1006,8 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	if (!peer->first_shalom)
 		peer->first_shalom = now;
 
-	static uint8_t shalom[NUTPUNCH_HEADER_SIZE + 1] = "SHLM";
-	shalom[NUTPUNCH_HEADER_SIZE] = NP_LocalPeer;
+	static uint8_t shalom[sizeof(NP_Header) + 1] = "SHLM";
+	shalom[sizeof(NP_Header)] = NP_LocalPeer;
 
 	NP_SendTimesTo(5, addr, shalom, sizeof(shalom));
 	NP_Trace("SENT HI %s", NP_FormatAddr(addr));
@@ -1085,8 +1086,8 @@ static void NP_HandleData(NP_Message msg) {
 	msg.size -= sizeof(index), msg.data += sizeof(index);
 
 	if (index) {
-		static char ack[NUTPUNCH_HEADER_SIZE + sizeof(index)] = "ACKY";
-		char* ptr = ack + NUTPUNCH_HEADER_SIZE;
+		static char ack[sizeof(NP_Header) + sizeof(index)] = "ACKY";
+		char* ptr = ack + sizeof(NP_Header);
 		NutPunch_Memcpy(ptr, &index_as_recv, sizeof(index));
 		NP_QueueSend(peer_idx, ack, sizeof(ack), 0);
 	}
@@ -1117,14 +1118,14 @@ static bool NP_SendHeartbeat() {
 
 	char* ptr = heartbeat;
 	if (NP_Querying) {
-		NutPunch_Memcpy(ptr, "LIST", NUTPUNCH_HEADER_SIZE);
-		ptr += NUTPUNCH_HEADER_SIZE;
+		NutPunch_Memcpy(ptr, "LIST", sizeof(NP_Header));
+		ptr += sizeof(NP_Header);
 
 		NutPunch_Memcpy(ptr, NP_Filters, sizeof(NP_Filters));
 		ptr += sizeof(NP_Filters);
 	} else {
-		NutPunch_Memcpy(ptr, "JOIN", NUTPUNCH_HEADER_SIZE);
-		ptr += NUTPUNCH_HEADER_SIZE;
+		NutPunch_Memcpy(ptr, "JOIN", sizeof(NP_Header));
+		ptr += sizeof(NP_Header);
 
 		NutPunch_Memset(ptr, 0, NUTPUNCH_ID_MAX);
 		NutPunch_Memcpy(ptr, NP_LobbyId, NUTPUNCH_ID_MAX);
@@ -1196,10 +1197,10 @@ static NP_ReceiveStatus NP_ReceiveShit() {
 		}
 
 skip_graceful_disconnect:
-	if (size < NUTPUNCH_HEADER_SIZE)
+	if (size < sizeof(NP_Header))
 		return NP_RS_Next;
 
-	size -= NUTPUNCH_HEADER_SIZE;
+	size -= sizeof(NP_Header);
 	NP_Trace("RECEIVED %d BYTES OF SHIT", size);
 
 	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
@@ -1207,12 +1208,12 @@ skip_graceful_disconnect:
 
 		if (type.packet_size != NP_ANY_LEN && size != type.packet_size)
 			continue;
-		if (NutPunch_Memcmp(buf, type.identifier, NUTPUNCH_HEADER_SIZE))
+		if (NutPunch_Memcmp(buf, type.identifier, sizeof(NP_Header)))
 			continue;
 
 		NP_Message msg = {0};
 		msg.addr = addr, msg.size = size;
-		msg.data = (uint8_t*)(buf + NUTPUNCH_HEADER_SIZE);
+		msg.data = (uint8_t*)(buf + sizeof(NP_Header));
 		type.handler(msg);
 		return NP_RS_Next;
 	}
@@ -1405,7 +1406,7 @@ static void NP_SendPro(int peer, const void* data, int size, bool reliable) {
 			   net_index = htonl(index);
 
 	static char buf[NUTPUNCH_BUFFER_SIZE] = "DATA";
-	char* ptr = buf + NUTPUNCH_HEADER_SIZE;
+	char* ptr = buf + sizeof(NP_Header);
 
 	NutPunch_Memcpy(ptr, &net_index, sizeof(net_index));
 	ptr += sizeof(net_index);
