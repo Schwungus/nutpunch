@@ -44,14 +44,16 @@ static const char* fmt_lobby_id(const char* id) {
 	static char buf[sizeof(NutPunch_Id) + 1] = {0};
 	for (int i = 0; i < sizeof(NutPunch_Id); i++) {
 		char c = id[i];
-		if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
-			|| c >= '0' && c <= '9' || c == '-' || c == '_')
+		if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
 			buf[i] = c;
-		else if (!c) {
+		} else if (c >= '0' && c <= '9' || c == '-' || c == '_') {
+			buf[i] = c;
+		} else if (!c) {
 			buf[i] = 0;
 			return buf;
-		} else
+		} else {
 			buf[i] = ' ';
+		}
 	}
 	for (int i = sizeof(NutPunch_Id); i >= 0; i--)
 		if (buf[i] != ' ' && buf[i] != 0) {
