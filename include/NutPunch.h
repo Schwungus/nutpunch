@@ -527,6 +527,8 @@ static bool NP_AddrEq(NP_Addr a, NP_Addr b) {
 
 static bool NP_AddrNull(NP_Addr addr) {
 	static const uint8_t nulladdr[4] = {0};
+	if (!*NP_AddrPort(&addr))
+		return true;
 	return !NutPunch_Memcmp(NP_AddrRaw(&addr), nulladdr, sizeof(nulladdr));
 }
 
@@ -972,11 +974,9 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	NP_Addr addr = {0};
 	*NP_AddrFamily(&addr) = AF_INET;
 	NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4), data += 4;
+	*NP_AddrPort(&addr) = *(uint16_t*)data, data += 2;
 
-	uint16_t* port = NP_AddrPort(&addr);
-	*port = *(uint16_t*)data, data += 2;
-
-	if (NP_AddrNull(addr) || !*port) {
+	if (NP_AddrNull(addr)) {
 		NP_KillPeer(idx); // dead on the NutPuncher's side
 		return;
 	}
