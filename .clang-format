@@ -2,7 +2,6 @@ ColumnLimit: 80
 IndentWidth: 8
 ContinuationIndentWidth: 8
 UseTab: AlignWithSpaces
-AlignEscapedNewlines: LeftWithLastLine
 AlignArrayOfStructures: Left
 AlignAfterOpenBracket: false
 BreakBeforeBinaryOperators: All

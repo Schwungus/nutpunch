@@ -386,11 +386,11 @@ typedef int64_t NP_Socket;
 #define NP_MemzeroRef(ref) NutPunch_Memset(&(ref), 0, sizeof(ref))
 
 #define NP_Info(...) NutPunch_Log("INFO: " __VA_ARGS__)
-#define NP_Warn(...)                                                      \
-	do {                                                              \
-		NutPunch_Log("WARN: " __VA_ARGS__);                       \
-		NutPunch_SNPrintF(                                        \
-			NP_LastError, sizeof(NP_LastError), __VA_ARGS__); \
+#define NP_Warn(...)                                                           \
+	do {                                                                   \
+		NutPunch_Log("WARN: " __VA_ARGS__);                            \
+		NutPunch_SNPrintF(                                             \
+			NP_LastError, sizeof(NP_LastError), __VA_ARGS__);      \
 	} while (0)
 
 #ifdef NUTPUNCH_TRACING
