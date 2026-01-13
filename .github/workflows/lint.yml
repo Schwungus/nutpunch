@@ -14,7 +14,7 @@ jobs:
       contents: read
     steps:
       - name: Update clang-format
-        run: bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
+        run: sudo bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)"
       - name: Checkout (code only)
         uses: actions/checkout@v6
         with:
