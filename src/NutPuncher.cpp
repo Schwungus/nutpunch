@@ -356,7 +356,7 @@ struct Lobby {
 	}
 
 	bool match_against(
-		const NutPunch_Filter* filters, int filter_count) const {
+		const NutPunch_Filter* filters, size_t filter_count) const {
 		for (int f = 0; f < filter_count; f++) {
 			const auto& filter = filters[f];
 			if (filter.field.alwayszero != 0) {
@@ -369,8 +369,9 @@ struct Lobby {
 			}
 			for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++) {
 				const auto& field = metadata.fields[m];
-				if (field.dead()
-					|| !field.named(filter.field.name))
+				if (field.dead())
+					continue;
+				if (!field.named(filter.field.name))
 					continue;
 				if (field.matches(filter))
 					goto next_filter;
@@ -384,9 +385,9 @@ struct Lobby {
 	}
 
 	int master() {
-		if (NUTPUNCH_MAX_PLAYERS != master_idx
-			&& !players[master_idx].dead())
-			return master_idx;
+		if (NUTPUNCH_MAX_PLAYERS != master_idx)
+			if (!players[master_idx].dead())
+				return master_idx;
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			if (!players[i].dead())
 				return (master_idx = i);
@@ -522,13 +523,16 @@ static int receive() {
 			send_lobbies(addr, filters);
 			return RecvKeepGoing;
 		}
+
 	if (!std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {
 		kill_bro(addr);
 		return RecvKeepGoing;
 	}
-	if (rcv != sizeof(NP_Heartbeat)
-		|| std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
+
+	if (rcv != sizeof(NP_Heartbeat))
 		return RecvKeepGoing; // most likely junk...
+	if (std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
+		return RecvKeepGoing;
 
 	static char id[sizeof(NutPunch_Id) + 1] = {0};
 	std::memcpy(id, ptr, sizeof(NutPunch_Id));
@@ -609,6 +613,7 @@ int main(int, char*[]) {
 
 	std::int64_t start = clock(), end, delta;
 	const std::int64_t min_delta = 1000 / beats_per_second;
+	int result;
 
 	NP_Info("Running!");
 	for (;;) {
@@ -617,7 +622,6 @@ int main(int, char*[]) {
 			return EXIT_FAILURE;
 		}
 
-		int result;
 		do
 			result = receive();
 		while (result == RecvKeepGoing);
@@ -632,7 +636,7 @@ int main(int, char*[]) {
 
 		std::erase_if(lobbies, [](const auto& kv) {
 			const auto& lobby = kv.second;
-			bool dead = lobby.dead();
+			const bool dead = lobby.dead();
 			if (dead)
 				NP_Info("Deleting lobby '%s'", lobby.fmt_id());
 			return dead;
