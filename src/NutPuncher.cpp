@@ -32,9 +32,9 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
-constexpr const int beats_per_second = 60, keep_alive_seconds = 10,
-		    keep_alive_beats = keep_alive_seconds * beats_per_second,
-		    max_lobbies = 512;
+constexpr const int BEATS_PER_SECOND = 60, KEEP_ALIVE_SECONDS = 10,
+		    KEEP_ALIVE_BEATS = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND,
+		    MAX_LOBBIES = 512;
 
 struct Lobby;
 static NP_Socket sock = NUTPUNCH_INVALID_SOCKET;
@@ -43,10 +43,10 @@ static std::map<std::string, Lobby> lobbies;
 static const char* fmt_lobby_id(const char* id) {
 	static char buf[sizeof(NutPunch_Id) + 1] = {0};
 	for (int i = 0; i < sizeof(NutPunch_Id); i++) {
-		char c = id[i];
-		if (c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z') {
-			buf[i] = c;
-		} else if (c >= '0' && c <= '9' || c == '-' || c == '_') {
+		const char c = id[i];
+		const bool alpha = c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z',
+			   numeric = c >= '0' && c <= '9';
+		if (alpha || numeric || c == '-' || c == '_') {
 			buf[i] = c;
 		} else if (!c) {
 			buf[i] = 0;
@@ -55,9 +55,9 @@ static const char* fmt_lobby_id(const char* id) {
 			buf[i] = ' ';
 		}
 	}
-	for (int i = sizeof(NutPunch_Id); i >= 0; i--)
-		if (buf[i] != ' ' && buf[i] != 0) {
-			buf[i + 1] = '\0';
+	for (int i = sizeof(NutPunch_Id); i > 0; i--)
+		if (buf[i - 1] != ' ' && buf[i - 1] != 0) {
+			buf[i] = 0;
 			return buf;
 		}
 	return buf;
@@ -74,10 +74,11 @@ static bool match_field_value(const int diff, const int flags) {
 		result &= diff < 0;
 		if (flags & NPF_Eq)
 			result |= eq;
-	} else if (flags & NPF_Eq)
+	} else if (flags & NPF_Eq) {
 		result &= eq;
-	else // junk
+	} else { // junk
 		return false;
+	}
 	return (flags & NPF_Not) ? !result : result;
 }
 
@@ -205,9 +206,10 @@ struct Addr : NP_Addr {
 	}
 
 	template <typename T> int send(const T buf[], size_t size) const {
-		return sendto(sock, reinterpret_cast<const char*>(buf),
-			static_cast<int>(size), 0,
-			reinterpret_cast<const sockaddr*>(this), sizeof(*this));
+		const auto* cbuf = reinterpret_cast<const char*>(buf);
+		const auto* csock = reinterpret_cast<const sockaddr*>(this);
+		const auto csize = static_cast<int>(size);
+		return sendto(sock, cbuf, csize, 0, csock, sizeof(*this));
 	}
 
 	int gtfo(uint8_t error) const {
@@ -300,7 +302,7 @@ struct Lobby {
 	void accept(const int idx, const NP_HeartbeatFlagsStorage flags,
 		const char* meta) {
 		auto& player = players[idx];
-		player.countdown = keep_alive_beats;
+		player.countdown = KEEP_ALIVE_BEATS;
 		player.metadata.load(meta), meta += sizeof(Metadata);
 		if (idx == master()) {
 			capacity = (flags & 0xF0) >> 4;
@@ -429,7 +431,7 @@ static void bind_sock() {
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
 		NP_Info("Bound to port %d", NUTPUNCH_SERVER_PORT);
 	} else {
-		NP_Warn("Failed to bind a socket. IPv6-only mode is "
+		NP_Warn("Failed to bind an IPv4 socket. IPv6-only mode is "
 			"unsupported (%d)",
 			NP_SockError());
 	sockfail:
@@ -438,7 +440,7 @@ static void bind_sock() {
 }
 
 static bool create_lobby(const char* id, const Addr& addr) {
-	if (lobbies.size() >= max_lobbies) {
+	if (lobbies.size() >= MAX_LOBBIES) {
 		addr.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
 		NP_Warn("Reached lobby limit");
 		return false;
@@ -446,7 +448,7 @@ static bool create_lobby(const char* id, const Addr& addr) {
 
 	// Match against existing peers to prevent creating multiple lobbies
 	// with the same master.
-	for (const auto& [lobbyId, lobby] : lobbies)
+	for (const auto& [lobby_id, lobby] : lobbies)
 		for (const auto& player : lobby.players)
 			if (!player.dead() && player.addr == addr)
 				return true; // fuck you...
@@ -614,7 +616,7 @@ int main(int, char*[]) {
 	bind_sock();
 
 	std::int64_t start = clock(), end, delta;
-	const std::int64_t min_delta = 1000 / beats_per_second;
+	const std::int64_t min_delta = 1000 / BEATS_PER_SECOND;
 	int result;
 
 	NP_Info("Running!");
