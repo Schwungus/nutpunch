@@ -154,14 +154,18 @@ typedef enum {
 /// Set a custom NutPuncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
 
-/// Join a lobby by its ID. If no lobby exists with this ID, spit an error
-/// status out of `NutPunch_Update()`.
+/// Join a lobby by its ID. Return `false` if a network error occurs and `true`
+/// otherwise.
+///
+/// If no lobby exists with this ID, an error status spits out of
+/// `NutPunch_Update()` rather than immediately here.
 bool NutPunch_Join(const char* lobby_id);
 
-/// Host a lobby with the specified ID and maximum player count.
+/// Host a lobby with the specified ID and maximum player count. Return `false`
+/// if a network error occurs and `true` otherwise.
 ///
-/// If the lobby already exists, an error status spits out of
-/// `NutPunch_Update()` rather than immediately.
+/// If the lobby with the same ID exists, an error status spits out of
+/// `NutPunch_Update()` rather than immediately here.
 bool NutPunch_Host(const char* lobby_id, int players);
 
 /// Change the maximum player count after calling `NutPunch_Host`.
@@ -171,80 +175,86 @@ void NutPunch_SetMaxPlayers(int players);
 /// aren't in a lobby.
 int NutPunch_GetMaxPlayers();
 
-/// Call this at the end of your program to run semi-important cleanup.
+/// Call this at the end of your program to disconnect gracefully and run other
+/// semi-important cleanup.
 void NutPunch_Cleanup();
 
 /// Call this every frame to update nutpunch. Returns one of the `NPS_*`
-/// constants.
+/// constants you need to match against to see if something goes wrong.
 NutPunch_UpdateStatus NutPunch_Update();
 
-/// Request lobby metadata to be set. Can be called multiple times in a row.
-/// Will send out metadata changes on `NutPunch_Update()`, and won't do anything
-/// unless you're the lobby's master.
+/// Request a field of lobby metadata to be set. Can be called multiple times in
+/// a row to set multiple fields. This will send out metadata changes only after
+/// a call to `NutPunch_Update()`, and won't do anything unless you're the
+/// lobby's master.
 ///
-/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for limitations
-/// on the amount of data you can squeeze.
+/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount
+/// of data you can squeeze into a field.
 void NutPunch_LobbySet(const char* name, int size, const void* data);
 
-/// Request lobby metadata. Sets `size` to the field's actual size if the
-/// pointer isn't `NULL`.
+/// Query lobby metadata. Sets `size` to the field's actual size unless you
+/// specify `NULL`. Metadata is updated with each call to `NutPunch_Update()`.
 ///
 /// The resulting pointer is actually a static allocation, so don't rely too
 /// much on it; its data will change after the next `NutPunch_LobbyGet` call.
 ///
-/// You cannot query a lobby's metadata you aren't connected to. That's what
-/// `NutPunch_FindLobbies` uses filters for.
+/// You cannot query the metadata of a lobby you aren't connected to. To do
+/// that, use `NutPunch_FindLobbies` and specify some filters.
 void* NutPunch_LobbyGet(const char* name, int* size);
 
-/// Request your peer-specific metadata to be set. Works the same way as
-/// `NutPunch_LobbySet` otherwise.
+/// Request your peer-specific metadata to be set. Otherwise, this works the
+/// same way as `NutPunch_LobbySet`, which see.
 void NutPunch_PeerSet(const char* name, int size, const void* data);
 
-/// Request metadata for a specific peer. Works the same way as
-/// `NutPunch_LobbyGet` otherwise.
+/// Query metadata for a specific peer. Otherwise, this works the same way as
+/// `NutPunch_LobbyGet`, which see.
 void* NutPunch_PeerGet(int peer, const char* name, int* size);
 
 /// Check if there is a packet waiting in the receiving queue. Retrieve it with
 /// `NutPunch_NextMessage()`.
 bool NutPunch_HasMessage();
 
-/// Retrieve the next packet in the receiving queue. Returns the index of the
-/// peer who sent it.
+/// Retrieve the next packet in the receiving queue. Reads up to `size` bytes
+/// into `out`. Returns the index of the peer who sent it.
 ///
-/// In case of an error, logs it and returns `NUTPUNCH_MAX_PLAYERS`.
+/// In case of an error, logs it and returns `NUTPUNCH_MAX_PLAYERS`. You can
+/// retrieve a human-readable message later with `NutPunch_GetLastError()`.
 ///
-/// Size must be set to the output buffer's size. Passing an output buffer that
-/// is too small to contain the message data is considered an error.
+/// `size` must be set to the output buffer's size. Passing an output buffer
+/// that is smaller than `size` will crash your entire program.
 int NutPunch_NextMessage(void* out, int* size);
 
-/// Send data to specified peer. For reliable packet delivery, use
-/// `NutPunch_SendReliably`.
+/// Send data to specified peer. Copies the data into a dynamically allocated
+/// buffer of `size` bytes.
+///
+/// For reliable packet delivery, try `NutPunch_SendReliably`.
 void NutPunch_Send(int peer, const void* data, int size);
 
 /// Send data to specified peer expecting them to acknowledge the fact of
-/// reception.
+/// reception. See the docs of `NutPunch_Send` for more usage notes.
 void NutPunch_SendReliably(int peer, const void* data, int size);
 
 /// Count how many "live" peers we have a route to, including our local peer.
 ///
-/// Do not use this as an upper bound for iterating over peers; they can come in
-/// any order and with gaps in-between. For that, see `NutPunch_PeerAlive`.
+/// Do not use this as an upper bound for iterating over peers. Iterate from 0
+/// to `NUTPUNCH_MAX_PLAYERS` and check each peer individually with
+/// `NutPunch_PeerAlive`.
 int NutPunch_PeerCount();
 
 /// Return true if you are connected to the peer with the specified index.
 ///
-/// If you're iterating over peers, use `NUTPUNCH_MAX_PLAYERS` as the upper
-/// index bound, and check their status using this function.
+/// Use `NUTPUNCH_MAX_PLAYERS` as the upper bound for iterating, and check each
+/// peer's status individually using this function.
 bool NutPunch_PeerAlive(int peer);
 
 /// Get the local peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for
 /// any reason.
 int NutPunch_LocalPeer();
 
-/// Check if we're the lobby's master.
+/// Returns `true` if we are connected to a lobby and are its master.
 bool NutPunch_IsMaster();
 
-/// Call this to gracefully disconnect from the lobby.
+/// Call this to gracefully disconnect from a lobby.
 void NutPunch_Disconnect();
 
 /// Query the lobbies list given a set of filters. Use `NutPunch_GetLobby` to
@@ -284,23 +294,23 @@ void NutPunch_Disconnect();
 /// similar to `memcmp`.
 void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters);
 
-/// Extract lobby info after `NutPunch_FindLobbies`. Updates every call to
-/// `NutPunch_Update`.
+/// Extract lobby info after a call to `NutPunch_FindLobbies`. Updates every
+/// call to `NutPunch_Update`; don't expect an immediate response.
 const NutPunch_LobbyInfo* NutPunch_GetLobby(int index);
 
-/// Count how many lobbies were found after `NutPunch_FindLobbies`. Updates
-/// every call to `NutPunch_Update`.
+/// Count how many lobbies were found after the call to
+/// `NutPunch_FindLobbies`. Updates every call to `NutPunch_Update`.
 int NutPunch_LobbyCount();
 
-/// Use this to reset the underlying socket in case of an inexplicable error.
+/// Call this to reset the underlying socket in case of an inexplicable error.
 void NutPunch_Reset();
 
 /// Get the human-readable description of the latest error in
-/// `NutPunch_Update()`.
+/// `NutPunch_Update()` and a few other functions.
 const char* NutPunch_GetLastError();
 
-/// Get a file's basename (the name without directory). Used internally in
-/// `NP_Log`.
+/// Return a substring of `path` without its directory name. A utility function
+/// used internally in the default implementation of `NutPunch_Log`.
 const char* NutPunch_Basename(const char* path);
 
 #ifndef NutPunch_Log
