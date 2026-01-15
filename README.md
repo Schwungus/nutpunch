@@ -31,24 +31,26 @@ In order to run your own hole-puncher server, you'll need to get the server bina
 Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. Here's the general usage guide for the NutPunch library:
 
 1. Host a lobby with `NutPunch_Host("lobby-id")`, or join an existing one with `NutPunch_Join("lobby-id")`.
-2. Optionally add metadata to the lobby:
-   1. If you join an empty lobby, you will be considered its master. A lobby master has the authority from the matchmaking server to set lobby-specific metadata. This is usually needed to start games with specific parameters or to enforce an expected player count in a lobby. If you don't need metadata, you can just skip this entire step.
-   2. After calling `NutPunch_Join()`, you can set metadata in the lobby by calling `NutPunch_LobbySet()` as a master. You don't have to finish "connecting" and handshaking with NutPuncher before setting metadata. A lobby can hold up to 16 fields, each identified by 8-byte strings and holding up to 32 bytes of data. Non-masters aren't allowed to set metadata, so calls are no-op for them. The actual metadata also won't be updated until the next call to `NutPunch_Update()`, which will be covered later.
+2. (Optional) Set lobby metadata:
+   1. If you join or host an empty lobby, you will be considered its master. A lobby master has the authority from the matchmaking server to set lobby-specific metadata. This is usually needed to start games with specific parameters. If you don't need lobby metadata, you can just skip this entire step.
+   2. After calling `NutPunch_Join()`, you can set metadata in the lobby by calling `NutPunch_LobbySet()` as its master. You don't have to finish "connecting" and handshaking with NutPuncher before setting metadata. A lobby can hold up to 16 fields, each identified by 8-byte strings and holding up to 16 bytes of data. Non-masters can try to set lobby metadata, but such attempts will be ingored by the NutPuncher. The remote-side metadata also won't be updated until the next call to `NutPunch_Update()`.
    3. Just like `NutPunch_LobbySet()`, you can use `NutPunch_PeerSet()` to set your very own peer-specific metadata such as nickname or skin spritesheet name. Use `NutPunch_PeerGet()` with a peer index to query your own or others' peer metadata.
 3. Listen for events:
-   1. Call `NutPunch_Update()` each frame, regardless of whether you're still joining or already [playing with the boys](https://nonk.dev/blog/battlecry). This will also automatically update lobby metadata back and forth.
-   2. Check your status by matching the returned value against `NPS_*` constants. `NPS_Online` is the only one you need to handle explicitly, as you can safely start retrieving metadata and player count with it. Optionally, you can also handle `NPS_Error` and get clues as to what's wrong by calling `NutPunch_GetLastError()`.
-4. Optionally read metadata from the lobby during `NPS_Online` status. Use `NutPunch_Get()` to get a pointer to a metadata field, which you can then read from (as long as it's valid and is the exact size that you expect it to be). These pointers are volatile, especially when calling `NutPunch_Update()`, so if you need to use the gotten value more than once, cache it somewhere.
-5. If all went well (i.e. you have enough metadata and player count is fulfilled), start your match.
-6. Run the game logic.
-7. Keep in sync with each peer: Send datagrams through `NutPunch_Send()` and poll for incoming datagrams by looping with `NutPunch_HasMessage()` and retrieving them with `NutPunch_NextMessage()`. In scenarios where you need to cache packet data, `memcpy` it into a static array of `NUTPUNCH_BUFFER_SIZE`[^kb] bytes in order to fit the whole packet without overflowing and/or segfaulting.
-8. Come back to step 6 the next frame. You're all Gucci!
+   1. Call `NutPunch_Update()` each frame, regardless of whether you're still joining or already [playing with the boys](https://nonk.dev/blog/battlecry). This will also automatically send lobby metadata back and forth to the NutPuncher server.
+   2. Check your status by matching the returned value against `NPS_*` constants. `NPS_Online` is what you're looking for normally, but make sure to handle `NPS_Error`. To get a human-readable error description, call `NutPunch_GetLastError()`.
+4. (Optional) Read lobby metadata:
+   1. Use `NutPunch_LobbyGet()` and `NutPunch_PeerGet()` to get a pointer to a field's value. These pointers are volatile, especially when calling `NutPunch_Update()`, so if you need to use the values between NutPunch function calls, make sure to cache them somewhere.
+5. Run the game logic.
+6. Keep in sync with the peers:
+   1. Send datagrams with `NutPunch_Send()` or `NutPunch_SendReliably()`.
+   2. Poll for incoming datagrams with `NutPunch_HasMessage()` and retrieve the datagrams with `NutPunch_NextMessage()`. In scenarios where you need to cache packet data between NutPunch function calls, `memcpy` the data into a static array of `NUTPUNCH_BUFFER_SIZE`[^kb] bytes in order to fit the whole packet without overflowing and/or segfaulting.
+7. Repeat steps 3 through 6. You're all Gucci!
 
 [^kb]: `NUTPUNCH_BUFFER_SIZE` is currently defined to be 8192 bytes. Should be small enough for WinSock not to signal a `WSAEMSGSIZE` error on send.
 
 ## Premade Integrations
 
-Not documented yet.
+None yet.
 
 > **TODO**: Add a [GekkoNet](https://github.com/HeatXD/GekkoNet) network adapter implementation. In the meantime, you can look into [the code of a real usecase](https://github.com/toggins/Klawiatura/blob/master/src/K_net.c).
 
