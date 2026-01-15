@@ -417,7 +417,7 @@ typedef struct NP_Data {
 	char* data;
 	struct NP_Data* next;
 	NP_PacketIdx index;
-	size_t size;
+	uint32_t size;
 	uint8_t peer, dead;
 	int16_t bounce;
 } NP_Data;
