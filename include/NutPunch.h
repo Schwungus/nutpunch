@@ -413,19 +413,22 @@ typedef uint32_t NP_PacketIdx;
 typedef struct sockaddr_storage NP_Addr;
 typedef uint8_t NP_HeartbeatFlagsStorage, NP_ResponseFlagsStorage;
 
-typedef struct {
-	NP_Addr addr;
-	clock_t last_beating, first_shalom;
-} NP_Peer;
-
 typedef struct NP_Data {
 	char* data;
 	struct NP_Data* next;
 	NP_PacketIdx index;
-	uint32_t size;
+	size_t size;
 	uint8_t peer, dead;
 	int16_t bounce;
 } NP_Data;
+
+typedef struct {
+	NP_Addr addr;
+	clock_t last_beating, first_shalom;
+
+	NP_PacketIdx recv_counter, send_counter;
+	NP_Data* out_of_order;
+} NP_Peer;
 
 typedef struct {
 	NP_Addr addr;
@@ -903,30 +906,6 @@ static void NP_KillPeer(int peer) {
 	NP_MemzeroRef(NP_Peers[peer]);
 }
 
-static void NP_QueueSend(
-	int peer, const void* data, int size, NP_PacketIdx index) {
-	if (!NutPunch_PeerAlive(peer) || NutPunch_LocalPeer() == peer)
-		return;
-	if (size > NUTPUNCH_BUFFER_SIZE) {
-		NP_Warn("Ignoring a huge packet");
-		return;
-	}
-
-	NP_Data* next = NP_QueueOut;
-	NP_QueueOut = (NP_Data*)NutPunch_Malloc(sizeof(*next));
-	NP_QueueOut->next = next, NP_QueueOut->peer = peer;
-	NP_QueueOut->size = size, NP_QueueOut->bounce = index ? 0 : -1;
-	NP_QueueOut->index = index, NP_QueueOut->dead = false;
-	NP_QueueOut->data = (char*)NutPunch_Malloc(size);
-	NutPunch_Memcpy(NP_QueueOut->data, data, size);
-}
-
-static void NP_QueueSendTimes(
-	int count, int peer, const void* data, int size, NP_PacketIdx index) {
-	while (count-- > 0)
-		NP_QueueSend(peer, data, size, index);
-}
-
 static void NP_HandleShalom(NP_Message msg) {
 	const uint8_t idx = *msg.data;
 	if (idx < NUTPUNCH_MAX_PLAYERS) {
@@ -964,15 +943,16 @@ static void NP_PrintLocalPeer(const uint8_t* data) {
 	NP_Info("Server thinks you are %s", NP_FormatAddr(addr));
 }
 
-static int NP_SendTo(NP_Addr dest, const void* data, int len) {
+static int NP_SendDirectly(NP_Addr dest, const void* data, int len) {
 	struct sockaddr* shit_dest = (struct sockaddr*)&dest;
 	const char* shit_data = (const char*)data;
 	return sendto(NP_Sock, shit_data, len, 0, shit_dest, sizeof(dest));
 }
 
-static void NP_SendTimesTo(int times, NP_Addr dest, const void* data, int len) {
+static void NP_SendTimesDirectly(
+	int times, NP_Addr dest, const void* data, int len) {
 	while (times-- > 0)
-		NP_SendTo(dest, data, len);
+		NP_SendDirectly(dest, data, len);
 }
 
 static void NP_SayShalom(int idx, const uint8_t* data) {
@@ -1010,7 +990,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	static uint8_t shalom[sizeof(NP_Header) + 1] = "SHLM";
 	shalom[sizeof(NP_Header)] = NP_LocalPeer;
 
-	NP_SendTimesTo(5, addr, shalom, sizeof(shalom));
+	NP_SendTimesDirectly(5, addr, shalom, sizeof(shalom));
 	NP_Trace("SENT HI %s", NP_FormatAddr(addr));
 }
 
@@ -1079,25 +1059,52 @@ static void NP_HandleData(NP_Message msg) {
 	if (peer_idx == NUTPUNCH_MAX_PLAYERS)
 		return;
 
-	NP_Peers[peer_idx].last_beating = clock();
+	NP_Peer* const peer = &NP_Peers[peer_idx];
+	peer->last_beating = clock();
 
 	const NP_PacketIdx index_as_recv = *(NP_PacketIdx*)msg.data,
 			   index = ntohl(index_as_recv);
 	msg.size -= sizeof(index), msg.data += sizeof(index);
 
-	if (index) {
-		static char ack[sizeof(NP_Header) + sizeof(index)] = "ACKY";
-		char* ptr = ack + sizeof(NP_Header);
-		NutPunch_Memcpy(ptr, &index_as_recv, sizeof(index));
-		NP_QueueSend(peer_idx, ack, sizeof(ack), 0);
+	NP_Data* packet = (NP_Data*)NutPunch_Malloc(sizeof(*packet));
+	packet->data = (char*)NutPunch_Malloc(msg.size);
+	NutPunch_Memcpy(packet->data, msg.data, msg.size);
+	packet->peer = peer_idx, packet->size = msg.size;
+	packet->index = index;
+
+	if (!index) {
+		packet->next = NP_QueueIn;
+		NP_QueueIn = packet;
+		return;
 	}
 
-	NP_Data* next = NP_QueueIn;
-	NP_QueueIn = (NP_Data*)NutPunch_Malloc(sizeof(*next));
-	NP_QueueIn->data = (char*)NutPunch_Malloc(msg.size);
-	NutPunch_Memcpy(NP_QueueIn->data, msg.data, msg.size);
-	NP_QueueIn->peer = peer_idx, NP_QueueIn->size = msg.size;
-	NP_QueueIn->next = next;
+	for (NP_Data* ptr = peer->out_of_order; ptr; ptr = ptr->next)
+		if (ptr->index == index) // check for duplicates
+			return;
+
+	packet->next = peer->out_of_order;
+	peer->out_of_order = packet;
+
+	for (;;) {
+		NP_Data *ptr = peer->out_of_order, *prev = NULL;
+		for (; ptr; prev = ptr, ptr = ptr->next)
+			if (ptr->index == peer->recv_counter + 1)
+				break;
+		if (!ptr)
+			break;
+
+		peer->recv_counter++;
+		if (prev)
+			prev->next = ptr->next;
+		else
+			peer->out_of_order = ptr->next;
+		ptr->next = NP_QueueIn, NP_QueueIn = ptr;
+	}
+
+	static char ack[sizeof(NP_Header) + sizeof(index)] = "ACKY";
+	char* const ptr = ack + sizeof(NP_Header);
+	NutPunch_Memcpy(ptr, &index_as_recv, sizeof(index));
+	NP_SendDirectly(peer->addr, ack, sizeof(ack));
 }
 
 static void NP_HandleAcky(NP_Message msg) {
@@ -1146,7 +1153,7 @@ static bool NP_SendHeartbeat() {
 	}
 
 	const int len = (int)(ptr - heartbeat);
-	if (0 <= NP_SendTo(NP_PuncherAddr, heartbeat, len))
+	if (0 <= NP_SendDirectly(NP_PuncherAddr, heartbeat, len))
 		return true;
 
 	const int err = NP_SockError();
@@ -1257,7 +1264,7 @@ static void NP_FlushOutQueue() {
 		}
 
 		NP_Addr addr = NP_Peers[cur->peer].addr;
-		int result = NP_SendTo(addr, cur->data, (int)cur->size);
+		int result = NP_SendDirectly(addr, cur->data, (int)cur->size);
 		if (!result)
 			NP_KillPeer(cur->peer);
 		if (result >= 0 || NP_SockError() == NP_WouldBlock
@@ -1272,7 +1279,7 @@ static void NP_FlushOutQueue() {
 
 static void NP_SendGoodbyes() {
 	static char bye[4] = {'D', 'I', 'S', 'C'};
-	NP_SendTimesTo(10, NP_PuncherAddr, bye, sizeof(bye));
+	NP_SendTimesDirectly(10, NP_PuncherAddr, bye, sizeof(bye));
 }
 
 static void NP_NetworkUpdate() {
@@ -1384,14 +1391,18 @@ static void NP_SendPro(int peer, const void* data, int size, bool reliable) {
 		return;
 	}
 
+	if (!NutPunch_PeerAlive(peer) || NutPunch_LocalPeer() == peer)
+		return;
+
 	if (size > NUTPUNCH_BUFFER_SIZE - 32) {
 		NP_Warn("Ignoring a huge packet");
 		return;
 	}
 
-	static NP_PacketIdx packet_idx = 0;
-	const NP_PacketIdx index = reliable ? ++packet_idx : 0,
-			   net_index = htonl(index);
+	NP_PacketIdx index = 0;
+	if (reliable)
+		index = ++NP_Peers[peer].send_counter;
+	const NP_PacketIdx net_index = htonl(index);
 
 	static char buf[NUTPUNCH_BUFFER_SIZE] = "DATA";
 	char* ptr = buf + sizeof(NP_Header);
@@ -1402,7 +1413,13 @@ static void NP_SendPro(int peer, const void* data, int size, bool reliable) {
 	NutPunch_Memcpy(ptr, data, size);
 	ptr += size;
 
-	NP_QueueSend(peer, buf, (int)(ptr - buf), index);
+	NP_Data* next = NP_QueueOut;
+	NP_QueueOut = (NP_Data*)NutPunch_Malloc(sizeof(*next));
+	NP_QueueOut->next = next, NP_QueueOut->peer = peer;
+	NP_QueueOut->size = ptr - buf, NP_QueueOut->bounce = index ? 0 : -1;
+	NP_QueueOut->index = index, NP_QueueOut->dead = false;
+	NP_QueueOut->data = (char*)NutPunch_Malloc(NP_QueueOut->size);
+	NutPunch_Memcpy(NP_QueueOut->data, buf, NP_QueueOut->size);
 }
 
 void NutPunch_Send(int peer, const void* data, int size) {
