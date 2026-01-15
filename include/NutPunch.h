@@ -80,7 +80,7 @@ extern "C" {
 #define NUTPUNCH_MAX_FIELDS (12)
 
 /// How many updates to wait before resending a reliable packet.
-#define NUTPUNCH_BOUNCE_TICKS (60)
+#define NUTPUNCH_BOUNCE_TICKS (20)
 
 #define NUTPUNCH_PORT_MIN ((uint16_t)(NUTPUNCH_SERVER_PORT + 1))
 #define NUTPUNCH_PORT_MAX ((uint16_t)(NUTPUNCH_PORT_MIN + 512))
