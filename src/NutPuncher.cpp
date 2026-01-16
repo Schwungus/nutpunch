@@ -370,7 +370,7 @@ struct Lobby {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			if (players[i].dead() || players[i].addr != addr)
 				continue;
-			NP_Warn("Player %d disconnected gracefully", i + 1);
+			NP_Info("Player %d disconnected gracefully", i + 1);
 			players[i].reset();
 			return true;
 		}
