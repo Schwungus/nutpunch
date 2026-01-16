@@ -1465,8 +1465,8 @@ bool NutPunch_IsMaster() {
 }
 
 const char* NutPunch_Basename(const char* path) {
-	size_t len = 0;
-	for (len = 0; path[len]; len++) {}
+	size_t len = 0; // clang-format off
+	for (len = 0; path[len]; len++) {} // clang-format on
 	for (size_t i = len - 2; i >= 0; i--)
 		if (path[i] == '/' || path[i] == '\\')
 			return &path[i + 1];
