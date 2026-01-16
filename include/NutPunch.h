@@ -641,8 +641,9 @@ static const void* NP_GetMetadataFrom(
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		const NutPunch_Field* ptr = &fields[i];
-		if (name_size != NP_FieldNameSize(ptr->name)
-			|| NutPunch_Memcmp(ptr->name, name, name_size))
+		if (name_size != NP_FieldNameSize(ptr->name))
+			continue;
+		if (NutPunch_Memcmp(ptr->name, name, name_size))
 			continue;
 		NutPunch_Memcpy(buf, ptr->data, ptr->size);
 		if (size)
