@@ -628,8 +628,8 @@ static int NP_FieldNameSize(const char* name) {
 	return NUTPUNCH_FIELD_NAME_MAX;
 }
 
-static const void* NP_GetMetadataFrom(
-	const NP_Metadata fields, const char* name, int* size) {
+static const void*
+NP_GetMetadataFrom(const NP_Metadata fields, const char* name, int* size) {
 	static char buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
 	NP_Memzero(buf);
 
@@ -952,8 +952,8 @@ static int NP_SendDirectly(NP_Addr dest, const void* data, int len) {
 	return sendto(NP_Sock, shit_data, len, 0, shit_dest, sizeof(dest));
 }
 
-static void NP_SendTimesDirectly(
-	int times, NP_Addr dest, const void* data, int len) {
+static void
+NP_SendTimesDirectly(int times, NP_Addr dest, const void* data, int len) {
 	while (times-- > 0)
 		NP_SendDirectly(dest, data, len);
 }

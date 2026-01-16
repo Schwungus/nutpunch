@@ -6,6 +6,8 @@ AlignArrayOfStructures: Left
 AlignAfterOpenBracket: false
 BreakBeforeBinaryOperators: All
 BreakBeforeBraces: Custom
+BreakAfterReturnType: Automatic
+PenaltyReturnTypeOnItsOwnLine: 0
 BraceWrapping:
   AfterControlStatement: MultiLine
 SpaceAfterCStyleCast: false
@@ -19,7 +21,6 @@ AllowShortEnumsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: Empty
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLoopsOnASingleLine: false
-AlwaysBreakAfterReturnType: None
 AccessModifierOffset: -8
 IndentCaseBlocks: false
 IndentCaseLabels: false
