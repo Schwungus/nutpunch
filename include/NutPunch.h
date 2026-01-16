@@ -410,7 +410,7 @@ typedef int64_t NP_Socket;
 #endif // clang-format on
 
 typedef uint32_t NP_PacketIdx;
-typedef struct sockaddr_storage NP_Addr;
+typedef struct sockaddr_in NP_Addr;
 typedef uint8_t NP_HeartbeatFlagsStorage, NP_ResponseFlagsStorage;
 
 typedef struct NP_Data {
@@ -523,15 +523,15 @@ enum {
 };
 
 static uint16_t* NP_AddrFamily(NP_Addr* addr) {
-	return (uint16_t*)&((struct sockaddr_in*)addr)->sin_family;
+	return (uint16_t*)&addr->sin_family;
 }
 
 static uint32_t* NP_AddrRaw(NP_Addr* addr) {
-	return (uint32_t*)&((struct sockaddr_in*)addr)->sin_addr.s_addr;
+	return (uint32_t*)&addr->sin_addr.s_addr;
 }
 
 static uint16_t* NP_AddrPort(NP_Addr* addr) {
-	return &((struct sockaddr_in*)addr)->sin_port;
+	return &addr->sin_port;
 }
 
 static bool NP_AddrEq(NP_Addr a, NP_Addr b) {
@@ -896,7 +896,7 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 	NP_Memzero(buf);
 
 	const uint16_t p = ntohs(*NP_AddrPort(&addr));
-	const char* s = inet_ntoa(((struct sockaddr_in*)&addr)->sin_addr);
+	const char* s = inet_ntoa(addr.sin_addr);
 	NutPunch_SNPrintF(buf, sizeof(buf), "%s port %d", s, p);
 
 	return buf;

@@ -197,14 +197,6 @@ struct Addr : NP_Addr {
 		return !std::memcmp(this, &addr, sizeof(addr));
 	}
 
-	sockaddr_in* v4() {
-		return reinterpret_cast<sockaddr_in*>(this);
-	}
-
-	const sockaddr_in* v4() const {
-		return reinterpret_cast<const sockaddr_in*>(this);
-	}
-
 	template <typename T> int send(const T buf[], size_t size) const {
 		const auto* cbuf = reinterpret_cast<const char*>(buf);
 		const auto* csock = reinterpret_cast<const sockaddr*>(this);
@@ -212,13 +204,11 @@ struct Addr : NP_Addr {
 		return sendto(sock, cbuf, csize, 0, csock, sizeof(*this));
 	}
 
-	int gtfo(uint8_t error) const {
-		int status = 0;
+	void gtfo(uint8_t error) const {
 		static uint8_t buf[sizeof(NP_Header) + 1] = "GTFO";
 		buf[sizeof(NP_Header)] = error;
 		for (int i = 0; i < 5; i++)
-			status |= send(buf, sizeof(buf));
-		return status;
+			send(buf, sizeof(buf));
 	}
 
 	void dump(uint8_t* ptr) const {
@@ -226,8 +216,8 @@ struct Addr : NP_Addr {
 	}
 
 	void dump(char* ptr) const {
-		std::memcpy(ptr, &v4()->sin_addr, 4), ptr += 4;
-		std::memcpy(ptr, &v4()->sin_port, 2), ptr += 2;
+		std::memcpy(ptr, &sin_addr, 4), ptr += 4;
+		std::memcpy(ptr, &sin_port, 2), ptr += 2;
 	}
 };
 
@@ -292,6 +282,17 @@ struct Lobby {
 		return !gamers();
 	}
 
+	int index_of(const Addr& addr) const {
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+			if (!players[i].dead() && players[i].addr == addr)
+				return i;
+		return NUTPUNCH_MAX_PLAYERS;
+	}
+
+	bool has(const Addr& addr) const {
+		return index_of(addr) != NUTPUNCH_MAX_PLAYERS;
+	}
+
 	int gamers() const {
 		int count = 0;
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
@@ -299,11 +300,28 @@ struct Lobby {
 		return count;
 	}
 
-	void accept(const int idx, const NP_HeartbeatFlagsStorage flags,
+	void accept(const Addr addr, const NP_HeartbeatFlagsStorage flags,
 		const char* meta) {
+		int idx = index_of(addr);
+		if (idx != NUTPUNCH_MAX_PLAYERS)
+			goto accept;
+		for (idx = 0; idx < NUTPUNCH_MAX_PLAYERS; idx++)
+			if (players[idx].dead()) {
+				NP_Info("Peer %d joined lobby '%s'", idx + 1,
+					fmt_id());
+				goto accept;
+			}
+
+	accept:
+		if (idx == NUTPUNCH_MAX_PLAYERS) {
+			addr.gtfo(NPE_LobbyFull);
+			return;
+		}
+
 		auto& player = players[idx];
-		player.countdown = KEEP_ALIVE_BEATS;
+		player.addr = addr, player.countdown = KEEP_ALIVE_BEATS;
 		player.metadata.load(meta), meta += sizeof(Metadata);
+
 		if (idx == master()) {
 			capacity = (flags & 0xF0) >> 4;
 			metadata.load(meta);
@@ -325,11 +343,11 @@ struct Lobby {
 		static uint8_t buf[sizeof(NP_Response)] = "BEAT";
 		uint8_t* ptr = buf + sizeof(NP_Header);
 
+#define RF(f, v) ((f) * static_cast<NP_ResponseFlagsStorage>(v))
 		*ptr++ = static_cast<uint8_t>(idx);
-
-		*ptr = static_cast<NP_ResponseFlagsStorage>(idx == master())
-		       * NP_R_Master;
+		*ptr = RF(NP_R_Master, idx == master());
 		*ptr++ |= (capacity & 0xF) << 4;
+#undef RF
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			auto& player = players[i];
@@ -342,7 +360,7 @@ struct Lobby {
 		std::memcpy(ptr, &metadata, sizeof(Metadata));
 
 		auto& player = players[idx];
-		if (player.addr.send(buf, sizeof(buf)) < 0) {
+		if (player.addr.send(buf, sizeof(buf)) <= 0) {
 			NP_Warn("Player %d lost connection", idx + 1);
 			player.reset();
 		}
@@ -424,9 +442,9 @@ static void bind_sock() {
 		goto sockfail;
 	}
 
-	addr.v4()->sin_family = AF_INET;
-	addr.v4()->sin_port = htons(NUTPUNCH_SERVER_PORT);
-	addr.v4()->sin_addr.s_addr = htonl(INADDR_ANY);
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(NUTPUNCH_SERVER_PORT);
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
 		NP_Info("Bound to port %d", NUTPUNCH_SERVER_PORT);
@@ -497,15 +515,16 @@ constexpr const int RecvKeepGoing = 0, RecvDone = -1;
 static int receive() {
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return RecvDone;
-	Player* players = nullptr;
 
 	int attempts = 0;
 	char heartbeat[sizeof(NP_Heartbeat)] = {0};
-	socklen_t addr_size = sizeof(struct sockaddr_in);
-	Addr addr;
 
-	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0,
-		reinterpret_cast<sockaddr*>(&addr), &addr_size);
+	Addr addr;
+	auto* c_addr = reinterpret_cast<sockaddr*>(&addr);
+	socklen_t addr_size = sizeof(addr);
+
+	int rcv = recvfrom(
+		sock, heartbeat, sizeof(heartbeat), 0, c_addr, &addr_size);
 	if (rcv < 0)
 		switch (NP_SockError()) {
 		case NP_ConnReset:
@@ -515,9 +534,9 @@ static int receive() {
 		default:
 			return NP_SockError();
 		}
-
-	if (rcv < sizeof(NP_Header))
+	else if (rcv < sizeof(NP_Header))
 		return RecvKeepGoing; // junk...
+
 	const char* ptr = heartbeat + sizeof(NP_Header);
 
 	if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header)))
@@ -545,54 +564,21 @@ static int receive() {
 	auto flags = *reinterpret_cast<const NP_HeartbeatFlagsStorage*>(ptr);
 	ptr += sizeof(flags);
 
-	if (!flags) { // wtf do you want??
-		addr.gtfo(NPE_Sybau);
-		return RecvKeepGoing;
-	}
-
-	if (lobbies.count(id) && !(flags & NP_HB_Join))
-		goto exists;
-	if (!lobbies.count(id) && !(flags & NP_HB_Create)) {
+	if (lobbies.count(id)) {
+		if (!(flags & NP_HB_Join)) {
+			addr.gtfo(NPE_Sybau); // TODO: update bogus error code
+			return RecvKeepGoing;
+		} else if ((flags & NP_HB_Create) && !lobbies[id].has(addr)) {
+			addr.gtfo(NPE_LobbyExists);
+			return RecvKeepGoing;
+		}
+	} else if (!(flags & NP_HB_Create)) {
 		addr.gtfo(NPE_NoSuchLobby);
 		return RecvKeepGoing;
-	}
-
-	if (!lobbies.count(id))
-		if (!create_lobby(id, addr))
-			return RecvKeepGoing;
-
-	players = lobbies[id].players;
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!players[i].dead() && players[i].addr == addr) {
-			lobbies[id].accept(i, flags, ptr);
-			return RecvKeepGoing;
-		}
-	}
-
-	if ((flags & NP_HB_Create) && lobbies[id].gamers() > 0)
-		goto exists;
-
-	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		if (!players[i].dead()) {
-			attempts++;
-			if (attempts >= lobbies[id].capacity)
-				break;
-			else
-				continue;
-		}
-
-		NP_Info("Peer %d joined lobby '%s'", i + 1, fmt_lobby_id(id));
-		players[i].addr = addr;
-		lobbies[id].accept(i, flags, ptr);
-
+	} else if (!create_lobby(id, addr))
 		return RecvKeepGoing;
-	}
 
-	addr.gtfo(NPE_LobbyFull);
-	return RecvKeepGoing;
-
-exists:
-	addr.gtfo(NPE_LobbyExists);
+	lobbies[id].accept(addr, flags, ptr);
 	return RecvKeepGoing;
 }
 
