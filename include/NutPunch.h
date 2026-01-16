@@ -980,7 +980,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 
 	if (!NutPunch_PeerAlive(idx) && timed_out) {
 		NP_Warn("Failed to establish a connection to peer %d", idx + 1);
-		NP_LastStatus = NPS_Error;
+		peer->first_shalom = now;
 		return;
 	}
 
