@@ -200,7 +200,7 @@ void NutPunch_LobbySet(const char* name, int size, const void* data);
 ///
 /// You cannot query the metadata of a lobby you aren't connected to. To do
 /// that, use `NutPunch_FindLobbies` and specify some filters.
-void* NutPunch_LobbyGet(const char* name, int* size);
+const void* NutPunch_LobbyGet(const char* name, int* size);
 
 /// Request your peer-specific metadata to be set. Otherwise, this works the
 /// same way as `NutPunch_LobbySet`, which see.
@@ -208,7 +208,7 @@ void NutPunch_PeerSet(const char* name, int size, const void* data);
 
 /// Query metadata for a specific peer. Otherwise, this works the same way as
 /// `NutPunch_LobbyGet`, which see.
-void* NutPunch_PeerGet(int peer, const char* name, int* size);
+const void* NutPunch_PeerGet(int peer, const char* name, int* size);
 
 /// Check if there is a packet waiting in the receiving queue. Retrieve it with
 /// `NutPunch_NextMessage()`.
@@ -630,7 +630,7 @@ static int NP_FieldNameSize(const char* name) {
 	return NUTPUNCH_FIELD_NAME_MAX;
 }
 
-static void* NP_GetMetadataFrom(
+static const void* NP_GetMetadataFrom(
 	const NutPunch_Field* fields, const char* name, int* size) {
 	static char buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
 	NP_Memzero(buf);
@@ -655,11 +655,11 @@ none:
 	return NULL;
 }
 
-void* NutPunch_LobbyGet(const char* name, int* size) {
+const void* NutPunch_LobbyGet(const char* name, int* size) {
 	return NP_GetMetadataFrom(NP_LobbyMetadataIn, name, size);
 }
 
-void* NutPunch_PeerGet(int peer, const char* name, int* size) {
+const void* NutPunch_PeerGet(int peer, const char* name, int* size) {
 	if (!NutPunch_PeerAlive(peer))
 		return NP_GetMetadataFrom(NULL, "", size);
 	return NP_GetMetadataFrom(NP_PeerMetadataIn[peer], name, size);
@@ -667,7 +667,7 @@ void* NutPunch_PeerGet(int peer, const char* name, int* size) {
 
 static void NP_SetMetadataIn(
 	NutPunch_Field* fields, const char* name, int size, const void* data) {
-	int name_size = NP_FieldNameSize(name);
+	const int name_size = NP_FieldNameSize(name);
 	if (!name_size)
 		return;
 
@@ -707,11 +707,11 @@ static void NP_SetMetadataIn(
 }
 
 void NutPunch_PeerSet(const char* name, int size, const void* data) {
-	NP_SetMetadataIn(NP_PeerMetadataOut, name, size, data);
+	return NP_SetMetadataIn(NP_PeerMetadataOut, name, size, data);
 }
 
 void NutPunch_LobbySet(const char* name, int size, const void* data) {
-	NP_SetMetadataIn(NP_LobbyMetadataOut, name, size, data);
+	return NP_SetMetadataIn(NP_LobbyMetadataOut, name, size, data);
 }
 
 static bool NP_ResolveNutpuncher() {
