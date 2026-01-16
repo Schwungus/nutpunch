@@ -999,8 +999,6 @@ static void NP_HandleBeating(NP_Message msg) {
 
 	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
-
-	NP_Trace("AND EVEN PROCESSED IT!");
 	NP_LastBeating = clock();
 
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS,
@@ -1031,7 +1029,6 @@ static void NP_HandleList(NP_Message msg) {
 	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
 
-	NP_Trace("AND EVEN PROCESSED IT!");
 	NP_LastBeating = clock();
 
 	const size_t idlen = sizeof(NutPunch_Id);
@@ -1339,7 +1336,6 @@ NutPunch_UpdateStatus NutPunch_Update() {
 		return NPS_Idle;
 
 	NP_LastStatus = NPS_Online, NP_NetworkUpdate();
-	NP_Trace("UPDATE OK NICE");
 
 	if (NP_LastStatus == NPS_Error) {
 		NutPunch_Disconnect();
