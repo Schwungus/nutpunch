@@ -516,7 +516,6 @@ static int receive() {
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return RecvDone;
 
-	int attempts = 0;
 	char heartbeat[sizeof(NP_Heartbeat)] = {0};
 
 	Addr addr;
