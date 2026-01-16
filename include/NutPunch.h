@@ -479,7 +479,7 @@ static void NP_HandleShalom(NP_Message), NP_HandleGTFO(NP_Message),
 	NP_HandleBeating(NP_Message), NP_HandleList(NP_Message),
 	NP_HandleAcky(NP_Message), NP_HandleData(NP_Message);
 
-static const NP_MessageType NP_Messages[] = {
+static const NP_MessageType NP_MessageTypes[] = {
 	{"SHLM", 1,           NP_HandleShalom },
 	{"LIST", NP_LIST_LEN, NP_HandleList   },
 	{"ACKY", NP_ACKY_LEN, NP_HandleAcky   },
@@ -1166,7 +1166,7 @@ static bool NP_SendHeartbeat() {
 
 typedef enum {
 	NP_RS_SockFail = -1,
-	NP_RS_Next = 0,
+	NP_RS_Again = 0,
 	NP_RS_Done = 1,
 } NP_ReceiveStatus;
 
@@ -1188,17 +1188,18 @@ static NP_ReceiveStatus NP_ReceiveShit() {
 		const int err = NP_SockError();
 		if (err == NP_WouldBlock || err == NP_ConnReset)
 			return NP_RS_Done;
-		NP_Warn("Failed to receive from NutPuncher (%d)", err);
+		NP_Warn("Failed to receive data (%d)", err);
 		return NP_RS_SockFail;
 	}
 	if (size < sizeof(NP_Header))
-		return NP_RS_Next;
+		return NP_RS_Again; // junk
 
 	size -= sizeof(NP_Header);
 	NP_Trace("RECEIVED %d BYTES OF SHIT", size);
 
-	for (int i = 0; i < sizeof(NP_Messages) / sizeof(*NP_Messages); i++) {
-		const NP_MessageType type = NP_Messages[i];
+	const size_t len = sizeof(NP_MessageTypes) / sizeof(*NP_MessageTypes);
+	for (int i = 0; i < len; i++) {
+		const NP_MessageType type = NP_MessageTypes[i];
 
 		if (type.packet_size != NP_ANY_LEN && size != type.packet_size)
 			continue;
@@ -1209,32 +1210,27 @@ static NP_ReceiveStatus NP_ReceiveShit() {
 		msg.addr = addr, msg.size = size;
 		msg.data = (uint8_t*)(buf + sizeof(NP_Header));
 		type.handler(msg);
-		return NP_RS_Next;
+		return NP_RS_Again;
 	}
 
-	return NP_RS_Next;
+	return NP_RS_Again;
 }
 
 static void NP_PruneOutQueue() {
-find_next:
-	for (NP_Data* ptr = NP_QueueOut; ptr; ptr = ptr->next) {
-		if (!ptr->dead)
+	for (NP_Data *ptr = NP_QueueOut, *prev = NULL; ptr;) {
+		if (!ptr->dead) {
+			prev = ptr, ptr = ptr->next;
 			continue;
+		}
 
-		for (NP_Data* other = NP_QueueOut; other; other = other->next)
-			if (other->next == ptr) {
-				other->next = ptr->next;
-				NutPunch_Free(ptr->data);
-				NutPunch_Free(ptr);
-				goto find_next;
-			}
-
-		if (ptr == NP_QueueOut)
-			NP_QueueOut = ptr->next;
+		if (prev)
+			prev->next = ptr->next;
 		else
-			NP_QueueOut->next = ptr->next;
-		NutPunch_Free(ptr->data), NutPunch_Free(ptr);
-		goto find_next;
+			NP_QueueOut = ptr->next;
+
+		NP_Data* tmp = ptr;
+		ptr = ptr->next;
+		NutPunch_Free(tmp->data), NutPunch_Free(tmp);
 	}
 }
 
@@ -1311,7 +1307,7 @@ static void NP_NetworkUpdate() {
 			goto sockfail;
 		case NP_RS_Done:
 			goto flush;
-		case NP_RS_Next:
+		case NP_RS_Again:
 			break;
 		}
 	}
