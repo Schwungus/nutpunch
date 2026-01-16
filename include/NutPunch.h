@@ -413,6 +413,9 @@ typedef uint32_t NP_PacketIdx;
 typedef struct sockaddr_in NP_Addr;
 typedef uint8_t NP_HeartbeatFlagsStorage, NP_ResponseFlagsStorage;
 
+typedef uint8_t NP_Header[4];
+typedef NutPunch_Field NP_Metadata[NUTPUNCH_MAX_FIELDS];
+
 typedef struct NP_Data {
 	char* data;
 	struct NP_Data* next;
@@ -428,6 +431,8 @@ typedef struct {
 
 	NP_PacketIdx recv_counter, send_counter;
 	NP_Data* out_of_order;
+
+	NP_Metadata metadata;
 } NP_Peer;
 
 typedef struct {
@@ -435,9 +440,6 @@ typedef struct {
 	int size;
 	const uint8_t* data;
 } NP_Message;
-
-typedef uint8_t NP_Header[4];
-typedef NutPunch_Field NP_Metadata[NUTPUNCH_MAX_FIELDS];
 
 typedef union {
 	struct {
@@ -503,7 +505,6 @@ static NP_Addr NP_PuncherAddr = {0};
 static char NP_ServerHost[128] = {0};
 
 static NP_Data *NP_QueueIn = NULL, *NP_QueueOut = NULL;
-static NP_Metadata NP_PeerMetadataIn[NUTPUNCH_MAX_PLAYERS] = {0};
 static NP_Metadata NP_LobbyMetadataIn = {0}, NP_LobbyMetadataOut = {0},
 		   NP_PeerMetadataOut = {0};
 
@@ -557,17 +558,16 @@ static void NP_CleanupPackets(NP_Data** queue) {
 static void NP_NukeLobbyData() {
 	NP_Closing = NP_Querying = false, NP_ResponseFlags = 0;
 	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
-	NP_Memzero(NP_LobbyMetadataIn), NP_Memzero(NP_PeerMetadataIn);
-	NP_Memzero(NP_LobbyMetadataOut), NP_Memzero(NP_PeerMetadataOut);
-	NP_Memzero(NP_Peers), NP_Memzero(NP_Filters);
+	NP_Memzero(NP_LobbyMetadataIn), NP_Memzero(NP_LobbyMetadataOut);
+	NP_Memzero(NP_PeerMetadataOut), NP_Memzero(NP_Peers);
+	NP_Memzero(NP_Filters);
 	NP_CleanupPackets(&NP_QueueIn), NP_CleanupPackets(&NP_QueueOut);
 }
 
 static void NP_NukeRemote() {
 	NP_LobbyId[0] = 0, NP_HeartbeatFlags = 0;
 	NP_MemzeroRef(NP_PuncherAddr), NP_Memzero(NP_Peers);
-	NP_Memzero(NP_PeerMetadataIn), NP_Memzero(NP_Filters);
-	NP_LastStatus = NPS_Idle;
+	NP_Memzero(NP_Filters), NP_LastStatus = NPS_Idle;
 }
 
 static void NP_NukeSocket(NP_Socket* sock) {
@@ -614,11 +614,9 @@ void NutPunch_Reset() {
 }
 
 void NutPunch_SetServerAddr(const char* hostname) {
-	if (hostname)
-		NutPunch_SNPrintF(
-			NP_ServerHost, sizeof(NP_ServerHost), "%s", hostname);
-	else
-		NP_ServerHost[0] = 0;
+	if (!hostname)
+		hostname = "";
+	NutPunch_SNPrintF(NP_ServerHost, sizeof(NP_ServerHost), "%s", hostname);
 }
 
 static int NP_FieldNameSize(const char* name) {
@@ -631,23 +629,27 @@ static int NP_FieldNameSize(const char* name) {
 }
 
 static const void* NP_GetMetadataFrom(
-	const NutPunch_Field* fields, const char* name, int* size) {
+	const NP_Metadata fields, const char* name, int* size) {
 	static char buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
 	NP_Memzero(buf);
 
 	int name_size = NP_FieldNameSize(name);
-	if (!name_size)
+	if (!name_size || !fields)
 		goto none;
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		const NutPunch_Field* ptr = &fields[i];
-		if (name_size != NP_FieldNameSize(ptr->name))
+		const NutPunch_Field* field = &fields[i];
+		if (name_size != NP_FieldNameSize(field->name))
 			continue;
-		if (NutPunch_Memcmp(ptr->name, name, name_size))
+		if (NutPunch_Memcmp(field->name, name, name_size))
 			continue;
-		NutPunch_Memcpy(buf, ptr->data, ptr->size);
+		if (field->size > sizeof(buf)) {
+			NP_Warn("Metadata field size exceeds buffer size");
+			goto none;
+		}
+		NutPunch_Memcpy(buf, field->data, field->size);
 		if (size)
-			*size = ptr->size;
+			*size = field->size;
 		return buf;
 	}
 none:
@@ -663,7 +665,7 @@ const void* NutPunch_LobbyGet(const char* name, int* size) {
 const void* NutPunch_PeerGet(int peer, const char* name, int* size) {
 	if (!NutPunch_PeerAlive(peer))
 		return NP_GetMetadataFrom(NULL, "", size);
-	return NP_GetMetadataFrom(NP_PeerMetadataIn[peer], name, size);
+	return NP_GetMetadataFrom(NP_Peers[peer].metadata, name, size);
 }
 
 static void NP_SetMetadataIn(
@@ -1016,7 +1018,7 @@ static void NP_HandleBeating(NP_Message msg) {
 		NP_SayShalom(i, msg.data);
 		msg.data += NUTPUNCH_ADDRESS_SIZE;
 
-		NP_Metadata* pm = &NP_PeerMetadataIn[i];
+		NP_Metadata* const pm = &NP_Peers[i].metadata;
 		NutPunch_Memcpy(pm, msg.data, sizeof(NP_Metadata));
 		msg.data += sizeof(NP_Metadata);
 	}
