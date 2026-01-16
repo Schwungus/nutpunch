@@ -723,8 +723,8 @@ static bool NP_ResolveNutpuncher() {
 
 	if (!NP_ServerHost[0]) {
 		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
-		NP_Info("Connecting to public NutPuncher because no server was "
-			"explicitly specified");
+		NP_Info("Connecting to the public NutPuncher because no server "
+		        "was explicitly specified");
 	}
 
 	static char portfmt[8] = {0};
