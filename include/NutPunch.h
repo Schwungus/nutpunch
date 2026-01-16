@@ -1465,11 +1465,12 @@ bool NutPunch_IsMaster() {
 }
 
 const char* NutPunch_Basename(const char* path) {
-	// https://github.com/toggins/Klawiatura/blob/b86d36d2b320bea87987a1a05a455e782c5a4e25/src/K_file.c#L71
-	const char* s = strrchr(path, '/');
-	if (!s)
-		s = strrchr(path, '\\');
-	return s ? s + 1 : path;
+	size_t len = 0;
+	for (len = 0; path[len]; len++) {}
+	for (size_t i = len - 2; i >= 0; i--)
+		if (path[i] == '/' || path[i] == '\\')
+			return &path[i + 1];
+	return path;
 }
 
 #ifdef NUTPUNCH_WINDOSE
