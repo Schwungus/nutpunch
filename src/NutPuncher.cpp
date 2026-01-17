@@ -224,7 +224,6 @@ struct Addr : NP_Addr {
 struct Player {
 	Addr addr;
 	std::uint32_t countdown;
-	Metadata metadata;
 
 	Player() : countdown(0) {}
 
@@ -235,7 +234,6 @@ struct Player {
 
 	void reset() {
 		std::memset(&addr, 0, sizeof(addr));
-		metadata.reset();
 		countdown = 0;
 	}
 };
@@ -320,7 +318,6 @@ struct Lobby {
 
 		auto& player = players[idx];
 		player.addr = addr, player.countdown = KEEP_ALIVE_BEATS;
-		player.metadata.load(meta), meta += sizeof(Metadata);
 
 		if (idx == master()) {
 			capacity = (flags & 0xF0) >> 4;
@@ -350,14 +347,8 @@ struct Lobby {
 		*ptr++ |= (capacity & 0xF) << 4;
 #undef RF
 
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			auto& player = players[i];
-
-			player.addr.dump(ptr), ptr += NUTPUNCH_ADDRESS_SIZE;
-			std::memset(ptr, 0, sizeof(Metadata));
-			std::memcpy(ptr, &player.metadata, sizeof(Metadata));
-			ptr += sizeof(Metadata);
-		}
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+			players[i].addr.dump(ptr), ptr += NUTPUNCH_ADDRESS_SIZE;
 		std::memcpy(ptr, &metadata, sizeof(Metadata));
 
 		auto& player = players[idx];
