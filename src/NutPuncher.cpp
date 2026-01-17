@@ -340,7 +340,8 @@ struct Lobby {
 	}
 
 	void beat(const int idx) {
-		static uint8_t buf[sizeof(NP_Response)] = "BEAT";
+		static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)]
+			= "BEAT";
 		uint8_t* ptr = buf + sizeof(NP_Header);
 
 #define RF(f, v) ((f) * static_cast<NP_ResponseFlagsStorage>(v))
@@ -477,7 +478,7 @@ static bool create_lobby(const char* id, const Addr& addr) {
 }
 
 static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
-	static uint8_t buf[sizeof(NP_Header) + NP_LIST_LEN] = "LIST";
+	static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Listing)] = "LIST";
 	uint8_t* ptr = buf + sizeof(NP_Header);
 	size_t filter_count = 0;
 
@@ -490,7 +491,7 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 	if (!filter_count)
 		return;
 
-	std::memset(ptr, 0, (size_t)NP_LIST_LEN);
+	std::memset(ptr, 0, sizeof(NP_Listing));
 	for (const auto& [id, lobby] : lobbies) {
 		if (!lobby.match_against(filters, filter_count))
 			continue;
@@ -516,7 +517,7 @@ static int receive() {
 	if (sock == NUTPUNCH_INVALID_SOCKET)
 		return RecvDone;
 
-	char heartbeat[sizeof(NP_Heartbeat)] = {0};
+	char heartbeat[NUTPUNCH_BUFFER_SIZE] = {0};
 
 	Addr addr;
 	auto* c_addr = reinterpret_cast<sockaddr*>(&addr);
@@ -526,20 +527,25 @@ static int receive() {
 		sock, heartbeat, sizeof(heartbeat), 0, c_addr, &addr_size);
 	if (rcv < 0)
 		switch (NP_SockError()) {
+		case NP_TooFat:
+			NP_Trace("FAT PACKET");
 		case NP_ConnReset:
 			return RecvKeepGoing;
 		case NP_WouldBlock:
 			return RecvDone;
 		default:
+			NP_Trace("RECV ERROR %d", NP_SockError());
 			return NP_SockError();
 		}
-	else if (rcv < sizeof(NP_Header))
+
+	rcv -= sizeof(NP_Header);
+	if (rcv < 0)
 		return RecvKeepGoing; // junk...
 
 	const char* ptr = heartbeat + sizeof(NP_Header);
 
 	if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header)))
-		if (rcv == sizeof(NP_Header) + sizeof(NP_Filters)) {
+		if (rcv == sizeof(NP_Filters)) {
 			const auto* filters
 				= reinterpret_cast<const NutPunch_Filter*>(ptr);
 			send_lobbies(addr, filters);

@@ -337,7 +337,7 @@ typedef SOCKET NP_Socket;
 #define NP_SockError() WSAGetLastError()
 #define NP_WouldBlock WSAEWOULDBLOCK
 #define NP_ConnReset WSAECONNRESET
-#define NP_MessageSize WSAEMSGSIZE
+#define NP_TooFat WSAEMSGSIZE
 
 #else
 
@@ -358,7 +358,7 @@ typedef int64_t NP_Socket;
 #define NP_SockError() errno
 #define NP_WouldBlock EWOULDBLOCK
 #define NP_ConnReset ECONNRESET
-#define NP_MessageSize EMSGSIZE
+#define NP_TooFat EMSGSIZE
 
 #endif
 
@@ -441,26 +441,22 @@ typedef struct {
 	const uint8_t* data;
 } NP_Message;
 
-typedef union {
+typedef struct {
+	uint8_t local_peer;
+	NP_ResponseFlagsStorage flags;
 	struct {
-		NP_Header header;
-		uint8_t local_peer;
-		NP_ResponseFlagsStorage flags;
-		struct {
-			uint8_t ip[4];
-			uint16_t port;
-			NP_Metadata metadata;
-		} peers[NUTPUNCH_MAX_PLAYERS];
+		uint8_t ip[4];
+		uint16_t port;
 		NP_Metadata metadata;
-	} heartbeat;
-	struct {
-		NP_Header header;
-		NutPunch_LobbyInfo lobbies[NUTPUNCH_MAX_SEARCH_RESULTS];
-	} list;
-} NP_Response;
+	} peers[NUTPUNCH_MAX_PLAYERS];
+	NP_Metadata metadata;
+} NP_Beating;
 
 typedef struct {
-	NP_Header header;
+	NutPunch_LobbyInfo lobbies[NUTPUNCH_MAX_SEARCH_RESULTS];
+} NP_Listing;
+
+typedef struct {
 	NutPunch_Id id;
 	NP_HeartbeatFlagsStorage flags;
 	NP_Metadata peer_metadata, lobby_metadata;
@@ -468,27 +464,26 @@ typedef struct {
 
 typedef struct {
 	const char identifier[sizeof(NP_Header) + 1];
-	const int packet_size;
+	const int16_t packet_size;
 	void (*const handler)(NP_Message);
 } NP_MessageType;
 
 #define NP_ANY_LEN (-1)
-#define NP_BEAT_LEN (sizeof(NP_Response) - sizeof(NP_Header))
-#define NP_LIST_LEN (NUTPUNCH_MAX_SEARCH_RESULTS * (2 + sizeof(NutPunch_Id)))
-#define NP_ACKY_LEN (sizeof(NP_PacketIdx))
 
 static void NP_HandleShalom(NP_Message), NP_HandleGTFO(NP_Message),
-	NP_HandleBeating(NP_Message), NP_HandleList(NP_Message),
+	NP_HandleBeating(NP_Message), NP_HandleListing(NP_Message),
 	NP_HandleAcky(NP_Message), NP_HandleData(NP_Message);
 
+// clang-format off
 static const NP_MessageType NP_MessageTypes[] = {
-	{"SHLM", 1,           NP_HandleShalom },
-	{"LIST", NP_LIST_LEN, NP_HandleList   },
-	{"ACKY", NP_ACKY_LEN, NP_HandleAcky   },
-	{"DATA", NP_ANY_LEN,  NP_HandleData   },
-	{"GTFO", 1,           NP_HandleGTFO   },
-	{"BEAT", NP_BEAT_LEN, NP_HandleBeating},
+	{"SHLM", 1,		       NP_HandleShalom },
+	{"LIST", sizeof(NP_Listing),   NP_HandleListing},
+	{"ACKY", sizeof(NP_PacketIdx), NP_HandleAcky   },
+	{"DATA", NP_ANY_LEN,           NP_HandleData   },
+	{"GTFO", 1,		       NP_HandleGTFO   },
+	{"BEAT", sizeof(NP_Beating),   NP_HandleBeating},
 };
+// clang-format on
 
 static char NP_LastError[512] = "";
 static clock_t NP_LastBeating = 0;
@@ -1026,7 +1021,7 @@ static void NP_HandleBeating(NP_Message msg) {
 	NutPunch_Memcpy(NP_LobbyMetadataIn, msg.data, sizeof(NP_Metadata));
 }
 
-static void NP_HandleList(NP_Message msg) {
+static void NP_HandleListing(NP_Message msg) {
 	NP_Trace("RECEIVED A LISTING FROM %s", NP_FormatAddr(msg.addr));
 
 	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
@@ -1120,7 +1115,7 @@ static bool NP_SendHeartbeat() {
 	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return true;
 
-	static char heartbeat[sizeof(NP_Heartbeat)] = {0};
+	static char heartbeat[sizeof(NP_Header) + sizeof(NP_Heartbeat)] = {0};
 	NP_Memzero(heartbeat);
 
 	char* ptr = heartbeat;
@@ -1191,13 +1186,15 @@ static NP_ReceiveStatus NP_ReceiveShit() {
 		const int err = NP_SockError();
 		if (err == NP_WouldBlock || err == NP_ConnReset)
 			return NP_RS_Done;
+		if (err == NP_TooFat)
+			return NP_RS_Again;
 		NP_Warn("Failed to receive data (%d)", err);
 		return NP_RS_SockFail;
 	}
-	if (size < sizeof(NP_Header))
-		return NP_RS_Again; // junk
 
 	size -= sizeof(NP_Header);
+	if (size < 0)
+		return NP_RS_Again; // junk
 	NP_Trace("RECEIVED %d BYTES OF SHIT", size);
 
 	const size_t len = sizeof(NP_MessageTypes) / sizeof(*NP_MessageTypes);
