@@ -28,7 +28,7 @@ Before you can punch any holes in your peers' NAT, you will need a hole-punching
 
 In order to run your own hole-puncher server, you'll need to get the server binary from our [reference implementation releases](https://github.com/Schwungus/nutpunch/releases/tag/stable). [A Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher) is also available for hosting a NutPuncher server on Linux. If you're in a pinch, don't have access to a public IP address, and your players reside on a LAN/virtual network such as [Radmin VPN](https://www.radmin-vpn.com), you can actually run NutPuncher locally and use your LAN IP address to connect to it.
 
-Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. Here's the general usage guide for the NutPunch library:
+Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/Test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. Here's the general usage guide for the NutPunch library:
 
 1. Host a lobby with `NutPunch_Host("lobby-id")`, or join an existing one with `NutPunch_Join("lobby-id")`.
 2. (Optional) Set lobby metadata:
@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-If you want to see all the juicy APIs in action, try reading [`test.c`](src/test.c) from this repo.
+If you want to see all the juicy APIs in action, try reading [`Test.c`](src/Test.c) from this repo.
 
 Take a look at [advanced usage](#advanced-usage) to discover things you can customize.
 
