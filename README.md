@@ -7,7 +7,7 @@
 > [!CAUTION]
 > NutPunch implements **UDP-based peer-to-peer networking**. Use only if you know what you're getting yourself into. **Client-server architecture** is a lot more commonplace in games, and arguably much easier to implement and understand. You have been warned. Think for yourself to make the right decision.
 
-NutPunch is a UDP hole-punching library for REAL men (and women). Header-only. Brutal. Written in plain C.
+NutPunch is a UDP hole-punching library for REAL men (and women). Header-only. Dependency-free. Brutal. Written in plain C.
 
 Comes with a [public instance](#public-instance) for out-of-the-box integration.
 
