@@ -305,12 +305,12 @@ struct Lobby {
 		int idx = index_of(addr);
 		if (idx != NUTPUNCH_MAX_PLAYERS)
 			goto accept;
-		for (idx = 0; idx < NUTPUNCH_MAX_PLAYERS; idx++)
-			if (players[idx].dead()) {
-				NP_Info("Peer %d joined lobby '%s'", idx + 1,
-					fmt_id());
-				goto accept;
-			}
+		for (idx = 0; idx < NUTPUNCH_MAX_PLAYERS; idx++) {
+			if (!players[idx].dead())
+				continue;
+			NP_Info("Peer %d joined lobby '%s'", idx + 1, fmt_id());
+			goto accept;
+		}
 
 	accept:
 		if (idx == NUTPUNCH_MAX_PLAYERS) {
