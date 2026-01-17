@@ -44,7 +44,7 @@ extern "C" {
 #define NUTPUNCH_DEFAULT_SERVER "nutpunch.schwung.us"
 
 /// Maximum amount of players in a lobby. Not intended to be customizable.
-#define NUTPUNCH_MAX_PLAYERS (16)
+#define NUTPUNCH_MAX_PLAYERS (2)
 
 #ifndef NUTPUNCH_SERVER_PORT
 /// The UDP port used by the punching mediator server.
