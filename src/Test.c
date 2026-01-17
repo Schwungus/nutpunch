@@ -18,18 +18,17 @@ static FILE* logfile = NULL;
 #define POOR_IMPLEMENTATION
 #include <poormans.h>
 
+static struct {
+	int32_t x, y;
+} players[NUTPUNCH_MAX_PLAYERS] = {0};
+
 static const char *const magicKey = "NUTPUNCH", *const lobbyName = "Ligma";
 static const uint8_t magicValue = 66;
-
-struct Player {
-	int32_t x, y;
-};
 
 static const char* randomNames[] = {"Fimon", "Trollga", "Marsoyob", "Ficus",
 	"Caccus", "Skibidi69er", "Caulksucker"};
 static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
 
-static struct Player players[NUTPUNCH_MAX_PLAYERS] = {0};
 #define PAYLOAD_SIZE ((size_t)(2))
 
 static uint8_t targetPlayerCount = 0;
