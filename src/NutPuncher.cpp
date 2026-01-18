@@ -32,9 +32,8 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
-constexpr const int BEATS_PER_SECOND = 60, KEEP_ALIVE_SECONDS = 10,
-		    KEEP_ALIVE_BEATS = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND,
-		    MAX_LOBBIES = 512;
+constexpr const int64_t BEATS_PER_SECOND = 60, KEEP_ALIVE_SECONDS = 5;
+constexpr const int MAX_LOBBIES = 512;
 
 struct Lobby;
 static NP_Socket sock = NUTPUNCH_INVALID_SOCKET;
@@ -317,7 +316,8 @@ struct Lobby {
 		}
 
 		auto& player = players[idx];
-		player.addr = addr, player.countdown = KEEP_ALIVE_BEATS;
+		player.addr = addr;
+		player.countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND;
 
 		if (idx == master()) {
 			capacity = (flags & 0xF0) >> 4;
@@ -597,12 +597,13 @@ int main(int, char*[]) {
 #endif
 	bind_sock();
 
-	std::int64_t start = clock(), end, delta;
-	const std::int64_t min_delta = 1000 / BEATS_PER_SECOND;
+	constexpr const int64_t MIN_DELTA = CLOCKS_PER_SEC / BEATS_PER_SECOND;
 	int result;
 
 	NP_Info("Running!");
 	for (;;) {
+		const int64_t start = clock();
+
 		if (sock == NUTPUNCH_INVALID_SOCKET) {
 			NP_Warn("SOCKET DIED!!!");
 			return EXIT_FAILURE;
@@ -628,10 +629,9 @@ int main(int, char*[]) {
 			return dead;
 		});
 
-		end = clock(), delta = ((end - start) * 1000) / CLOCKS_PER_SEC;
-		if (delta < min_delta)
-			NP_SleepMs(min_delta - delta);
-		start = clock();
+		const int64_t delta = clock() - start, diff = MIN_DELTA - delta;
+		if (diff > 0)
+			NP_SleepMs((diff * 1000) / CLOCKS_PER_SEC);
 	}
 
 	return EXIT_SUCCESS;
