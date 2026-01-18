@@ -32,20 +32,17 @@ static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
 #define PAYLOAD_SIZE ((size_t)(2))
 
 static uint8_t targetPlayerCount = 0;
-static bool done_waiting = false;
 
-static void maybe_start_netgame() {
-	if (done_waiting || NutPunch_LocalPeer() == NUTPUNCH_MAX_PLAYERS)
-		return;
-	if (NutPunch_PeerCount() < NutPunch_GetMaxPlayers())
-		return;
+static void reset_gamestate() {
 	NutPunch_Memset(players, 0, sizeof(players));
 	players[NutPunch_LocalPeer()].x = poor_width() / 2;
 	players[NutPunch_LocalPeer()].y = poor_height() / 2;
-	done_waiting = true;
 }
 
 static void maybe_join_netgame() {
+	if (NutPunch_IsOnline())
+		return;
+
 	if (poor_key_pressed(POOR_J))
 		NutPunch_Join(lobbyName);
 	else if (poor_key_pressed(POOR_H))
@@ -53,7 +50,6 @@ static void maybe_join_netgame() {
 	else
 		return;
 
-	done_waiting = false;
 	NutPunch_LobbySet(magicKey, sizeof(magicValue), &magicValue);
 
 	srand(time(NULL));
@@ -185,21 +181,24 @@ int main(int argc, char* argv[]) {
 		if (poor_key_pressed(POOR_ESC) || poor_key_pressed(POOR_Q))
 			poor_exit();
 
-		int status = NutPunch_Update();
+		const bool was_ready = NutPunch_IsReady();
+		const int status = NutPunch_Update();
 		draw_debug_bits(status);
-		maybe_start_netgame();
 
 		receive_shit();
 		move_our_dot();
 		send_shit();
 
-		if (NPS_Online == status)
+		if (NutPunch_IsReady() && !was_ready)
+			reset_gamestate();
+		if (NutPunch_IsReady())
 			draw_players();
-		else if (NPS_Error != status)
-			maybe_join_netgame();
+
 		if (poor_key_pressed(POOR_K)) {
+			NutPunch_Disconnect();
 			NutPunch_Reset();
-			done_waiting = false;
+		} else {
+			maybe_join_netgame();
 		}
 	}
 

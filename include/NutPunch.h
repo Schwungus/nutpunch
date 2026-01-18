@@ -251,7 +251,15 @@ bool NutPunch_PeerAlive(int peer);
 /// any reason.
 int NutPunch_LocalPeer();
 
-/// Returns `true` if we are connected to a lobby and are its master.
+/// Returns `true` if we are in a lobby. This doesn't guarantee the local peer
+/// index or any metadata is available; for that, see `NutPunch_IsReady()`.
+bool NutPunch_IsOnline();
+
+/// Returns `true` if we are in a lobby AND are ready to accept P2P connections.
+/// Lobby metadata and local peer index will be available by this point.
+bool NutPunch_IsReady();
+
+/// Returns `true` if we are `NutPunch_IsReady()` AND are the lobby's master.
 bool NutPunch_IsMaster();
 
 /// Call this to gracefully disconnect from a lobby.
@@ -861,7 +869,7 @@ void NutPunch_SetMaxPlayers(int players) {
 }
 
 int NutPunch_GetMaxPlayers() {
-	if (NP_LastStatus != NPS_Online)
+	if (!NutPunch_IsOnline())
 		return 0;
 	return (NP_ResponseFlags & 0xF0) >> 4;
 }
@@ -1349,7 +1357,7 @@ NutPunch_UpdateStatus NutPunch_Update() {
 
 void NutPunch_Disconnect() {
 	NP_Info("Disconnecting from lobby (if any)");
-	if (NP_LastStatus == NPS_Online)
+	if (NutPunch_IsOnline()) // send a disconnection packet too
 		NP_Closing = true, NP_NetworkUpdate();
 	NutPunch_Reset();
 }
@@ -1454,7 +1462,7 @@ int NutPunch_PeerCount() {
 bool NutPunch_PeerAlive(int peer) {
 	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS)
 		return false;
-	if (NP_LastStatus != NPS_Online)
+	if (!NutPunch_IsReady())
 		return false;
 	if (NutPunch_LocalPeer() == peer)
 		return true;
@@ -1462,11 +1470,23 @@ bool NutPunch_PeerAlive(int peer) {
 }
 
 int NutPunch_LocalPeer() {
+	if (!NutPunch_IsOnline())
+		return NUTPUNCH_MAX_PLAYERS;
 	return NP_LocalPeer;
 }
 
+bool NutPunch_IsOnline() {
+	return NP_LastStatus == NPS_Online;
+}
+
+bool NutPunch_IsReady() {
+	return NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS;
+}
+
 bool NutPunch_IsMaster() {
-	return 0 != (NP_ResponseFlags & NP_R_Master);
+	if (!NutPunch_IsReady())
+		return false;
+	return (NP_ResponseFlags & NP_R_Master) != 0;
 }
 
 const char* NutPunch_Basename(const char* path) {
