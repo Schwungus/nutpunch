@@ -310,7 +310,7 @@ struct Lobby {
 		}
 
 	accept:
-		if (idx == NUTPUNCH_MAX_PLAYERS) {
+		if (idx < 0 || idx >= NUTPUNCH_MAX_PLAYERS) {
 			addr.gtfo(NPE_LobbyFull);
 			return;
 		}
@@ -320,7 +320,7 @@ struct Lobby {
 		player.countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND;
 
 		if (idx == master()) {
-			capacity = (flags & 0xF0) >> 4;
+			capacity = 1 + ((flags & 0xF0) >> 4);
 			metadata.load(meta);
 		}
 	}
@@ -344,7 +344,7 @@ struct Lobby {
 #define RF(f, v) ((f) * static_cast<NP_ResponseFlagsStorage>(v))
 		*ptr++ = static_cast<uint8_t>(idx);
 		*ptr = RF(NP_R_Master, idx == master());
-		*ptr++ |= (capacity & 0xF) << 4;
+		*ptr++ |= ((capacity - 1) & 0x0F) << 4;
 #undef RF
 
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
@@ -399,13 +399,15 @@ struct Lobby {
 	}
 
 	int master() {
-		if (NUTPUNCH_MAX_PLAYERS != master_idx)
+		if (master_idx >= 0 && master_idx < NUTPUNCH_MAX_PLAYERS)
 			if (!players[master_idx].dead())
 				return master_idx;
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (!players[i].dead())
-				return (master_idx = i);
-		return (master_idx = NUTPUNCH_MAX_PLAYERS);
+		for (master_idx = 0; master_idx < NUTPUNCH_MAX_PLAYERS;)
+			if (players[master_idx].dead())
+				master_idx++;
+			else
+				break;
+		return master_idx;
 	}
 
 private:
@@ -560,21 +562,27 @@ static int receive() {
 	auto flags = *reinterpret_cast<const NP_HeartbeatFlagsStorage*>(ptr);
 	ptr += sizeof(flags);
 
-	if (lobbies.count(id)) {
-		if (!(flags & NP_HB_Join)) {
-			addr.gtfo(NPE_Sybau); // TODO: update bogus error code
-			return RecvKeepGoing;
-		} else if ((flags & NP_HB_Create) && !lobbies[id].has(addr)) {
-			addr.gtfo(NPE_LobbyExists);
-			return RecvKeepGoing;
-		}
-	} else if (!(flags & NP_HB_Create)) {
-		addr.gtfo(NPE_NoSuchLobby);
-		return RecvKeepGoing;
-	} else if (!create_lobby(id, addr))
-		return RecvKeepGoing;
+	NutPunch_ErrorCode err = NPE_Ok;
 
-	lobbies[id].accept(addr, flags, ptr);
+	if (lobbies.count(id)) {
+		const auto& lobby = lobbies[id];
+		if (!(flags & NP_HB_Join))
+			err = NPE_Sybau; // TODO: update bogus error code
+		else if ((flags & NP_HB_Create) && !lobby.has(addr))
+			err = NPE_LobbyExists;
+		else if (!lobby.has(addr) && lobby.gamers() >= lobby.capacity)
+			err = NPE_LobbyFull;
+	} else if (!(flags & NP_HB_Create)) {
+		err = NPE_NoSuchLobby;
+	} else if (!create_lobby(id, addr)) {
+		return RecvKeepGoing;
+	}
+
+	if (err == NPE_Ok)
+		lobbies[id].accept(addr, flags, ptr);
+	else
+		addr.gtfo(err);
+
 	return RecvKeepGoing;
 }
 

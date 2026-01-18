@@ -861,11 +861,14 @@ bool NutPunch_Join(const char* lobby_id) {
 
 void NutPunch_SetMaxPlayers(int players) {
 	const int DEFAULT = 4;
-	if (players < 2 || players >= NUTPUNCH_MAX_PLAYERS) {
+
+	if (players <= 1 || players > NUTPUNCH_MAX_PLAYERS) {
 		NP_Warn("Requesting %d players (passed %d)", DEFAULT, players);
 		players = DEFAULT;
 	}
-	NP_HeartbeatFlags &= 0xF, NP_HeartbeatFlags |= players << 4;
+
+	NP_HeartbeatFlags &= 0xF;
+	NP_HeartbeatFlags |= (players - 1) << 4;
 }
 
 int NutPunch_GetMaxPlayers() {
