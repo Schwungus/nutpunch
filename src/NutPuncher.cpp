@@ -412,14 +412,14 @@ private:
 	int master_idx = NUTPUNCH_MAX_PLAYERS;
 };
 
-static void bind_sock() {
+static bool bind_sock() {
 	Addr addr;
 
 	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == NUTPUNCH_INVALID_SOCKET) {
 		const int err = NP_SockError();
 		NP_Warn("Failed to create the underlying UDP socket (%d)", err);
-		return;
+		return false;
 	}
 
 	if (!NP_MakeReuseAddr(sock)) {
@@ -440,13 +440,13 @@ static void bind_sock() {
 
 	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
 		NP_Info("Bound to port %d", NUTPUNCH_SERVER_PORT);
-	} else {
-		NP_Warn("Failed to bind an IPv4 socket. IPv6-only mode is "
-			"unsupported (%d)",
-			NP_SockError());
-	sockfail:
-		NP_NukeSocket(&sock);
+		return true;
 	}
+
+	NP_Warn("Failed to bind an IPv4 socket (%d)", NP_SockError());
+sockfail:
+	NP_NukeSocket(&sock);
+	return false;
 }
 
 static bool create_lobby(const char* id, const Addr& addr) {
@@ -595,7 +595,8 @@ int main(int, char*[]) {
 	WSADATA _bitch = {0};
 	WSAStartup(MAKEWORD(2, 2), &_bitch);
 #endif
-	bind_sock();
+	if (!bind_sock())
+		return EXIT_FAILURE;
 
 	constexpr const int64_t MIN_DELTA = CLOCKS_PER_SEC / BEATS_PER_SECOND;
 	int result;
