@@ -874,7 +874,7 @@ void NutPunch_SetMaxPlayers(int players) {
 int NutPunch_GetMaxPlayers() {
 	if (!NutPunch_IsOnline())
 		return 0;
-	return (NP_ResponseFlags & 0xF0) >> 4;
+	return 1 + ((NP_ResponseFlags & 0xF0) >> 4);
 }
 
 void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
