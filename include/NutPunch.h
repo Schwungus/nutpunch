@@ -126,7 +126,7 @@ typedef struct {
 
 typedef struct {
 	char name[sizeof(NutPunch_Id) + 1];
-	int players, capacity;
+	uint8_t players, capacity;
 } NutPunch_LobbyInfo;
 
 typedef enum {
