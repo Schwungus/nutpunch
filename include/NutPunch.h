@@ -476,6 +476,7 @@ typedef struct {
 } NP_MessageType;
 
 #define NP_ANY_LEN (-1)
+#define NP_SHALOM_SIZE (sizeof(NP_Header) + 1 + sizeof(NP_Metadata))
 
 static void NP_HandleShalom(NP_Message), NP_HandleGTFO(NP_Message),
 	NP_HandleBeating(NP_Message), NP_HandleListing(NP_Message),
@@ -1007,8 +1008,7 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	if (!peer->first_shalom)
 		peer->first_shalom = now;
 
-	static uint8_t shalom[sizeof(NP_Header) + 1 + sizeof(NP_Metadata)]
-		= "SHLM";
+	static uint8_t shalom[NP_SHALOM_SIZE] = "SHLM";
 
 	uint8_t* ptr = &shalom[sizeof(NP_Header)];
 	*ptr = NP_LocalPeer, ptr += 1;
