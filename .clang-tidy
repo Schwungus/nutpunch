@@ -6,6 +6,7 @@ Checks: |
   -bugprone-suspicious-memory-comparison,
   -bugprone-easily-swappable-parameters,
   -bugprone-signed-char-misuse,
+  -bugprone-branch-clone,
   performance-*,
   -performance-enum-size,
   portability-*,

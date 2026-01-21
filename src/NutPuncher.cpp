@@ -527,8 +527,9 @@ static int receive() {
 		case NP_WouldBlock:
 			return RecvDone;
 		default:
-			NP_Trace("RECV ERROR %d", NP_SockError());
-			return NP_SockError();
+			const int err = NP_SockError();
+			NP_Trace("RECV ERROR %d", err);
+			return err;
 		}
 
 	rcv -= sizeof(NP_Header);

@@ -1190,7 +1190,9 @@ static int NP_UglyRecvfrom(NP_Addr* addr, char* buf, int size) {
 }
 
 static NP_ReceiveStatus NP_ReceiveShit() {
-	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
+	if (NP_LastStatus == NPS_Error) // happens after handling a GTFO
+		return NP_RS_Done;
+	else if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return NP_RS_Done;
 
 	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
@@ -1201,7 +1203,7 @@ static NP_ReceiveStatus NP_ReceiveShit() {
 		const int err = NP_SockError();
 		if (err == NP_WouldBlock || err == NP_ConnReset)
 			return NP_RS_Done;
-		if (err == NP_TooFat)
+		else if (err == NP_TooFat)
 			return NP_RS_Again;
 		NP_Warn("Failed to receive data (%d)", err);
 		return NP_RS_SockFail;
@@ -1315,8 +1317,6 @@ static void NP_NetworkUpdate() {
 		goto sockfail;
 
 	for (;;) {
-		if (NP_LastStatus == NPS_Error) // happens after handling a GTFO
-			return;
 		switch (NP_ReceiveShit()) {
 		case NP_RS_SockFail:
 			goto sockfail;
