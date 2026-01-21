@@ -82,9 +82,6 @@ extern "C" {
 /// How many updates to wait before resending a reliable packet.
 #define NUTPUNCH_BOUNCE_TICKS (20)
 
-#define NUTPUNCH_PORT_MIN ((uint16_t)(NUTPUNCH_SERVER_PORT + 1))
-#define NUTPUNCH_PORT_MAX ((uint16_t)(NUTPUNCH_PORT_MIN + 512))
-
 #define NUTPUNCH_ADDRESS_SIZE (6)
 
 #ifndef NUTPUNCH_NOSTD
@@ -782,9 +779,7 @@ static bool NP_MakeReuseAddr(NP_Socket sock) {
 }
 
 static bool NP_BindSocket() {
-	const clock_t range = NUTPUNCH_PORT_MAX - NUTPUNCH_PORT_MIN + 1;
 	NP_Addr local = {0};
-
 	NP_LazyInit(), NP_NukeSocket(&NP_Sock);
 	NP_Sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
@@ -807,7 +802,7 @@ static bool NP_BindSocket() {
 	}
 
 	*NP_AddrFamily(&local) = AF_INET;
-	*NP_AddrPort(&local) = htons(NUTPUNCH_PORT_MIN + clock() % range);
+	*NP_AddrPort(&local) = htons(0);
 	*NP_AddrRaw(&local) = htonl(INADDR_ANY);
 
 	if (!bind(NP_Sock, (struct sockaddr*)&local, sizeof(local)))
