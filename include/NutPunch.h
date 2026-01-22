@@ -65,7 +65,7 @@ extern "C" {
 #define NUTPUNCH_BUFFER_SIZE (1024)
 
 /// The maximum amount of results `NutPunch_LobbyList` can provide.
-#define NUTPUNCH_MAX_SEARCH_RESULTS (32)
+#define NUTPUNCH_MAX_SEARCH_RESULTS (16)
 
 /// The maximum amount of filters you can pass to `NutPunch_FindLobbies`.
 #define NUTPUNCH_MAX_SEARCH_FILTERS (8)
