@@ -7,7 +7,7 @@
 int main(int argc, char* argv[]) {
 	if (argc < 3)
 		goto fail;
-	int data = strtol(argv[2], NULL, 10);
+	uint8_t data = (uint8_t)strtol(argv[2], NULL, 10);
 	if (!data)
 		goto fail;
 	if (argc >= 4)

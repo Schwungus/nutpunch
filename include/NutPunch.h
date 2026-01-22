@@ -457,7 +457,10 @@ typedef struct {
 } NP_Beating;
 
 typedef struct {
-	NutPunch_LobbyInfo lobbies[NUTPUNCH_MAX_SEARCH_RESULTS];
+	struct {
+		uint8_t players, capacity;
+		NutPunch_Id id;
+	} lobbies[NUTPUNCH_MAX_SEARCH_RESULTS];
 } NP_Listing;
 
 typedef struct {
