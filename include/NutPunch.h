@@ -1181,9 +1181,9 @@ static bool NP_SendHeartbeat() {
 }
 
 typedef enum {
-	NP_RS_SockFail = -1,
-	NP_RS_Again = 0,
-	NP_RS_Done = 1,
+	NP_RS_SockFail,
+	NP_RS_Again,
+	NP_RS_Done,
 } NP_ReceiveStatus;
 
 static int NP_UglyRecvfrom(NP_Addr* addr, char* buf, int size) {
