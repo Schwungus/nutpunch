@@ -5,11 +5,7 @@ project(NutPunch LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
-
 set(BUILD_SHARED_LIBS OFF)
-
-include(FetchContent)
-set(FETCHCONTENT_QUIET FALSE)
 
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
@@ -39,6 +35,9 @@ endif()
 
 option(NUTPUNCH_BUILD_TEST "Build NutPunch test binary?")
 if(NUTPUNCH_BUILD_TEST)
+    include(FetchContent)
+    set(FETCHCONTENT_QUIET FALSE)
+
     FetchContent_Declare(poormans
         GIT_REPOSITORY https://github.com/nonk123/poormans.git
         GIT_TAG 81393a68cb7e80f1ae701508f645439baef368c1)
