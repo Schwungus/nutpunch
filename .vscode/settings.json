@@ -10,7 +10,8 @@
     "cmake.generator": "Ninja",
     "cmake.exportCompileCommandsFile": true,
     "files.exclude": {
-        ".cache": true
+        ".cache": true,
+        "__cmake*": true
     },
     "files.associations": {
         "*.h": "c"
