@@ -405,7 +405,7 @@ typedef int64_t NP_Socket;
 	do {                                                                   \
 		NutPunch_Log("WARN: " __VA_ARGS__);                            \
 		NutPunch_SNPrintF(                                             \
-			NP_LastError, sizeof(NP_LastError), __VA_ARGS__);      \
+			NP_LastError, sizeof(NP_LastError), ##__VA_ARGS__);    \
 	} while (0)
 
 #ifdef NUTPUNCH_TRACING
