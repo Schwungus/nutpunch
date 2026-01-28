@@ -721,11 +721,11 @@ static void NP_SetMetadataIn(
 }
 
 void NutPunch_PeerSet(const char* name, int size, const void* data) {
-	return NP_SetMetadataIn(NP_PeerMetadata, name, size, data);
+	NP_SetMetadataIn(NP_PeerMetadata, name, size, data);
 }
 
 void NutPunch_LobbySet(const char* name, int size, const void* data) {
-	return NP_SetMetadataIn(NP_LobbyMetadataOut, name, size, data);
+	NP_SetMetadataIn(NP_LobbyMetadataOut, name, size, data);
 }
 
 static bool NP_ResolveNutpuncher() {
