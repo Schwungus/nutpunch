@@ -37,8 +37,8 @@ if(NUTPUNCH_TRACING)
     target_compile_definitions(NutPunch INTERFACE NUTPUNCH_TRACING=1)
 endif()
 
-option(NUTPUNCH_BUILD_TESTS "Build NutPunch test binary?")
-if(NUTPUNCH_BUILD_TESTS)
+option(NUTPUNCH_BUILD_TEST "Build NutPunch test binary?")
+if(NUTPUNCH_BUILD_TEST)
     FetchContent_Declare(poormans
         GIT_REPOSITORY https://github.com/nonk123/poormans.git
         GIT_TAG 0f83761b9f4304f8194a1f2fc9ed4f51d47070ba)
