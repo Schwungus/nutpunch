@@ -41,7 +41,7 @@ option(NUTPUNCH_BUILD_TEST "Build NutPunch test binary?")
 if(NUTPUNCH_BUILD_TEST)
     FetchContent_Declare(poormans
         GIT_REPOSITORY https://github.com/nonk123/poormans.git
-        GIT_TAG 0f83761b9f4304f8194a1f2fc9ed4f51d47070ba)
+        GIT_TAG 81393a68cb7e80f1ae701508f645439baef368c1)
     FetchContent_MakeAvailable(poormans)
 
     add_executable(NutPunchTest ${SRC_DIR}/Test.c)
