@@ -587,9 +587,15 @@ static int receive() {
 	return RecvKeepGoing;
 }
 
-struct cleanup {
-	cleanup() = default;
-	~cleanup() {
+struct Soque {
+	Soque() {
+#ifdef NUTPUNCH_WINDOSE
+		WSADATA _bitch = {0};
+		WSAStartup(MAKEWORD(2, 2), &_bitch);
+#endif
+	}
+
+	~Soque() {
 		NP_NukeSocket(&sock);
 #ifdef NUTPUNCH_WINDOSE
 		WSACleanup();
@@ -598,12 +604,8 @@ struct cleanup {
 };
 
 int main(int, char*[]) {
-	cleanup _cleanup;
+	Soque _init;
 
-#ifdef NUTPUNCH_WINDOSE
-	WSADATA _bitch = {0};
-	WSAStartup(MAKEWORD(2, 2), &_bitch);
-#endif
 	if (!bind_sock())
 		return EXIT_FAILURE;
 
