@@ -374,8 +374,7 @@ struct Lobby {
 		for (int f = 0; f < filter_count; f++) {
 			const auto& filter = filters[f];
 			if (filter.field.alwayszero != 0) {
-				int diff = static_cast<int>(
-					filter.special.value);
+				int diff = (uint8_t)filter.special.value;
 				diff -= special(filter.special.index);
 				if (match_field_value(diff, filter.comparison))
 					goto next_filter;
@@ -610,7 +609,7 @@ int main(int, char*[]) {
 		return EXIT_FAILURE;
 
 	constexpr const int64_t MIN_DELTA = CLOCKS_PER_SEC / BEATS_PER_SECOND;
-	int result;
+	int result = 0;
 
 	NP_Info("Running!");
 	for (;;) {

@@ -1193,9 +1193,8 @@ static int NP_UglyRecvfrom(NP_Addr* addr, char* buf, int size) {
 }
 
 static NP_ReceiveStatus NP_ReceiveShit() {
-	if (NP_LastStatus == NPS_Error) // happens after handling a GTFO
-		return NP_RS_Done;
-	else if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
+	if (NP_LastStatus == NPS_Error // happens after handling a GTFO
+		|| NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return NP_RS_Done;
 
 	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
