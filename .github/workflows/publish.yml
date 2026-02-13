@@ -7,8 +7,7 @@ on:
 jobs:
   docker:
     name: Build Docker image
-    runs-on: ubuntu-latest
-    if: github.ref_name == 'stable'
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       packages: write
@@ -65,6 +64,7 @@ jobs:
           - os-name: Linux
             runner-os: ubuntu-24.04
             bin-ext: ""
+            deploy: true
     permissions:
       contents: write
     steps:
@@ -81,22 +81,18 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.BINARY }}
-  deploy:
-    name: Deploy the public instance
-    runs-on: ubuntu-24.04
-    if: github.ref_type == 'tag'
-    needs: binary
-    env:
-      BINARY: /usr/local/bin/NutPuncher-${{ github.ref_name }}
-    steps:
       - name: Deploy
-        uses: appleboy/ssh-action@v1.2.5
+        uses: appleboy/ssh-action@v1
+        if: matrix.deploy
+        env:
+          OUTPATH: /usr/local/bin/NutPuncher-${{ github.ref_name }}
         with:
           host: nutpunch.schwung.us
           username: root
           key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
+          envs: OUTPATH
           script: |
             systemctl stop nutpuncher@${{ github.ref_name }} || true
-            wget -O ${{ env.BINARY }} https://github.com/Schwungus/nutpunch/releases/download/${{ github.ref_name }}/NutPuncher-Linux-${{ github.ref_name }}
-            chmod +x ${{ env.BINARY }}
+            wget -O $OUTPATH https://github.com/Schwungus/nutpunch/releases/download/${{ github.ref_name }}/NutPuncher-Linux-${{ github.ref_name }}
+            chmod +x $OUTPATH
             systemctl start nutpuncher@${{ github.ref_name }} && echo Restarted service || exit 1
