@@ -15,10 +15,11 @@ Comes with a [public instance](#public-instance) for out-of-the-box integration.
 
 ## Troubleshooting
 
-UDP hole-punching can be finnicky at times, especially in non-standard networking environments. For that reason, this troubleshooting section comes before all else. If you're having connectivity issues **in a game powered by NutPunch**, please **make sure** the following conditions are met before you start throwing hooks and jabs at the developers:
+If you're having **connectivity issues in a game powered by NutPunch**, please make sure **there is a direct route to your computer** from the public network. That means, even if you're on a hotel Wi-Fi network in rural Turkmenistan, NutPunch should still work, as long as you **aren't masking your outbound IP address system-wide**. Using a proxy service for accessing the Web shouldn't interfere as long as **you aren't routing your whole traffic in TUN mode** or something similar.
 
-1. **Your VPN client is off**. Whatever that might be, it could be preventing UDP traffic from arriving to the correct destination (that being your computer). **Software that verifiedly breaks NutPunch** includes [AmneziaVPN](https://amnezia.org) in certain configurations, and the [Cloudflare WARP](https://one.one.one.one) app (as opposed to using `1.1.1.1` as your DNS resolver server). More to be verified soon™.
-2. **Your firewall allows the game executable to bind to and connect to any UDP port**. This is the default behavior on Windows machines nowadays, but it's an edge case worth noting.
+Here's a short infographic for troubleshooting connectivity with [v2RayN](https://github.com/2dust/v2rayN) and similar proxy clients:
+
+![An infographic telling you to disable TUN mode.](.github/assets/infographic.png)
 
 ## Introductory Lecture
 
