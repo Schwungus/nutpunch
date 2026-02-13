@@ -17,7 +17,7 @@ Comes with a [public instance](#public-instance) for out-of-the-box integration.
 
 If you're having **connectivity issues in a game powered by NutPunch**, please make sure **there is a direct route to your computer** from the public network. That means, even if you're on a hotel Wi-Fi network in rural Turkmenistan, NutPunch should still work, as long as you **aren't masking your outbound IP address system-wide**. Using a proxy service for accessing the Web shouldn't interfere as long as **you aren't routing your whole traffic in TUN mode** or something similar.
 
-Here's a short infographic for troubleshooting connectivity with [v2RayN](https://github.com/2dust/v2rayN) and similar proxy clients:
+Here's a short infographic for troubleshooting connectivity with [v2rayN](https://github.com/2dust/v2rayN) and similar proxy clients:
 
 ![An infographic telling you to disable TUN mode.](.github/assets/infographic.png)
 
