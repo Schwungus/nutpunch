@@ -915,7 +915,7 @@ static const char* NP_FormatAddr(NP_Addr addr) {
 
 	const uint16_t p = ntohs(*NP_AddrPort(&addr));
 	const char* s = inet_ntoa(addr.sin_addr);
-	NutPunch_SNPrintF(buf, sizeof(buf), "%s port %d", s, p);
+	NutPunch_SNPrintF(buf, sizeof(buf), "[%s]:%d", s, p);
 
 	return buf;
 }
