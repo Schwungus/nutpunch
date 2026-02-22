@@ -1,5 +1,5 @@
 {
-    "editor.formatOnSave": false,
+    "editor.formatOnSave": true,
     "editor.formatOnSaveMode": "file",
     "C_Cpp.intelliSenseEngine": "disabled",
     "clangd.enable": true,
@@ -17,11 +17,9 @@
         "*.h": "c"
     },
     "[c]": {
-        "editor.formatOnSave": true,
         "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
     },
     "[cpp]": {
-        "editor.formatOnSave": true,
         "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"
     }
 }
