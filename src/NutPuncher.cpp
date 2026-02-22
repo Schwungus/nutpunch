@@ -186,16 +186,6 @@ struct Addr : NP_Addr {
 		std::memset(this, 0, sizeof(*this));
 	}
 
-	// NOTE: need both =='s because C++20 complains about ambiguity:
-
-	bool operator==(const Addr& addr) const {
-		return !std::memcmp(this, &addr, sizeof(addr));
-	}
-
-	bool operator==(const NP_Addr& addr) const {
-		return !std::memcmp(this, &addr, sizeof(addr));
-	}
-
 	template <typename T, typename Size>
 	int send(const T buf[], Size size) const {
 		const auto* cbuf = reinterpret_cast<const char*>(buf);
@@ -221,6 +211,11 @@ struct Addr : NP_Addr {
 		std::memcpy(&sin_port, ptr, 2), ptr += 2;
 	}
 };
+
+static bool operator==(const NP_Addr& a, const NP_Addr& b) {
+	return a.sin_addr.s_addr == b.sin_addr.s_addr
+	       && a.sin_port == b.sin_port;
+}
 
 struct Player {
 	Addr pub, internal;
