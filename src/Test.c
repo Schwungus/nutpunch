@@ -131,25 +131,9 @@ static void move_our_dot() {
 }
 
 static void draw_debug_bits(int status) {
-	const char sep = ':';
-	const int chrs[] = {
-		'D',
-		'B',
-		'G',
-		sep,
-		NPS_Online == status ? '+' : '-',
-		NutPunch_IsMaster() ? 'M' : 'S',
-		sep,
-		'0' + NutPunch_PeerCount(),
-		'/',
-		'0' + NutPunch_GetMaxPlayers(),
-		sep,
-		'1' + NutPunch_LocalPeer(),
-	};
-
-	const int x = 0, y = 0;
-	for (int i = 0; i < sizeof(chrs) / sizeof(*chrs); i++)
-		poor_at(x + i, y)->chr = chrs[i];
+	poor_printf(0, 0, "DBG:%c%c:%d/%d:%d", NPS_Online == status ? '+' : '-',
+		NutPunch_IsMaster() ? 'M' : 'S', NutPunch_PeerCount(),
+		NutPunch_GetMaxPlayers(), 1 + NutPunch_LocalPeer());
 }
 
 int main(int argc, char* argv[]) {
