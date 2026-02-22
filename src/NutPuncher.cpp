@@ -228,17 +228,6 @@ struct Player {
 
 	Player() : countdown(0) {}
 
-	template <typename T, typename Size>
-	int send(const T buf[], Size size) const {
-		int res1 = pub.send(buf, size), res2 = size;
-		if (res1 <= 0) {
-			res2 = internal.send(buf, size);
-			if (res2 <= 0)
-				return res1;
-		}
-		return res2;
-	}
-
 	bool dead() const {
 		static constexpr const char zero[sizeof(Addr)] = {0};
 		return countdown < 1 || !std::memcmp(&pub, zero, sizeof(Addr));
@@ -325,7 +314,7 @@ struct Lobby {
 
 	accept:
 		if (idx < 0 || idx >= NUTPUNCH_MAX_PLAYERS) {
-			pub.gtfo(NPE_LobbyFull), internal.gtfo(NPE_LobbyFull);
+			pub.gtfo(NPE_LobbyFull);
 			return;
 		}
 
@@ -373,7 +362,7 @@ struct Lobby {
 		ptr += sizeof(Metadata);
 
 		auto& player = players[idx];
-		if (player.send(buf, ptr - buf) <= 0) {
+		if (player.pub.send(buf, ptr - buf) <= 0) {
 			NP_Warn("Player %d lost connection", idx + 1);
 			player.reset();
 		}
@@ -471,11 +460,10 @@ sockfail:
 	return false;
 }
 
-static bool
-create_lobby(const char* id, const Addr& pub, const Addr& internal) {
+static bool create_lobby(const char* id, const Addr& pub) {
 	if (lobbies.size() >= MAX_LOBBIES) {
 		// TODO: update bogus error code.
-		pub.gtfo(NPE_NoSuchLobby), internal.gtfo(NPE_NoSuchLobby);
+		pub.gtfo(NPE_NoSuchLobby);
 
 		NP_Warn("Reached lobby limit");
 		return false;
@@ -602,14 +590,14 @@ static int receive() {
 			err = NPE_LobbyFull;
 	} else if (!(flags & NP_HB_Create)) {
 		err = NPE_NoSuchLobby;
-	} else if (!create_lobby(id, pub, internal)) {
+	} else if (!create_lobby(id, pub)) {
 		return RecvKeepGoing;
 	}
 
 	if (err == NPE_Ok)
 		lobbies[id].accept(pub, internal, flags, ptr);
 	else
-		pub.gtfo(err), internal.gtfo(err);
+		pub.gtfo(err);
 
 	return RecvKeepGoing;
 }
