@@ -196,7 +196,8 @@ struct Addr : NP_Addr {
 		return !std::memcmp(this, &addr, sizeof(addr));
 	}
 
-	template <typename T> int send(const T buf[], size_t size) const {
+	template <typename T, typename Size>
+	int send(const T buf[], Size size) const {
 		const auto* cbuf = reinterpret_cast<const char*>(buf);
 		const auto* csock = reinterpret_cast<const sockaddr*>(this);
 		const auto csize = static_cast<int>(size);
@@ -211,28 +212,41 @@ struct Addr : NP_Addr {
 	}
 
 	void dump(uint8_t* ptr) const {
-		return dump(reinterpret_cast<char*>(ptr));
-	}
-
-	void dump(char* ptr) const {
 		std::memcpy(ptr, &sin_addr, 4), ptr += 4;
 		std::memcpy(ptr, &sin_port, 2), ptr += 2;
+	}
+
+	void load(uint8_t* ptr) {
+		std::memcpy(&sin_addr, ptr, 4), ptr += 4;
+		std::memcpy(&sin_port, ptr, 2), ptr += 2;
 	}
 };
 
 struct Player {
-	Addr addr;
+	Addr pub, internal;
 	std::uint32_t countdown;
 
 	Player() : countdown(0) {}
 
+	template <typename T, typename Size>
+	int send(const T buf[], Size size) const {
+		int res1 = pub.send(buf, size), res2 = size;
+		if (res1 <= 0) {
+			res2 = internal.send(buf, size);
+			if (res2 <= 0)
+				return res1;
+		}
+		return res2;
+	}
+
 	bool dead() const {
 		static constexpr const char zero[sizeof(Addr)] = {0};
-		return countdown < 1 || !std::memcmp(&addr, zero, sizeof(addr));
+		return countdown < 1 || !std::memcmp(&pub, zero, sizeof(Addr));
 	}
 
 	void reset() {
-		std::memset(&addr, 0, sizeof(addr));
+		std::memset(&pub, 0, sizeof(Addr));
+		std::memset(&internal, 0, sizeof(Addr));
 		countdown = 0;
 	}
 };
@@ -281,7 +295,7 @@ struct Lobby {
 
 	int index_of(const Addr& addr) const {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (!players[i].dead() && players[i].addr == addr)
+			if (!players[i].dead() && players[i].pub == addr)
 				return i;
 		return NUTPUNCH_MAX_PLAYERS;
 	}
@@ -297,9 +311,9 @@ struct Lobby {
 		return count;
 	}
 
-	void accept(const Addr addr, const NP_HeartbeatFlagsStorage flags,
-		const char* meta) {
-		int idx = index_of(addr);
+	void accept(const Addr pub, const Addr internal,
+		const NP_HeartbeatFlagsStorage flags, const char* meta) {
+		int idx = index_of(pub);
 		if (idx != NUTPUNCH_MAX_PLAYERS)
 			goto accept;
 		for (idx = 0; idx < NUTPUNCH_MAX_PLAYERS; idx++) {
@@ -311,12 +325,12 @@ struct Lobby {
 
 	accept:
 		if (idx < 0 || idx >= NUTPUNCH_MAX_PLAYERS) {
-			addr.gtfo(NPE_LobbyFull);
+			pub.gtfo(NPE_LobbyFull), internal.gtfo(NPE_LobbyFull);
 			return;
 		}
 
 		auto& player = players[idx];
-		player.addr = addr;
+		player.pub = pub, player.internal = internal;
 		player.countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND;
 
 		if (idx == master()) {
@@ -347,12 +361,19 @@ struct Lobby {
 		*ptr++ |= ((capacity - 1) & 0x0F) << 4;
 #undef RF
 
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			players[i].addr.dump(ptr), ptr += NUTPUNCH_ADDRESS_SIZE;
+		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+			players[i].pub.dump(ptr);
+			ptr += sizeof(NP_PeerAddr);
+
+			players[i].internal.dump(ptr);
+			ptr += sizeof(NP_PeerAddr);
+		}
+
 		std::memcpy(ptr, &metadata, sizeof(Metadata));
+		ptr += sizeof(Metadata);
 
 		auto& player = players[idx];
-		if (player.addr.send(buf, sizeof(buf)) <= 0) {
+		if (player.send(buf, ptr - buf) <= 0) {
 			NP_Warn("Player %d lost connection", idx + 1);
 			player.reset();
 		}
@@ -360,7 +381,7 @@ struct Lobby {
 
 	bool kill_bro(const NP_Addr addr) {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (players[i].dead() || players[i].addr != addr)
+			if (players[i].dead() || players[i].pub != addr)
 				continue;
 			NP_Info("Player %d disconnected gracefully", i + 1);
 			players[i].reset();
@@ -450,9 +471,12 @@ sockfail:
 	return false;
 }
 
-static bool create_lobby(const char* id, const Addr& addr) {
+static bool
+create_lobby(const char* id, const Addr& pub, const Addr& internal) {
 	if (lobbies.size() >= MAX_LOBBIES) {
-		addr.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
+		// TODO: update bogus error code.
+		pub.gtfo(NPE_NoSuchLobby), internal.gtfo(NPE_NoSuchLobby);
+
 		NP_Warn("Reached lobby limit");
 		return false;
 	}
@@ -461,7 +485,7 @@ static bool create_lobby(const char* id, const Addr& addr) {
 	// with the same master.
 	for (const auto& [lobby_id, lobby] : lobbies)
 		for (const auto& player : lobby.players)
-			if (!player.dead() && player.addr == addr)
+			if (!player.dead() && player.pub == pub)
 				return true; // fuck you...
 
 	lobbies.insert({id, Lobby(id)});
@@ -511,9 +535,9 @@ static int receive() {
 
 	char heartbeat[NUTPUNCH_BUFFER_SIZE] = {0};
 
-	Addr addr;
-	auto* c_addr = reinterpret_cast<sockaddr*>(&addr);
-	socklen_t addr_size = sizeof(addr);
+	Addr pub;
+	auto* c_addr = reinterpret_cast<sockaddr*>(&pub);
+	socklen_t addr_size = sizeof(pub);
 
 	int rcv = recvfrom(
 		sock, heartbeat, sizeof(heartbeat), 0, c_addr, &addr_size);
@@ -541,12 +565,12 @@ static int receive() {
 		if (rcv == sizeof(NP_Filters)) {
 			const auto* filters
 				= reinterpret_cast<const NutPunch_Filter*>(ptr);
-			send_lobbies(addr, filters);
+			send_lobbies(pub, filters);
 			return RecvKeepGoing;
 		}
 
 	if (!std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {
-		kill_bro(addr);
+		kill_bro(pub);
 		return RecvKeepGoing;
 	}
 
@@ -559,7 +583,11 @@ static int receive() {
 	std::memcpy(id, ptr, sizeof(NutPunch_Id));
 	ptr += sizeof(NutPunch_Id);
 
-	auto flags = *reinterpret_cast<const NP_HeartbeatFlagsStorage*>(ptr);
+	Addr internal;
+	internal.load((uint8_t*)ptr);
+	ptr += sizeof(NP_PeerAddr);
+
+	auto flags = *(const NP_HeartbeatFlagsStorage*)ptr;
 	ptr += sizeof(flags);
 
 	NutPunch_ErrorCode err = NPE_Ok;
@@ -568,20 +596,20 @@ static int receive() {
 		const auto& lobby = lobbies[id];
 		if (!(flags & NP_HB_Join))
 			err = NPE_Sybau; // TODO: update bogus error code
-		else if ((flags & NP_HB_Create) && !lobby.has(addr))
+		else if ((flags & NP_HB_Create) && !lobby.has(pub))
 			err = NPE_LobbyExists;
-		else if (!lobby.has(addr) && lobby.gamers() >= lobby.capacity)
+		else if (!lobby.has(pub) && lobby.gamers() >= lobby.capacity)
 			err = NPE_LobbyFull;
 	} else if (!(flags & NP_HB_Create)) {
 		err = NPE_NoSuchLobby;
-	} else if (!create_lobby(id, addr)) {
+	} else if (!create_lobby(id, pub, internal)) {
 		return RecvKeepGoing;
 	}
 
 	if (err == NPE_Ok)
-		lobbies[id].accept(addr, flags, ptr);
+		lobbies[id].accept(pub, internal, flags, ptr);
 	else
-		addr.gtfo(err);
+		pub.gtfo(err), internal.gtfo(err);
 
 	return RecvKeepGoing;
 }

@@ -82,8 +82,6 @@ extern "C" {
 /// How many updates to wait before resending a reliable packet.
 #define NUTPUNCH_BOUNCE_TICKS (20)
 
-#define NUTPUNCH_ADDRESS_SIZE (6)
-
 #ifndef NUTPUNCH_NOSTD
 #include <stdbool.h>
 #include <stddef.h>
@@ -447,25 +445,30 @@ typedef struct {
 } NP_Message;
 
 typedef struct {
+	uint8_t ip[4];
+
+	// have to use u8[2] instead of u16 to keep 1-byte alignment. otherwise,
+	// `sizeof` on the structs below produces an extra byte of padding which
+	// breaks every packet size calculation.
+	uint8_t port[2];
+} NP_PeerAddr;
+
+typedef struct {
 	uint8_t local_peer;
 	NP_ResponseFlagsStorage flags;
-	struct {
-		uint8_t ip[4];
-		uint16_t port;
-	} peers[NUTPUNCH_MAX_PLAYERS];
+	NP_PeerAddr peers[2][NUTPUNCH_MAX_PLAYERS];
 	NP_Metadata metadata;
 } NP_Beating;
 
 typedef struct {
-	struct {
-		uint8_t players, capacity;
-		NutPunch_Id id;
-	} lobbies[NUTPUNCH_MAX_SEARCH_RESULTS];
-} NP_Listing;
+	uint8_t players, capacity;
+	NutPunch_Id id;
+} NP_Listing[NUTPUNCH_MAX_SEARCH_RESULTS];
 
 typedef struct {
 	NutPunch_Id id;
 	NP_HeartbeatFlagsStorage flags;
+	NP_PeerAddr internal_addr;
 	NP_Metadata lobby_metadata;
 } NP_Heartbeat;
 
@@ -980,12 +983,18 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	if (idx == NP_LocalPeer)
 		return;
 
-	NP_Addr addr = {0};
-	*NP_AddrFamily(&addr) = AF_INET;
-	NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4), data += 4;
-	*NP_AddrPort(&addr) = *(uint16_t*)data, data += 2;
+	NP_Addr pub = {0};
+	*NP_AddrFamily(&pub) = AF_INET;
 
-	if (NP_AddrNull(addr)) {
+	NP_Addr internal = pub;
+
+	NutPunch_Memcpy(NP_AddrRaw(&pub), data, 4), data += 4;
+	*NP_AddrPort(&pub) = *(uint16_t*)data, data += 2;
+
+	NutPunch_Memcpy(NP_AddrRaw(&internal), data, 4), data += 4;
+	*NP_AddrPort(&internal) = *(uint16_t*)data, data += 2;
+
+	if (NP_AddrNull(pub)) {
 		NP_KillPeer(idx); // dead on the NutPuncher's side
 		return;
 	}
@@ -1012,8 +1021,10 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	*ptr = NP_LocalPeer, ptr += 1;
 	NutPunch_Memcpy(ptr, NP_PeerMetadata, sizeof(NP_Metadata));
 
-	NP_SendDirectly(addr, shalom, sizeof(shalom));
-	NP_Trace("SENT HI %s", NP_FormatAddr(addr));
+	NP_SendDirectly(pub, shalom, sizeof(shalom));
+	NP_SendDirectly(internal, shalom, sizeof(shalom));
+
+	NP_Trace("SENT HI %s", NP_FormatAddr(pub));
 }
 
 static void NP_HandleBeating(NP_Message msg) {
@@ -1025,7 +1036,7 @@ static void NP_HandleBeating(NP_Message msg) {
 
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS,
 		   was_slave = !NutPunch_IsMaster();
-	const ptrdiff_t stride = NUTPUNCH_ADDRESS_SIZE;
+	const ptrdiff_t stride = sizeof(NP_PeerAddr);
 
 	NP_LocalPeer = *msg.data++, NP_ResponseFlags = *msg.data++;
 	NP_HeartbeatFlags &= 0xF; // copy remote max player count to local
@@ -1038,7 +1049,7 @@ static void NP_HandleBeating(NP_Message msg) {
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		NP_SayShalom(i, msg.data);
-		msg.data += NUTPUNCH_ADDRESS_SIZE;
+		msg.data += 2 * sizeof(NP_PeerAddr);
 	}
 
 	NutPunch_Memcpy(NP_LobbyMetadataIn, msg.data, sizeof(NP_Metadata));
@@ -1156,10 +1167,16 @@ static bool NP_SendHeartbeat() {
 		NutPunch_Memcpy(ptr, NP_LobbyId, sizeof(NutPunch_Id));
 		ptr += sizeof(NutPunch_Id);
 
+		NP_Addr addr = {0};
+		socklen_t addr_size = sizeof(addr);
+		getsockname(NP_Sock, (struct sockaddr*)&addr, &addr_size);
+		NutPunch_Memcpy(ptr, NP_AddrRaw(&addr), 4), ptr += 4;
+		NutPunch_Memcpy(ptr, NP_AddrPort(&addr), 2), ptr += 2;
+
 		// TODO: make sure to correct endianness when multibyte flags
 		// become a thing.
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags,
-		ptr += sizeof(NP_HeartbeatFlags);
+		ptr += sizeof(NP_HeartbeatFlagsStorage);
 
 		NutPunch_Memcpy(ptr, NP_LobbyMetadataOut, sizeof(NP_Metadata));
 		ptr += sizeof(NP_Metadata);
