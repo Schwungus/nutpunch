@@ -459,9 +459,7 @@ sockfail:
 
 static bool create_lobby(const char* id, const Addr& pub) {
 	if (lobbies.size() >= MAX_LOBBIES) {
-		// TODO: update bogus error code.
-		pub.gtfo(NPE_NoSuchLobby);
-
+		pub.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
 		NP_Warn("Reached lobby limit");
 		return false;
 	}
@@ -642,7 +640,7 @@ int main(int, char*[]) {
 			lobby.update();
 
 		std::erase_if(lobbies, [](const auto& kv) {
-			const auto& [id, lobby] = kv;
+			const auto& lobby = kv.second;
 			if (!lobby)
 				NP_Info("Deleting lobby '%s'", lobby.fmt_id());
 			return !lobby;
