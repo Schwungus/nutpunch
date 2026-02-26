@@ -44,8 +44,8 @@ template <typename T> static bool is_memzero(const T& x) {
 }
 
 static const char* fmt_lobby_id(const char* id) {
-	static char buf[sizeof(NutPunch_Id) + 1] = {0};
-	for (int i = 0; i < sizeof(NutPunch_Id); i++) {
+	static char buf[sizeof(NutPunch_LobbyId) + 1] = {0};
+	for (int i = 0; i < sizeof(NutPunch_LobbyId); i++) {
 		const char c = id[i];
 		const bool alpha = c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z',
 			   numeric = c >= '0' && c <= '9';
@@ -58,7 +58,7 @@ static const char* fmt_lobby_id(const char* id) {
 			buf[i] = ' ';
 		}
 	}
-	for (int i = sizeof(NutPunch_Id); i > 0; i--)
+	for (int i = sizeof(NutPunch_LobbyId); i > 0; i--)
 		if (buf[i - 1] != ' ' && buf[i - 1] != 0) {
 			buf[i] = 0;
 			return buf;
@@ -183,8 +183,8 @@ private:
 	}
 };
 
-struct Addr : NP_Addr {
-	Addr() {
+struct AddrInfo : NP_AddrInfo {
+	AddrInfo() {
 		reset();
 	}
 
@@ -217,12 +217,12 @@ struct Addr : NP_Addr {
 	}
 };
 
-static bool operator==(const NP_Addr& a, const NP_Addr& b) {
+static bool operator==(const NP_AddrInfo& a, const NP_AddrInfo& b) {
 	return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port;
 }
 
 struct Player {
-	Addr pub, internal;
+	AddrInfo pub, internal;
 	std::uint32_t countdown = 0;
 
 	Player() {}
@@ -237,7 +237,7 @@ struct Player {
 };
 
 struct Lobby {
-	NutPunch_Id id = {0};
+	NutPunch_LobbyId id = {0};
 	uint8_t capacity = NUTPUNCH_MAX_PLAYERS;
 	Player players[NUTPUNCH_MAX_PLAYERS] = {};
 	Metadata metadata;
@@ -276,7 +276,7 @@ struct Lobby {
 		return gamers() > 0;
 	}
 
-	int index_of(const Addr& pub) const {
+	int index_of(const AddrInfo& pub) const {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			if (players[i] && players[i].pub == pub)
 				return i;
@@ -290,7 +290,7 @@ struct Lobby {
 		return NUTPUNCH_MAX_PLAYERS;
 	}
 
-	bool has(const Addr& pub) const {
+	bool has(const AddrInfo& pub) const {
 		return index_of(pub) != NUTPUNCH_MAX_PLAYERS;
 	}
 
@@ -302,8 +302,8 @@ struct Lobby {
 		return count;
 	}
 
-	void accept(const Addr& pub, const Addr& internal, const NP_HeartbeatFlagsStorage flags,
-		const char* meta) {
+	void accept(const AddrInfo& pub, const AddrInfo& internal,
+		const NP_HeartbeatFlagsStorage flags, const char* meta) {
 		int idx = index_of(pub), just_joined = false;
 		if (idx == NUTPUNCH_MAX_PLAYERS)
 			idx = next_dead(), just_joined = true;
@@ -362,7 +362,7 @@ struct Lobby {
 		}
 	}
 
-	bool kill_bro(const NP_Addr& pub) {
+	bool kill_bro(const NP_AddrInfo& pub) {
 		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			if (!players[i] || players[i].pub != pub)
 				continue;
@@ -414,7 +414,7 @@ private:
 };
 
 static bool bind_sock() {
-	Addr addr;
+	AddrInfo addr;
 
 	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (sock == NUTPUNCH_INVALID_SOCKET) {
@@ -450,7 +450,7 @@ sockfail:
 	return false;
 }
 
-static bool create_lobby(const char* id, const Addr& pub) {
+static bool create_lobby(const char* id, const AddrInfo& pub) {
 	if (lobbies.size() >= MAX_LOBBIES) {
 		pub.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
 		NP_Warn("Reached lobby limit");
@@ -469,7 +469,7 @@ static bool create_lobby(const char* id, const Addr& pub) {
 	return true;
 }
 
-static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
+static void send_lobbies(AddrInfo addr, const NutPunch_Filter* filters) {
 	static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Listing)] = "LIST";
 	uint8_t* ptr = buf + sizeof(NP_Header);
 	size_t filter_count = 0;
@@ -486,16 +486,16 @@ static void send_lobbies(Addr addr, const NutPunch_Filter* filters) {
 		if (!lobby.match_against(filters, filter_count))
 			continue;
 		*ptr++ = lobby.gamers(), *ptr++ = lobby.capacity;
-		std::memset(ptr, 0, sizeof(NutPunch_Id));
+		std::memset(ptr, 0, sizeof(NutPunch_LobbyId));
 		std::memcpy(ptr, id.data(), std::strlen(lobby.fmt_id()));
-		ptr += sizeof(NutPunch_Id);
+		ptr += sizeof(NutPunch_LobbyId);
 	}
 
 	for (int i = 0; i < 5; i++)
 		addr.send(buf, sizeof(buf));
 }
 
-static void kill_bro(const Addr& pub) {
+static void kill_bro(const AddrInfo& pub) {
 	for (auto& [id, lobby] : lobbies)
 		if (lobby.kill_bro(pub))
 			break;
@@ -509,7 +509,7 @@ static int receive() {
 
 	char heartbeat[NUTPUNCH_BUFFER_SIZE] = {0};
 
-	Addr pub;
+	AddrInfo pub;
 	auto* c_addr = reinterpret_cast<sockaddr*>(&pub);
 	socklen_t addr_size = sizeof(pub);
 
@@ -551,11 +551,11 @@ static int receive() {
 	if (std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
 		return RecvKeepGoing;
 
-	static char id[sizeof(NutPunch_Id) + 1] = {0};
-	std::memcpy(id, ptr, sizeof(NutPunch_Id));
-	ptr += sizeof(NutPunch_Id);
+	static char id[sizeof(NutPunch_LobbyId) + 1] = {0};
+	std::memcpy(id, ptr, sizeof(NutPunch_LobbyId));
+	ptr += sizeof(NutPunch_LobbyId);
 
-	Addr internal;
+	AddrInfo internal;
 	internal.load((uint8_t*)ptr);
 	ptr += sizeof(NP_PeerAddr);
 
