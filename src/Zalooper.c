@@ -4,6 +4,10 @@
 
 static const char *LOBBY = "Zalooping", *WOWZA = "FUCK YOU";
 
+enum {
+	CHAN_MAIN,
+};
+
 int main(int argc, char* argv[]) {
 	if (argc > 1)
 		NutPunch_SetServerAddr(argv[1]);
@@ -28,16 +32,16 @@ int main(int argc, char* argv[]) {
 	NP_Info("SENDING SHIT OUT");
 	for (int peer = 0; peer < NUTPUNCH_MAX_PLAYERS; peer++)
 		if (peer != NutPunch_LocalPeer() && NutPunch_PeerAlive(peer))
-			NutPunch_SendReliably(peer, WOWZA, (int)strlen(WOWZA));
+			NutPunch_SendReliably(CHAN_MAIN, peer, WOWZA, (int)strlen(WOWZA));
 
 	for (int i = 0; i < 30; i++) {
 		if (NutPunch_Update() == NPS_Error)
 			goto fuck;
-		while (NutPunch_HasMessage()) {
+		while (NutPunch_HasMessage(CHAN_MAIN)) {
 			static char data[32] = "";
 			memset(data, 0, sizeof(data));
-			int size = sizeof(data),
-			    sender = NutPunch_NextMessage(data, &size);
+			int size = sizeof(data);
+			const int sender = NutPunch_NextMessage(CHAN_MAIN, data, &size);
 			NP_Info("From %02d: %s", sender, data);
 		}
 		NP_SleepMs(100);

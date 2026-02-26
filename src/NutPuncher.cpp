@@ -32,8 +32,7 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
-constexpr const int64_t BEATS_PER_SECOND = 60, KEEP_ALIVE_SECONDS = 5;
-constexpr const int MAX_LOBBIES = 512;
+constexpr const int64_t BEATS_PER_SECOND = 60, KEEP_ALIVE_SECONDS = 5, MAX_LOBBIES = 512;
 
 struct Lobby;
 static NP_Socket sock = NUTPUNCH_INVALID_SOCKET;
@@ -110,8 +109,7 @@ struct Field : NutPunch_Field {
 				break;
 			}
 
-		return our_len == arg_len
-		       && !std::memcmp(this->name, name, our_len);
+		return our_len == arg_len && !std::memcmp(this->name, name, our_len);
 	}
 
 	bool matches(const NutPunch_Filter& filter) const {
@@ -194,8 +192,7 @@ struct Addr : NP_Addr {
 		std::memset(this, 0, sizeof(*this));
 	}
 
-	template <typename T, typename Size>
-	int send(const T buf[], Size size) const {
+	template <typename T, typename Size> int send(const T buf[], Size size) const {
 		const auto* cbuf = reinterpret_cast<const char*>(buf);
 		const auto* csock = reinterpret_cast<const sockaddr*>(this);
 		const auto csize = static_cast<int>(size);
@@ -221,8 +218,7 @@ struct Addr : NP_Addr {
 };
 
 static bool operator==(const NP_Addr& a, const NP_Addr& b) {
-	return a.sin_addr.s_addr == b.sin_addr.s_addr
-	       && a.sin_port == b.sin_port;
+	return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port;
 }
 
 struct Player {
@@ -232,8 +228,7 @@ struct Player {
 	Player() {}
 
 	explicit operator bool() const {
-		return countdown > 0 && !is_memzero(pub)
-		       && !is_memzero(internal);
+		return countdown > 0 && !is_memzero(pub) && !is_memzero(internal);
 	}
 
 	void reset() {
@@ -307,8 +302,8 @@ struct Lobby {
 		return count;
 	}
 
-	void accept(const Addr& pub, const Addr& internal,
-		const NP_HeartbeatFlagsStorage flags, const char* meta) {
+	void accept(const Addr& pub, const Addr& internal, const NP_HeartbeatFlagsStorage flags,
+		const char* meta) {
 		int idx = index_of(pub), just_joined = false;
 		if (idx == NUTPUNCH_MAX_PLAYERS)
 			idx = next_dead(), just_joined = true;
@@ -340,8 +335,7 @@ struct Lobby {
 	}
 
 	void beat(const int idx) {
-		static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)]
-			= "BEAT";
+		static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)] = "BEAT";
 		uint8_t* ptr = buf + sizeof(NP_Header);
 
 #define RF(f, v) ((f) * static_cast<NP_ResponseFlagsStorage>(v))
@@ -379,8 +373,7 @@ struct Lobby {
 		return false;
 	}
 
-	bool match_against(
-		const NutPunch_Filter* filters, size_t filter_count) const {
+	bool match_against(const NutPunch_Filter* filters, size_t filter_count) const {
 		for (int f = 0; f < filter_count; f++) {
 			const auto& filter = filters[f];
 			if (filter.field.alwayszero != 0) {
@@ -520,8 +513,7 @@ static int receive() {
 	auto* c_addr = reinterpret_cast<sockaddr*>(&pub);
 	socklen_t addr_size = sizeof(pub);
 
-	int rcv = recvfrom(
-		sock, heartbeat, sizeof(heartbeat), 0, c_addr, &addr_size);
+	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, c_addr, &addr_size);
 	if (rcv < 0)
 		switch (NP_SockError()) {
 		case NP_TooFat:
@@ -544,8 +536,7 @@ static int receive() {
 
 	if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header)))
 		if (rcv == sizeof(NP_Filters)) {
-			const auto* filters
-				= reinterpret_cast<const NutPunch_Filter*>(ptr);
+			const auto* filters = reinterpret_cast<const NutPunch_Filter*>(ptr);
 			send_lobbies(pub, filters);
 			return RecvKeepGoing;
 		}

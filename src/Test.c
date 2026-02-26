@@ -22,14 +22,17 @@ static struct {
 	int32_t x, y;
 } players[NUTPUNCH_MAX_PLAYERS] = {0};
 
+enum {
+	CHAN_GAME,
+	CHAN_CHAT,
+};
+
 static const char *const magicKey = "NUTPUNCH", *const lobbyName = "Ligma";
 static const uint8_t magicValue = 66;
 
-static const char* randomNames[] = {"Fimon", "Trollga", "Marsoyob", "Ficus",
-	"Caccus", "Skibidi69er", "Caulksucker"};
+static const char* randomNames[]
+	= {"Fimon", "Trollga", "Marsoyob", "Ficus", "Caccus", "Skibidi69er", "Caulksucker"};
 static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
-
-#define PAYLOAD_SIZE ((size_t)(2))
 
 static uint8_t targetPlayerCount = 0;
 
@@ -72,42 +75,32 @@ static void draw_players() {
 
 static void receive_shit() {
 	static uint8_t data[512] = {0};
-	while (NutPunch_HasMessage()) {
-		int size = sizeof(data),
-		    peer = NutPunch_NextMessage(data, &size);
-		if (peer == NUTPUNCH_MAX_PLAYERS)
-			continue;
-		if (size == PAYLOAD_SIZE) {
-			players[peer].x = ((int32_t)(data[0]));
-			players[peer].y = ((int32_t)(data[1]));
-		} else {
-			printf("%s\n", data);
-		}
+
+	while (NutPunch_HasMessage(CHAN_GAME)) {
+		int size = sizeof(data);
+		const int peer = NutPunch_NextMessage(CHAN_GAME, data, &size);
+		players[peer].x = ((int32_t)(data[0]));
+		players[peer].y = ((int32_t)(data[1]));
+	}
+
+	while (NutPunch_HasMessage(CHAN_CHAT)) {
+		int size = sizeof(data);
+		const int peer = NutPunch_NextMessage(CHAN_CHAT, data, &size);
+		NutPunch_Log("[%s]: %s", (char*)NutPunch_PeerGet(peer, "NAME", &size), data);
 	}
 }
 
 static void chat_with(int idx) {
-	char name1[32] = {0}, name2[32] = {0};
-
 	const char* theirName = NutPunch_PeerGet(idx, "NAME", NULL);
 	if (theirName == NULL)
 		return;
-	NutPunch_SNPrintF(name1, sizeof(name1), "%s", theirName);
-
-	const char* ourName
-		= NutPunch_PeerGet(NutPunch_LocalPeer(), "NAME", NULL);
-	if (ourName == NULL)
-		return;
-	NutPunch_SNPrintF(name2, sizeof(name2), "%s", ourName);
-
 	static char buf[96] = {0};
-	NutPunch_SNPrintF(buf, sizeof(buf), "[%s]: Hi, %s!", name2, name1);
-
-	NutPunch_SendReliably(idx, buf, sizeof(buf));
+	const int size = NutPunch_SNPrintF(buf, sizeof(buf), "Hi, %s!", theirName);
+	NutPunch_SendReliably(CHAN_CHAT, idx, buf, size + 1);
 }
 
 static void send_shit() {
-	static uint8_t data[512] = {0};
+	static uint8_t data[2] = {0};
 	if (NutPunch_LocalPeer() == NUTPUNCH_MAX_PLAYERS)
 		return;
 
@@ -115,7 +108,7 @@ static void send_shit() {
 	data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y);
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		NutPunch_Send(i, data, PAYLOAD_SIZE);
+		NutPunch_Send(CHAN_GAME, i, data, sizeof(data));
 		if (poor_key_pressed(POOR_T))
 			chat_with(i);
 	}
@@ -124,16 +117,14 @@ static void send_shit() {
 static void move_our_dot() {
 	if (NutPunch_LocalPeer() == NUTPUNCH_MAX_PLAYERS)
 		return;
-	players[NutPunch_LocalPeer()].x
-		+= poor_key_down(POOR_D) - poor_key_down(POOR_A);
-	players[NutPunch_LocalPeer()].y
-		+= poor_key_down(POOR_S) - poor_key_down(POOR_W);
+	players[NutPunch_LocalPeer()].x += poor_key_down(POOR_D) - poor_key_down(POOR_A);
+	players[NutPunch_LocalPeer()].y += poor_key_down(POOR_S) - poor_key_down(POOR_W);
 }
 
 static void draw_debug_bits(int status) {
 	poor_printf(0, 0, "DBG:%c%c:%d/%d:%d", NPS_Online == status ? '+' : '-',
-		NutPunch_IsMaster() ? 'M' : 'S', NutPunch_PeerCount(),
-		NutPunch_GetMaxPlayers(), 1 + NutPunch_LocalPeer());
+		NutPunch_IsMaster() ? 'M' : 'S', NutPunch_PeerCount(), NutPunch_GetMaxPlayers(),
+		1 + NutPunch_LocalPeer());
 }
 
 int main(int argc, char* argv[]) {
@@ -151,8 +142,7 @@ int main(int argc, char* argv[]) {
 	}
 
 	static char fname[256] = "";
-	NutPunch_SNPrintF(
-		fname, sizeof(fname), "log%s.txt", argc > 3 ? argv[3] : "");
+	NutPunch_SNPrintF(fname, sizeof(fname), "log%s.txt", argc > 3 ? argv[3] : "");
 
 	logfile = fopen(fname, "w");
 	if (!logfile) {
