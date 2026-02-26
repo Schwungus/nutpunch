@@ -132,6 +132,7 @@ int main(int argc, char* argv[]) {
 		printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
 		return EXIT_FAILURE;
 	}
+
 	if (argc > 2)
 		NutPunch_SetServerAddr(argv[2]);
 
@@ -176,7 +177,6 @@ int main(int argc, char* argv[]) {
 		}
 	}
 
-cleanup:
 	NutPunch_Cleanup();
 	fflush(logfile), fclose(logfile);
 	return EXIT_SUCCESS;
