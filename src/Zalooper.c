@@ -6,11 +6,15 @@ static const char *LOBBY = "Zalooping", *WOWZA = "FUCK YOU";
 
 enum {
 	CHAN_MAIN,
+	CHAN_COUNT,
 };
 
 int main(int argc, char* argv[]) {
+	NutPunch_SetChannelCount(CHAN_COUNT);
+
 	if (argc > 1)
 		NutPunch_SetServerAddr(argv[1]);
+
 	if (argc > 2) {
 		int players = strtol(argv[2], NULL, 10);
 		NutPunch_Host(LOBBY, players);

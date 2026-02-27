@@ -25,6 +25,7 @@ static struct {
 enum {
 	CHAN_GAME,
 	CHAN_CHAT,
+	CHAN_COUNT,
 };
 
 static const char *const magicKey = "NUTPUNCH", *const lobbyName = "Ligma";
@@ -132,6 +133,8 @@ int main(int argc, char* argv[]) {
 		printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
 		return EXIT_FAILURE;
 	}
+
+	NutPunch_SetChannelCount(CHAN_COUNT);
 
 	if (argc > 2)
 		NutPunch_SetServerAddr(argv[2]);

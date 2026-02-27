@@ -216,6 +216,16 @@ void NutPunch_PeerSet(const char* name, int size, const void* data);
 /// which see.
 const void* NutPunch_PeerGet(NutPunch_Peer, const char* name, int* size);
 
+/// Set the maximum amount of channels this peer can receive from. Packets with an index higher than
+/// or equal to maximum channel count are discarded silently.
+///
+/// The default behavior is receiving only on channel 0.
+///
+/// Passing less than 1 or more than 256 channels fails silently.
+///
+/// Solves the weaponization issue (#32).
+void NutPunch_SetChannelCount(int);
+
 /// Check if there is a packet waiting in the receiving queue for the specified channel index.
 /// Retrieve message data by calling `NutPunch_NextMessage(channel)`, which see.
 bool NutPunch_HasMessage(NutPunch_Channel);
@@ -520,6 +530,7 @@ static NP_Socket NP_Sock = NUTPUNCH_INVALID_SOCKET;
 static NP_AddrInfo NP_PuncherAddr = {0};
 static char NP_ServerHost[128] = {0};
 
+static NutPunch_Channel NP_MaxChannel = 0;
 static NP_Data* NP_QueueOut[NUTPUNCH_CHANNEL_COUNT] = {0};
 static NP_Data* NP_QueueIn[NUTPUNCH_CHANNEL_COUNT] = {0};
 
@@ -650,7 +661,7 @@ static int NP_FieldNameSize(const char* name) {
 }
 
 static const void* NP_GetMetadataFrom(const NP_Metadata fields, const char* name, int* size) {
-	static char buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
+	static uint8_t buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
 	NP_Memzero(buf);
 
 	int name_size = NP_FieldNameSize(name);
@@ -1100,6 +1111,9 @@ static void NP_HandleData(NP_Message msg) {
 	const NutPunch_Channel channel = *msg.data++;
 	msg.size--;
 
+	if (channel > NP_MaxChannel)
+		return;
+
 	NP_PeerInfo* const peer = &NP_Peers[peer_idx];
 	peer->last_beating = clock();
 
@@ -1165,10 +1179,10 @@ static bool NP_SendHeartbeat() {
 	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return true;
 
-	static char heartbeat[sizeof(NP_Header) + sizeof(NP_Heartbeat)] = {0};
+	static uint8_t heartbeat[sizeof(NP_Header) + sizeof(NP_Heartbeat)] = {0};
 	NP_Memzero(heartbeat);
 
-	char* ptr = heartbeat;
+	uint8_t* ptr = heartbeat;
 	if (NP_Querying) {
 		NutPunch_Memcpy(ptr, "LIST", sizeof(NP_Header));
 		ptr += sizeof(NP_Header);
@@ -1217,10 +1231,10 @@ typedef enum {
 	NP_RS_Done,
 } NP_ReceiveStatus;
 
-static int NP_UglyRecvfrom(NP_AddrInfo* addr, char* buf, int size) {
+static int NP_UglyRecvfrom(NP_AddrInfo* addr, uint8_t* buf, int size) {
 	socklen_t addr_size = sizeof(*addr);
 	struct sockaddr* shit_addr = (struct sockaddr*)addr;
-	return recvfrom(NP_Sock, buf, size, 0, shit_addr, &addr_size);
+	return recvfrom(NP_Sock, (char*)buf, size, 0, shit_addr, &addr_size);
 }
 
 static NP_ReceiveStatus NP_ReceiveShit() {
@@ -1228,7 +1242,7 @@ static NP_ReceiveStatus NP_ReceiveShit() {
 		|| NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return NP_RS_Done;
 
-	static char buf[NUTPUNCH_BUFFER_SIZE] = {0};
+	static uint8_t buf[NUTPUNCH_BUFFER_SIZE] = {0};
 	NP_AddrInfo addr = {0};
 
 	int size = NP_UglyRecvfrom(&addr, buf, sizeof(buf));
@@ -1331,7 +1345,7 @@ static void NP_FlushOutQueue() {
 }
 
 static void NP_SendGoodbyes() {
-	static char bye[4] = {'D', 'I', 'S', 'C'};
+	static uint8_t bye[4] = {'D', 'I', 'S', 'C'};
 	NP_SendTimesDirectly(10, NP_PuncherAddr, bye, sizeof(bye));
 }
 
@@ -1403,6 +1417,11 @@ void NutPunch_Disconnect() {
 	if (NutPunch_IsOnline()) // send a disconnection packet too
 		NP_Closing = true, NP_NetworkUpdate();
 	NutPunch_Reset();
+}
+
+void NutPunch_SetChannelCount(int max) {
+	if (max > 0 && max <= NUTPUNCH_CHANNEL_COUNT)
+		NP_MaxChannel = max - 1;
 }
 
 bool NutPunch_HasMessage(NutPunch_Channel channel) {
