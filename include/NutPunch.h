@@ -1310,8 +1310,7 @@ static void NP_FlushChannelOutQueue(const NutPunch_Channel channel) {
 			continue;
 		}
 
-		// Send & pop normally since a bounce of -1 makes it an
-		// unreliable packet.
+		// Send & pop normally since a bounce of -1 makes it an unreliable packet.
 		if (cur->bounce < 0)
 			cur->f_delete = true;
 		// Otherwise, check if it's about to bounce, to resend it.
@@ -1345,7 +1344,7 @@ static void NP_FlushOutQueue() {
 }
 
 static void NP_SendGoodbyes() {
-	static uint8_t bye[4] = {'D', 'I', 'S', 'C'};
+	static uint8_t bye[sizeof(NP_Header)] = {'D', 'I', 'S', 'C'};
 	NP_SendTimesDirectly(10, NP_PuncherAddr, bye, sizeof(bye));
 }
 
