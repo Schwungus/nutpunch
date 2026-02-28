@@ -1056,14 +1056,16 @@ static void NP_HandleBeating(NP_Message msg) {
 
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS,
 		   was_slave = !NutPunch_IsMaster();
-	const ptrdiff_t stride = sizeof(NP_PeerAddr);
 
 	NP_LocalPeer = *msg.data++, NP_ResponseFlags = *msg.data++;
+	if (NP_LocalPeer >= NUTPUNCH_MAX_PLAYERS)
+		return; // TODO: shit myself
+
 	NP_HeartbeatFlags &= 0xF; // copy remote max player count to local
 	NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
 
 	if (just_joined)
-		NP_PrintLocalPeer(msg.data + NP_LocalPeer * stride);
+		NP_PrintLocalPeer(msg.data + NP_LocalPeer * sizeof(NP_PeerAddr));
 	if (NutPunch_IsMaster() && was_slave)
 		NP_Info("We're the lobby's master now");
 
