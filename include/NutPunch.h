@@ -1421,8 +1421,12 @@ void NutPunch_Disconnect() {
 }
 
 void NutPunch_SetChannelCount(int max) {
-	if (max > 0 && max <= NUTPUNCH_CHANNEL_COUNT)
-		NP_MaxChannel = max - 1;
+	if (max < 1 || max > NUTPUNCH_CHANNEL_COUNT)
+		return;
+
+	NP_MaxChannel = max - 1;
+	for (int i = max; i < NUTPUNCH_CHANNEL_COUNT; i++)
+		NP_CleanupPackets(&NP_QueueIn[i]);
 }
 
 bool NutPunch_HasMessage(NutPunch_Channel channel) {
