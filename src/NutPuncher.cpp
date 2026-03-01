@@ -253,7 +253,7 @@ struct Lobby {
 	}
 
 	void update() {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			if (players[i])
 				tick(i);
 			if (players[i])
@@ -276,15 +276,15 @@ struct Lobby {
 		return gamers() > 0;
 	}
 
-	int index_of(const AddrInfo& pub) const {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+	NutPunch_Peer index_of(const AddrInfo& pub) const {
+		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			if (players[i] && players[i].pub == pub)
 				return i;
 		return NUTPUNCH_MAX_PLAYERS;
 	}
 
-	int next_dead() const {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+	NutPunch_Peer next_dead() const {
+		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			if (!players[i])
 				return i;
 		return NUTPUNCH_MAX_PLAYERS;
@@ -294,9 +294,9 @@ struct Lobby {
 		return index_of(pub) != NUTPUNCH_MAX_PLAYERS;
 	}
 
-	int gamers() const {
-		int count = 0;
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+	NutPunch_Peer gamers() const {
+		NutPunch_Peer count = 0;
+		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
 			if (players[i])
 				count++;
 		return count;
@@ -304,7 +304,7 @@ struct Lobby {
 
 	void accept(const AddrInfo& pub, const AddrInfo& internal,
 		const NP_HeartbeatFlagsStorage flags, const char* meta) {
-		int idx = index_of(pub), just_joined = false;
+		NutPunch_Peer idx = index_of(pub), just_joined = false;
 		if (idx == NUTPUNCH_MAX_PLAYERS)
 			idx = next_dead(), just_joined = true;
 		if (idx == NUTPUNCH_MAX_PLAYERS) {
@@ -325,7 +325,7 @@ struct Lobby {
 		}
 	}
 
-	void tick(const int idx) {
+	void tick(const NutPunch_Peer idx) {
 		auto& plr = players[idx];
 		plr.countdown--;
 		if (plr)
@@ -334,17 +334,15 @@ struct Lobby {
 		plr.reset();
 	}
 
-	void beat(const int idx) {
+	void beat(const NutPunch_Peer idx) {
 		static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)] = "BEAT";
 		uint8_t* ptr = buf + sizeof(NP_Header);
 
-#define RF(f, v) ((f) * static_cast<NP_ResponseFlagsStorage>(v))
-		*ptr++ = static_cast<uint8_t>(idx);
-		*ptr = RF(NP_R_Master, idx == master());
-		*ptr++ |= ((capacity - 1) & 0x0F) << 4;
-#undef RF
+		*ptr++ = idx;
+		*ptr++ = master();
+		*ptr++ = capacity;
 
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			players[i].pub.dump(ptr);
 			ptr += sizeof(NP_PeerAddr);
 
@@ -363,7 +361,7 @@ struct Lobby {
 	}
 
 	bool kill_bro(const NP_AddrInfo& pub) {
-		for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 			if (!players[i] || players[i].pub != pub)
 				continue;
 			NP_Info("Player %d disconnected gracefully", i + 1);
@@ -398,7 +396,7 @@ struct Lobby {
 		return true;
 	}
 
-	int master() {
+	NutPunch_Peer master() {
 		if (master_idx < NUTPUNCH_MAX_PLAYERS && players[master_idx])
 			return master_idx;
 		for (master_idx = 0; master_idx < NUTPUNCH_MAX_PLAYERS;)
@@ -410,7 +408,7 @@ struct Lobby {
 	}
 
 private:
-	int master_idx = NUTPUNCH_MAX_PLAYERS;
+	NutPunch_Peer master_idx = NUTPUNCH_MAX_PLAYERS;
 };
 
 static bool bind_sock() {

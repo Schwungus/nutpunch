@@ -273,8 +273,8 @@ bool NutPunch_IsOnline();
 /// local peer index will be available by this point.
 bool NutPunch_IsReady();
 
-/// Returns `true` if we are `NutPunch_IsReady()` AND are the lobby's master.
-bool NutPunch_IsMaster();
+/// Returns `true` if we are `NutPunch_IsReady()` AND the specified peer is the lobby's master.
+bool NutPunch_IsMaster(NutPunch_Peer);
 
 /// Call this to gracefully disconnect from a lobby.
 void NutPunch_Disconnect();
@@ -460,6 +460,7 @@ typedef struct {
 	const uint8_t* data;
 } NP_Message;
 
+// tightly packed structs matching packet layouts.
 #pragma pack(push, 1)
 
 typedef struct {
@@ -468,8 +469,7 @@ typedef struct {
 } NP_PeerAddr;
 
 typedef struct {
-	NutPunch_Peer local_peer;
-	NP_ResponseFlagsStorage flags;
+	NutPunch_Peer local, master, capacity;
 	NP_PeerAddr peers[2][NUTPUNCH_MAX_PLAYERS];
 	NP_Metadata metadata;
 } NP_Beating;
@@ -524,7 +524,8 @@ static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
 static char NP_LobbyId[sizeof(NutPunch_LobbyId) + 1] = {0};
 static NP_PeerInfo NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
-static NutPunch_Peer NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
+static NutPunch_Peer NP_LocalPeer = NUTPUNCH_MAX_PLAYERS, NP_Master = NUTPUNCH_MAX_PLAYERS,
+		     NP_MaxPlayers = 0;
 
 static NP_Socket NP_Sock = NUTPUNCH_INVALID_SOCKET;
 static NP_AddrInfo NP_PuncherAddr = {0};
@@ -544,11 +545,6 @@ static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
 	NP_HB_Join = 1 << 0,
 	NP_HB_Create = 1 << 1,
-};
-
-static NP_ResponseFlagsStorage NP_ResponseFlags = 0;
-enum {
-	NP_R_Master = 1 << 0,
 };
 
 static uint16_t* NP_AddrFamily(NP_AddrInfo* addr) {
@@ -584,8 +580,8 @@ static void NP_CleanupPackets(NP_Data** queue) {
 }
 
 static void NP_NukeLobbyData() {
-	NP_Closing = NP_Querying = false, NP_ResponseFlags = 0;
-	NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
+	NP_Closing = NP_Querying = false;
+	NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
 	NP_Memzero(NP_LobbyMetadataIn), NP_Memzero(NP_LobbyMetadataOut);
 	NP_Memzero(NP_PeerMetadata), NP_Memzero(NP_Peers);
 	NP_Memzero(NP_Filters);
@@ -898,7 +894,9 @@ void NutPunch_SetMaxPlayers(int players) {
 int NutPunch_GetMaxPlayers() {
 	if (!NutPunch_IsOnline())
 		return 0;
-	return 1 + ((NP_ResponseFlags & 0xF0) >> 4);
+	if (NP_MaxPlayers > NUTPUNCH_MAX_PLAYERS)
+		return 0;
+	return NP_MaxPlayers;
 }
 
 void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
@@ -1055,18 +1053,21 @@ static void NP_HandleBeating(NP_Message msg) {
 	NP_LastBeating = clock();
 
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS,
-		   was_slave = !NutPunch_IsMaster();
+		   was_slave = !NutPunch_IsMaster(NutPunch_LocalPeer());
 
-	NP_LocalPeer = *msg.data++, NP_ResponseFlags = *msg.data++;
+	NP_LocalPeer = *msg.data++;
+	NP_Master = *msg.data++;
+	NP_MaxPlayers = *msg.data++;
+
 	if (NP_LocalPeer >= NUTPUNCH_MAX_PLAYERS)
 		return; // TODO: shit myself
 
-	NP_HeartbeatFlags &= 0xF; // copy remote max player count to local
+	NP_HeartbeatFlags &= 0xF; // sync local and remote max player count
 	NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
 
 	if (just_joined)
 		NP_PrintLocalPeer(msg.data + NP_LocalPeer * sizeof(NP_PeerAddr));
-	if (NutPunch_IsMaster() && was_slave)
+	if (NutPunch_IsMaster(NutPunch_LocalPeer()) && was_slave)
 		NP_Info("We're the lobby's master now");
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
@@ -1554,10 +1555,14 @@ bool NutPunch_IsReady() {
 	return NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS;
 }
 
-bool NutPunch_IsMaster() {
+bool NutPunch_IsMaster(NutPunch_Peer peer) {
 	if (!NutPunch_IsReady())
 		return false;
-	return (NP_ResponseFlags & NP_R_Master) != 0;
+	if (NP_Master == NUTPUNCH_MAX_PLAYERS)
+		return false;
+	if (peer >= NUTPUNCH_MAX_PLAYERS)
+		return false;
+	return NP_Master == peer;
 }
 
 const char* NutPunch_Basename(const char* path) {

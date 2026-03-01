@@ -124,8 +124,8 @@ static void move_our_dot() {
 
 static void draw_debug_bits(int status) {
 	poor_printf(0, 0, "DBG:%c%c:%d/%d:%d", NPS_Online == status ? '+' : '-',
-		NutPunch_IsMaster() ? 'M' : 'S', NutPunch_PeerCount(), NutPunch_GetMaxPlayers(),
-		1 + NutPunch_LocalPeer());
+		NutPunch_IsMaster(NutPunch_LocalPeer()) ? 'M' : 'S', NutPunch_PeerCount(),
+		NutPunch_GetMaxPlayers(), 1 + NutPunch_LocalPeer());
 }
 
 int main(int argc, char* argv[]) {
