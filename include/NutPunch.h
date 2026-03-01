@@ -265,16 +265,16 @@ bool NutPunch_PeerAlive(NutPunch_Peer);
 /// Get the local peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
 int NutPunch_LocalPeer();
 
-/// Returns `true` if we are in a lobby. This doesn't guarantee the local peer index or any metadata
-/// is available; for that, see `NutPunch_IsReady()`.
+/// Get the master peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
+int NutPunch_MasterPeer();
+
+/// Returns `true` if we are in a lobby. This doesn't guarantee local/master peer indices or any
+/// metadata is available; for that, see `NutPunch_IsReady()`.
 bool NutPunch_IsOnline();
 
 /// Returns `true` if we are in a lobby AND are ready to accept P2P connections. Lobby metadata and
-/// local peer index will be available by this point.
+/// local/master peer indices will be available by this point.
 bool NutPunch_IsReady();
-
-/// Returns `true` if we are `NutPunch_IsReady()` AND the specified peer is the lobby's master.
-bool NutPunch_IsMaster(NutPunch_Peer);
 
 /// Call this to gracefully disconnect from a lobby.
 void NutPunch_Disconnect();
@@ -1053,7 +1053,7 @@ static void NP_HandleBeating(NP_Message msg) {
 	NP_LastBeating = clock();
 
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS,
-		   was_slave = !NutPunch_IsMaster(NutPunch_LocalPeer());
+		   was_slave = NutPunch_MasterPeer() != NutPunch_LocalPeer();
 
 	NP_LocalPeer = *msg.data++;
 	NP_Master = *msg.data++;
@@ -1067,7 +1067,7 @@ static void NP_HandleBeating(NP_Message msg) {
 
 	if (just_joined)
 		NP_PrintLocalPeer(msg.data + NP_LocalPeer * sizeof(NP_PeerAddr));
-	if (NutPunch_IsMaster(NutPunch_LocalPeer()) && was_slave)
+	if (NutPunch_MasterPeer() == NutPunch_LocalPeer() && was_slave)
 		NP_Info("We're the lobby's master now");
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
@@ -1547,22 +1547,18 @@ int NutPunch_LocalPeer() {
 	return NP_LocalPeer;
 }
 
+int NutPunch_MasterPeer() {
+	if (!NutPunch_IsOnline())
+		return NUTPUNCH_MAX_PLAYERS;
+	return NP_Master;
+}
+
 bool NutPunch_IsOnline() {
 	return NP_LastStatus == NPS_Online;
 }
 
 bool NutPunch_IsReady() {
 	return NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS;
-}
-
-bool NutPunch_IsMaster(NutPunch_Peer peer) {
-	if (!NutPunch_IsReady())
-		return false;
-	if (NP_Master == NUTPUNCH_MAX_PLAYERS)
-		return false;
-	if (peer >= NUTPUNCH_MAX_PLAYERS)
-		return false;
-	return NP_Master == peer;
 }
 
 const char* NutPunch_Basename(const char* path) {
