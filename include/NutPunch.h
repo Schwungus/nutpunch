@@ -571,7 +571,7 @@ static bool NP_AddrNull(NP_AddrInfo addr) {
 
 static void NP_CleanupPackets(NP_Data** queue) {
 	while (*queue) {
-		NP_Data* ptr = *queue;
+		NP_Data* const ptr = *queue;
 		*queue = ptr->next;
 		NutPunch_Free(ptr->data);
 		NutPunch_Free(ptr);
@@ -666,7 +666,7 @@ static const void* NP_GetMetadataFrom(const NP_Metadata fields, const char* name
 		goto none;
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		const NutPunch_Field* field = &fields[i];
+		const NutPunch_Field* const field = &fields[i];
 		if (name_size != NP_FieldNameSize(field->name))
 			continue;
 		if (NutPunch_Memcmp(field->name, name, name_size))
@@ -723,7 +723,7 @@ static void NP_MetadataSet(NutPunch_Field* fields, const char* name, int size, c
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		static const NutPunch_Field nullfield = {0};
-		NutPunch_Field* field = &fields[i];
+		NutPunch_Field* const field = &fields[i];
 
 		if (NutPunch_Memcmp(field, &nullfield, sizeof(nullfield))) {
 			if (NP_FieldNameSize(field->name) != name_size)
@@ -798,7 +798,7 @@ static bool NP_MakeReuseAddr(NP_Socket sock) {
 #else
 	const uint32_t argp = 1;
 #endif
-	const char* shit = (const char*)&argp;
+	const char* const shit = (const char*)&argp;
 	return !setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, shit, sizeof(argp));
 }
 
@@ -930,7 +930,7 @@ static const char* NP_FormatSockaddr(NP_AddrInfo addr) {
 	NP_Memzero(buf);
 
 	const uint16_t p = ntohs(*NP_AddrPort(&addr));
-	const char* s = inet_ntoa(addr.sin_addr);
+	const char* const s = inet_ntoa(addr.sin_addr);
 	NutPunch_SNPrintF(buf, sizeof(buf), "[%s]:%d", s, p);
 
 	return buf;
@@ -981,8 +981,8 @@ static void NP_PrintLocalPeer(const uint8_t* data) {
 }
 
 static int NP_SendDirectly(NP_AddrInfo dest, const void* data, int len) {
-	struct sockaddr* shit_dest = (struct sockaddr*)&dest;
-	const char* shit_data = (const char*)data;
+	struct sockaddr* const shit_dest = (struct sockaddr*)&dest;
+	const char* const shit_data = (const char*)data;
 	return sendto(NP_Sock, shit_data, len, 0, shit_dest, sizeof(dest));
 }
 
@@ -998,10 +998,8 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 	if (idx == NP_LocalPeer)
 		return;
 
-	NP_AddrInfo pub = {0};
-	*NP_AddrFamily(&pub) = AF_INET;
-
-	NP_AddrInfo internal = pub;
+	NP_AddrInfo pub = {0}, internal = {0};
+	*NP_AddrFamily(&pub) = *NP_AddrFamily(&internal) = AF_INET;
 
 	NutPunch_Memcpy(NP_AddrRaw(&pub), data, 4), data += 4;
 	*NP_AddrPort(&pub) = *(uint16_t*)data, data += 2;
@@ -1014,8 +1012,8 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 		return;
 	}
 
-	NP_PeerInfo* peer = &NP_Peers[idx];
-	clock_t now = clock(), timeout_period = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
+	NP_PeerInfo* const peer = &NP_Peers[idx];
+	const clock_t now = clock(), timeout_period = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
 
 	const bool overtime = now - peer->first_ping >= timeout_period,
 		   timed_out = peer->first_ping && overtime;
@@ -1032,7 +1030,7 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 	static uint8_t ping[NP_PING_SIZE] = "PING";
 
 	uint8_t* ptr = &ping[sizeof(NP_Header)];
-	*ptr = NP_LocalPeer, ptr += 1;
+	*ptr++ = NP_LocalPeer;
 	NutPunch_Memcpy(ptr, NP_PeerMetadata, sizeof(NP_Metadata));
 
 	NP_SendDirectly(pub, ping, sizeof(ping));
@@ -1121,7 +1119,7 @@ static void NP_HandleData(NP_Message msg) {
 			     index = ntohl(index_as_recv);
 	msg.size -= sizeof(index), msg.data += sizeof(index);
 
-	NP_Data* packet = (NP_Data*)NutPunch_Malloc(sizeof(*packet));
+	NP_Data* const packet = (NP_Data*)NutPunch_Malloc(sizeof(*packet));
 	packet->data = (uint8_t*)NutPunch_Malloc(msg.size);
 	NutPunch_Memcpy(packet->data, msg.data, msg.size);
 	packet->destination = peer_idx, packet->size = msg.size;
@@ -1233,7 +1231,7 @@ typedef enum {
 
 static int NP_UglyRecvfrom(NP_AddrInfo* addr, uint8_t* buf, int size) {
 	socklen_t addr_size = sizeof(*addr);
-	struct sockaddr* shit_addr = (struct sockaddr*)addr;
+	struct sockaddr* const shit_addr = (struct sockaddr*)addr;
 	return recvfrom(NP_Sock, (char*)buf, size, 0, shit_addr, &addr_size);
 }
 
@@ -1292,7 +1290,7 @@ static void NP_PruneChannelOutQueue(const NutPunch_Channel channel) {
 		else
 			NP_QueueOut[channel] = ptr->next;
 
-		NP_Data* tmp = ptr;
+		NP_Data* const tmp = ptr;
 		ptr = ptr->next;
 		NutPunch_Free(tmp->data), NutPunch_Free(tmp);
 	}
@@ -1432,7 +1430,7 @@ bool NutPunch_HasMessage(NutPunch_Channel channel) {
 }
 
 int NutPunch_NextMessage(NutPunch_Channel channel, void* out, int* size) {
-	NP_Data* packet = NP_QueueIn[channel];
+	NP_Data* const packet = NP_QueueIn[channel];
 
 	if (*size < packet->size) {
 		NP_Warn("Not enough memory allocated to copy the next packet");
@@ -1449,7 +1447,7 @@ int NutPunch_NextMessage(NutPunch_Channel channel, void* out, int* size) {
 	if (source_peer > NUTPUNCH_MAX_PLAYERS)
 		source_peer = NUTPUNCH_MAX_PLAYERS;
 
-	NP_Data* next = packet->next;
+	NP_Data* const next = packet->next;
 	NutPunch_Free(packet);
 	NP_QueueIn[channel] = next;
 
@@ -1485,10 +1483,10 @@ static void NP_SendPro(const NutPunch_Peer destination, const NutPunch_Channel c
 	NutPunch_Memcpy(ptr, &net_index, sizeof(net_index)), ptr += sizeof(net_index);
 	NutPunch_Memcpy(ptr, data, size), ptr += size;
 
-	NP_Data* next = NP_QueueOut[channel];
+	NP_Data* const next = NP_QueueOut[channel];
 	NP_QueueOut[channel] = (NP_Data*)NutPunch_Malloc(sizeof(*next));
 
-	NP_Data* cur = NP_QueueOut[channel];
+	NP_Data* const cur = NP_QueueOut[channel];
 	cur->next = next, cur->destination = destination;
 	cur->size = ptr - buf, cur->bounce = index ? 0 : -1;
 	cur->index = index, cur->f_delete = false;
