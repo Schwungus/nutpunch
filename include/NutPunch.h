@@ -560,7 +560,8 @@ static uint16_t* NP_AddrPort(NP_AddrInfo* addr) {
 }
 
 static bool NP_AddrEq(NP_AddrInfo a, NP_AddrInfo b) {
-	return !NutPunch_Memcmp(&a, &b, 4);
+	return !NutPunch_Memcmp(NP_AddrRaw(&a), NP_AddrRaw(&b), 4)
+	       && !NutPunch_Memcmp(NP_AddrPort(&a), NP_AddrPort(&b), 2);
 }
 
 static bool NP_AddrNull(NP_AddrInfo addr) {
@@ -961,8 +962,7 @@ static void NP_HandleGTFO(NP_Message msg) {
 	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
 
-	// Have to work around designated array initializers for C++ NutPuncher
-	// to compile...
+	// Have to work around designated array initializers for C++ NutPuncher to compile...
 	const char* errors[NPE_Max] = {0};
 	errors[NPE_NoSuchLobby] = "Lobby doesn't exist";
 	errors[NPE_LobbyExists] = "Lobby already exists";

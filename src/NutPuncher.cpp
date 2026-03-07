@@ -616,9 +616,7 @@ int main(int, char*[]) {
 			return EXIT_FAILURE;
 		}
 
-		do
-			result = receive();
-		while (result == RecvKeepGoing);
+		do { result = receive(); } while (result == RecvKeepGoing);
 
 		if (result > 0) {
 			NP_Warn("Failed to receive data (code %d)", result);
