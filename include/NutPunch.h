@@ -535,7 +535,8 @@ static NutPunch_Channel NP_MaxChannel = 0;
 static NP_Data* NP_QueueOut[NUTPUNCH_CHANNEL_COUNT] = {0};
 static NP_Data* NP_QueueIn[NUTPUNCH_CHANNEL_COUNT] = {0};
 
-static NP_Metadata NP_LobbyMetadataOut = {0}, NP_LobbyMetadataIn = {0}, NP_PeerMetadata = {0};
+static NP_Metadata NP_LobbyMetadataSent = {0}, NP_LobbyMetadataReceived = {0},
+		   NP_PeerMetadata = {0};
 
 static bool NP_Querying = false;
 static NutPunch_Filter NP_Filters[NUTPUNCH_MAX_SEARCH_FILTERS] = {0};
@@ -583,8 +584,10 @@ static void NP_CleanupPackets(NP_Data** queue) {
 static void NP_NukeLobbyData() {
 	NP_Closing = NP_Querying = false;
 	NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
-	NP_Memzero(NP_LobbyMetadataIn), NP_Memzero(NP_LobbyMetadataOut);
-	NP_Memzero(NP_PeerMetadata), NP_Memzero(NP_Peers);
+	NP_Memzero(NP_LobbyMetadataReceived);
+	NP_Memzero(NP_LobbyMetadataSent);
+	NP_Memzero(NP_PeerMetadata);
+	NP_Memzero(NP_Peers);
 	NP_Memzero(NP_Filters);
 
 	for (int i = 0; i < NUTPUNCH_CHANNEL_COUNT; i++) {
@@ -687,52 +690,51 @@ none:
 }
 
 const void* NutPunch_LobbyGet(const char* name, int* size) {
-	return NP_GetMetadataFrom(NP_LobbyMetadataIn, name, size);
+	return NP_GetMetadataFrom(NP_LobbyMetadataReceived, name, size);
 }
 
 const void* NutPunch_PeerGet(NutPunch_Peer peer, const char* name, int* size) {
-	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS)
-		goto null;
-	if (!NutPunch_PeerAlive(peer))
-		goto null;
-
-	if (peer == NutPunch_LocalPeer())
+	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS || !NutPunch_PeerAlive(peer))
+		return NP_GetMetadataFrom(NULL, "", size);
+	else if (peer == NutPunch_LocalPeer())
 		return NP_GetMetadataFrom(NP_PeerMetadata, name, size);
-	return NP_GetMetadataFrom(NP_Peers[peer].metadata, name, size);
-
-null:
-	return NP_GetMetadataFrom(NULL, "", size);
+	else
+		return NP_GetMetadataFrom(NP_Peers[peer].metadata, name, size);
 }
 
 static void NP_MetadataSet(NutPunch_Field* fields, const char* name, int size, const void* data) {
 	const int name_size = NP_FieldNameSize(name);
+
 	if (!name_size)
 		return;
 
 	if (!data) {
 		NP_Warn("No data?");
 		return;
-	} else if (size < 1) {
+	}
+
+	if (size < 1) {
 		NP_Warn("Invalid metadata field size!");
 		return;
-	} else if (size > NUTPUNCH_FIELD_DATA_MAX) {
+	}
+
+	if (size > NUTPUNCH_FIELD_DATA_MAX) {
 		NP_Warn("Trimming metadata field from %d to %d bytes", size,
 			NUTPUNCH_FIELD_DATA_MAX);
 		size = NUTPUNCH_FIELD_DATA_MAX;
 	}
 
-	static const NutPunch_Field nullfield = {0};
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+		static const NutPunch_Field nullfield = {0};
 		NutPunch_Field* field = &fields[i];
 
-		if (!NutPunch_Memcmp(field, &nullfield, sizeof(nullfield)))
-			goto set;
-		if (NP_FieldNameSize(field->name) == name_size)
-			if (!NutPunch_Memcmp(field->name, name, name_size))
-				goto set;
-		continue;
+		if (NutPunch_Memcmp(field, &nullfield, sizeof(nullfield))) {
+			if (NP_FieldNameSize(field->name) != name_size)
+				continue;
+			if (NutPunch_Memcmp(field->name, name, name_size))
+				continue;
+		}
 
-	set:
 		NP_Memzero(field->name);
 		NutPunch_Memcpy(field->name, name, name_size);
 
@@ -749,7 +751,7 @@ void NutPunch_PeerSet(const char* name, int size, const void* data) {
 }
 
 void NutPunch_LobbySet(const char* name, int size, const void* data) {
-	NP_MetadataSet(NP_LobbyMetadataOut, name, size, data);
+	NP_MetadataSet(NP_LobbyMetadataSent, name, size, data);
 }
 
 static bool NP_ResolveNutpuncher() {
@@ -760,8 +762,8 @@ static bool NP_ResolveNutpuncher() {
 
 	if (!NP_ServerHost[0]) {
 		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
-		NP_Info("Connecting to the public NutPuncher because no server "
-			"was explicitly specified");
+		NP_Info("Connecting to the public NutPuncher because no server was explicitly "
+			"specified");
 	}
 
 	static char portfmt[8] = {0};
@@ -771,6 +773,7 @@ static bool NP_ResolveNutpuncher() {
 		NP_Warn("NutPuncher server address failed to resolve");
 		return false;
 	}
+
 	if (!resolved) {
 		NP_Warn("Couldn't resolve NutPuncher address");
 		return false;
@@ -929,8 +932,7 @@ const char* NutPunch_GetLastError() {
 	return NP_LastError;
 }
 
-// NOTE: formats both the address portion and the port.
-static const char* NP_FormatAddr(NP_AddrInfo addr) {
+static const char* NP_FormatSockaddr(NP_AddrInfo addr) {
 	static char buf[64] = "";
 	NP_Memzero(buf);
 
@@ -952,7 +954,7 @@ static void NP_HandleShalom(NP_Message msg) {
 
 	NP_Peers[idx].addr = msg.addr;
 	NP_Peers[idx].last_beating = clock();
-	NP_Trace("SHALOM %d = %s", idx, NP_FormatAddr(msg.addr));
+	NP_Trace("SHALOM %d = %s", idx, NP_FormatSockaddr(msg.addr));
 
 	NP_Metadata* const pm = &NP_Peers[idx].metadata;
 	NutPunch_Memcpy(pm, msg.data, sizeof(NP_Metadata));
@@ -982,7 +984,7 @@ static void NP_PrintLocalPeer(const uint8_t* data) {
 	*NP_AddrFamily(&addr) = AF_INET;
 	NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4), data += 4;
 	*NP_AddrPort(&addr) = *(uint16_t*)data, data += 2;
-	NP_Info("Server thinks you are %s", NP_FormatAddr(addr));
+	NP_Info("Server thinks you are %s", NP_FormatSockaddr(addr));
 }
 
 static int NP_SendDirectly(NP_AddrInfo dest, const void* data, int len) {
@@ -999,6 +1001,7 @@ static void NP_SendTimesDirectly(int times, NP_AddrInfo dest, const void* data, 
 static void NP_SayShalom(int idx, const uint8_t* data) {
 	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return;
+
 	if (idx == NP_LocalPeer)
 		return;
 
@@ -1042,11 +1045,11 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	NP_SendDirectly(pub, shalom, sizeof(shalom));
 	NP_SendDirectly(internal, shalom, sizeof(shalom));
 
-	NP_Trace("SENT HI %s", NP_FormatAddr(pub));
+	NP_Trace("SENT HI %s", NP_FormatSockaddr(pub));
 }
 
 static void NP_HandleBeating(NP_Message msg) {
-	NP_Trace("RECEIVED A BEATING FROM %s", NP_FormatAddr(msg.addr));
+	NP_Trace("RECEIVED A BEATING FROM %s", NP_FormatSockaddr(msg.addr));
 
 	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
@@ -1075,11 +1078,11 @@ static void NP_HandleBeating(NP_Message msg) {
 		msg.data += 2 * sizeof(NP_PeerAddr);
 	}
 
-	NutPunch_Memcpy(NP_LobbyMetadataIn, msg.data, sizeof(NP_Metadata));
+	NutPunch_Memcpy(NP_LobbyMetadataReceived, msg.data, sizeof(NP_Metadata));
 }
 
 static void NP_HandleListing(NP_Message msg) {
-	NP_Trace("RECEIVED A LISTING FROM %s", NP_FormatAddr(msg.addr));
+	NP_Trace("RECEIVED A LISTING FROM %s", NP_FormatSockaddr(msg.addr));
 
 	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
@@ -1209,7 +1212,7 @@ static bool NP_SendHeartbeat() {
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags,
 		ptr += sizeof(NP_HeartbeatFlagsStorage);
 
-		NutPunch_Memcpy(ptr, NP_LobbyMetadataOut, sizeof(NP_Metadata));
+		NutPunch_Memcpy(ptr, NP_LobbyMetadataSent, sizeof(NP_Metadata));
 		ptr += sizeof(NP_Metadata);
 	}
 
@@ -1576,13 +1579,10 @@ const char* NutPunch_Basename(const char* path) {
 #include <time.h>
 static void NP_SleepMs(int ms) {
 	// Stolen from: <https://stackoverflow.com/a/1157217>
-	struct timespec ts;
-	ts.tv_sec = (ms) / 1000;
-	ts.tv_nsec = ((ms) % 1000) * 1000000;
-	int res;
-	do
-		res = nanosleep(&ts, &ts);
-	while (res && errno == EINTR);
+	struct timespec ts = {0};
+	ts.tv_sec = ms / 1000, ts.tv_nsec = (ms % 1000) * 1000000;
+	int res = 0;
+	do { res = nanosleep(&ts, &ts); } while (res && errno == EINTR);
 }
 #endif
 
