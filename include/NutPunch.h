@@ -566,10 +566,7 @@ static bool NP_AddrEq(NP_AddrInfo a, NP_AddrInfo b) {
 }
 
 static bool NP_AddrNull(NP_AddrInfo addr) {
-	static const uint8_t nulladdr[4] = {0};
-	if (!*NP_AddrPort(&addr))
-		return true;
-	return !NutPunch_Memcmp(NP_AddrRaw(&addr), nulladdr, sizeof(nulladdr));
+	return !*NP_AddrPort(&addr) && !*NP_AddrRaw(&addr);
 }
 
 static void NP_CleanupPackets(NP_Data** queue) {
@@ -762,8 +759,7 @@ static bool NP_ResolveNutpuncher() {
 
 	if (!NP_ServerHost[0]) {
 		NutPunch_SetServerAddr(NUTPUNCH_DEFAULT_SERVER);
-		NP_Info("Connecting to the public NutPuncher because no server was explicitly "
-			"specified");
+		NP_Info("Connecting to the public NutPuncher as none was explicitly specified");
 	}
 
 	static char portfmt[8] = {0};
@@ -857,6 +853,7 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
 		NutPunch_Reset(), NP_LastStatus = NPS_Error;
 		return false;
 	}
+
 	NP_LastBeating = clock();
 	NP_ResolveNutpuncher();
 
@@ -887,7 +884,7 @@ void NutPunch_SetMaxPlayers(int players) {
 	const int DEFAULT = 4;
 
 	if (players <= 1 || players > NUTPUNCH_MAX_PLAYERS) {
-		NP_Warn("Requesting %d players (passed %d)", DEFAULT, players);
+		NP_Warn("Setting %d players max (requested %d)", DEFAULT, players);
 		players = DEFAULT;
 	}
 
@@ -896,23 +893,19 @@ void NutPunch_SetMaxPlayers(int players) {
 }
 
 int NutPunch_GetMaxPlayers() {
-	if (!NutPunch_IsOnline())
-		return 0;
-	if (NP_MaxPlayers > NUTPUNCH_MAX_PLAYERS)
+	if (!NutPunch_IsOnline() || NP_MaxPlayers > NUTPUNCH_MAX_PLAYERS)
 		return 0;
 	return NP_MaxPlayers;
 }
 
 void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
 	if (filter_count < 1) {
-		NP_Warn("No filters given to `NutPunch_FindLobbies`; this is a "
-			"no-op");
+		NP_Warn("No filters given to `NutPunch_FindLobbies`; this is a no-op");
 		return;
 	}
 
 	if (filter_count > NUTPUNCH_MAX_SEARCH_FILTERS) {
-		NP_Warn("Filter count exceeded in `NutPunch_FindLobbies`; "
-			"truncating the input");
+		NP_Warn("Filter count exceeded in `NutPunch_FindLobbies`; truncating the input");
 		filter_count = NUTPUNCH_MAX_SEARCH_FILTERS;
 	}
 
@@ -1070,6 +1063,7 @@ static void NP_HandleBeating(NP_Message msg) {
 
 	if (just_joined)
 		NP_PrintLocalPeer(msg.data + NP_LocalPeer * sizeof(NP_PeerAddr));
+
 	if (NutPunch_MasterPeer() == NutPunch_LocalPeer() && was_slave)
 		NP_Info("We're the lobby's master now");
 
