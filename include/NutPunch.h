@@ -446,7 +446,7 @@ typedef struct NP_Data {
 
 typedef struct {
 	NP_AddrInfo addr;
-	clock_t last_beating, first_shalom;
+	clock_t last_ping, first_ping;
 
 	NP_PacketIndex recv_counter, send_counter;
 	NP_Data* out_of_order[NUTPUNCH_CHANNEL_COUNT];
@@ -500,14 +500,14 @@ typedef struct {
 } NP_MessageType;
 
 #define NP_ANY_LEN (-1)
-#define NP_SHALOM_SIZE (sizeof(NP_Header) + 1 + sizeof(NP_Metadata))
+#define NP_PING_SIZE (sizeof(NP_Header) + 1 + sizeof(NP_Metadata))
 
-static void NP_HandleShalom(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
+static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
 	NP_HandleListing(NP_Message), NP_HandleAcky(NP_Message), NP_HandleData(NP_Message);
 
 // clang-format off
 static const NP_MessageType NP_MessageTypes[] = {
-	{"SHLM", 1 + sizeof(NP_Metadata), NP_HandleShalom },
+	{"PING", 1 + sizeof(NP_Metadata), NP_HandlePing },
 	{"LIST", sizeof(NP_Listing),      NP_HandleListing},
 	{"ACKY", sizeof(NP_Acky),         NP_HandleAcky   },
 	{"DATA", NP_ANY_LEN,              NP_HandleData   },
@@ -940,14 +940,14 @@ static void NP_KillPeer(NutPunch_Peer peer) {
 	NP_MemzeroRef(NP_Peers[peer]);
 }
 
-static void NP_HandleShalom(NP_Message msg) {
+static void NP_HandlePing(NP_Message msg) {
 	const uint8_t idx = *msg.data++;
 	if (idx >= NUTPUNCH_MAX_PLAYERS)
 		return;
 
 	NP_Peers[idx].addr = msg.addr;
-	NP_Peers[idx].last_beating = clock();
-	NP_Trace("SHALOM %d = %s", idx, NP_FormatSockaddr(msg.addr));
+	NP_Peers[idx].last_ping = clock();
+	NP_Trace("PING FROM %d = %s", idx, NP_FormatSockaddr(msg.addr));
 
 	NP_Metadata* const pm = &NP_Peers[idx].metadata;
 	NutPunch_Memcpy(pm, msg.data, sizeof(NP_Metadata));
@@ -991,7 +991,7 @@ static void NP_SendTimesDirectly(int times, NP_AddrInfo dest, const void* data, 
 		NP_SendDirectly(dest, data, len);
 }
 
-static void NP_SayShalom(int idx, const uint8_t* data) {
+static void NP_PingPeer(int idx, const uint8_t* data) {
 	if (NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return;
 
@@ -1017,26 +1017,26 @@ static void NP_SayShalom(int idx, const uint8_t* data) {
 	NP_PeerInfo* peer = &NP_Peers[idx];
 	clock_t now = clock(), timeout_period = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
 
-	const bool overtime = now - peer->first_shalom >= timeout_period,
-		   timed_out = peer->first_shalom && overtime;
+	const bool overtime = now - peer->first_ping >= timeout_period,
+		   timed_out = peer->first_ping && overtime;
 
 	if (!NutPunch_PeerAlive(idx) && timed_out) {
 		NP_Warn("Failed to establish a connection to peer %d", idx + 1);
-		peer->first_shalom = now;
+		peer->first_ping = now;
 		return;
 	}
 
-	if (!peer->first_shalom)
-		peer->first_shalom = now;
+	if (!peer->first_ping)
+		peer->first_ping = now;
 
-	static uint8_t shalom[NP_SHALOM_SIZE] = "SHLM";
+	static uint8_t ping[NP_PING_SIZE] = "PING";
 
-	uint8_t* ptr = &shalom[sizeof(NP_Header)];
+	uint8_t* ptr = &ping[sizeof(NP_Header)];
 	*ptr = NP_LocalPeer, ptr += 1;
 	NutPunch_Memcpy(ptr, NP_PeerMetadata, sizeof(NP_Metadata));
 
-	NP_SendDirectly(pub, shalom, sizeof(shalom));
-	NP_SendDirectly(internal, shalom, sizeof(shalom));
+	NP_SendDirectly(pub, ping, sizeof(ping));
+	NP_SendDirectly(internal, ping, sizeof(ping));
 
 	NP_Trace("SENT HI %s", NP_FormatSockaddr(pub));
 }
@@ -1068,7 +1068,7 @@ static void NP_HandleBeating(NP_Message msg) {
 		NP_Info("We're the lobby's master now");
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		NP_SayShalom(i, msg.data);
+		NP_PingPeer(i, msg.data);
 		msg.data += 2 * sizeof(NP_PeerAddr);
 	}
 
@@ -1115,7 +1115,7 @@ static void NP_HandleData(NP_Message msg) {
 		return;
 
 	NP_PeerInfo* const peer = &NP_Peers[peer_idx];
-	peer->last_beating = clock();
+	peer->last_ping = clock();
 
 	const NP_PacketIndex index_as_recv = *(NP_PacketIndex*)msg.data,
 			     index = ntohl(index_as_recv);
@@ -1358,7 +1358,7 @@ static void NP_NetworkUpdate() {
 	}
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		const clock_t diff = now - NP_Peers[i].last_beating;
+		const clock_t diff = now - NP_Peers[i].last_ping;
 		const bool timed_out = diff >= peer_timeout;
 		if (i == NutPunch_LocalPeer())
 			continue;
