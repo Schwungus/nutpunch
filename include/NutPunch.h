@@ -1059,14 +1059,13 @@ static void NP_HandleBeating(NP_Message msg) {
 	NP_HeartbeatFlags &= 0xF; // sync local and remote max player count
 	NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
 
-	if (just_joined)
-		NP_PrintLocalPeer(msg.data + NP_LocalPeer * sizeof(NP_PeerAddr));
-
 	if (NutPunch_MasterPeer() == NutPunch_LocalPeer() && was_slave)
 		NP_Info("We're the lobby's master now");
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		NP_PingPeer(i, msg.data);
+		if (i == NP_LocalPeer && just_joined)
+			NP_PrintLocalPeer(msg.data);
 		msg.data += 2 * sizeof(NP_PeerAddr);
 	}
 
