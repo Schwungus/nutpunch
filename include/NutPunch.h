@@ -972,7 +972,9 @@ static void NP_HandleGTFO(NP_Message msg) {
 	NP_LastStatus = NPS_Error;
 }
 
-static void NP_PrintLocalPeer(const uint8_t* data) {
+// this prints out just the public-facing socket address not taking into account the possibility of
+// same-NAT peer connections.
+static void NP_PrintOurPublicAddress(const uint8_t* data) {
 	NP_AddrInfo addr = {0};
 	*NP_AddrFamily(&addr) = AF_INET;
 	NutPunch_Memcpy(NP_AddrRaw(&addr), data, 4), data += 4;
@@ -1065,7 +1067,7 @@ static void NP_HandleBeating(NP_Message msg) {
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		NP_PingPeer(i, msg.data);
 		if (i == NP_LocalPeer && just_joined)
-			NP_PrintLocalPeer(msg.data);
+			NP_PrintOurPublicAddress(msg.data);
 		msg.data += 2 * sizeof(NP_PeerAddr);
 	}
 
