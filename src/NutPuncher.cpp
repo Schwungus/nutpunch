@@ -564,11 +564,9 @@ static int receive() {
 
 	if (lobbies.count(id)) {
 		const auto& lobby = lobbies[id];
-		if (!(flags & NP_HB_Join))
-			err = NPE_Sybau; // TODO: update bogus error code
-		else if ((flags & NP_HB_Create) && !lobby.has(pub))
+		if ((flags & NP_HB_CreateLobby) && !lobby.has(pub))
 			err = NPE_LobbyExists;
-	} else if (!(flags & NP_HB_Create)) {
+	} else if (!(flags & NP_HB_CreateLobby)) {
 		err = NPE_NoSuchLobby;
 	} else if (!create_lobby(id, pub)) {
 		return RecvKeepGoing;

@@ -544,8 +544,7 @@ static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_MAX_SEARCH_RESULTS] = {0};
 
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
-	NP_HB_Join = 1 << 0,
-	NP_HB_Create = 1 << 1,
+	NP_HB_CreateLobby = 1 << 0,
 };
 
 static uint16_t* NP_AddrFamily(NP_AddrInfo* addr) {
@@ -869,14 +868,14 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
 
 bool NutPunch_Host(const char* lobby_id, int players) {
 	NP_LazyInit();
-	NP_HeartbeatFlags = NP_HB_Join | NP_HB_Create;
+	NP_HeartbeatFlags = NP_HB_CreateLobby;
 	NutPunch_SetMaxPlayers(players);
 	return NutPunch_Connect(lobby_id, true);
 }
 
 bool NutPunch_Join(const char* lobby_id) {
 	NP_LazyInit();
-	NP_HeartbeatFlags = NP_HB_Join;
+	NP_HeartbeatFlags = 0;
 	return NutPunch_Connect(lobby_id, true);
 }
 
@@ -1060,8 +1059,12 @@ static void NP_HandleBeating(NP_Message msg) {
 	if (NP_LocalPeer >= NUTPUNCH_MAX_PLAYERS)
 		return; // TODO: shit myself
 
-	NP_HeartbeatFlags &= 0xF; // sync local and remote max player count
-	NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
+	// clear the create-lobby flag after a confirmed join as it causes random "lobby already
+	// exists" errors a short while after you connect.
+	NP_HeartbeatFlags &= ~NP_HB_CreateLobby;
+
+	// sync local and remote max player count
+	NP_HeartbeatFlags &= 0xF, NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		NP_PingPeer(i, msg.data);
