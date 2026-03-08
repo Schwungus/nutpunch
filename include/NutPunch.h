@@ -1039,6 +1039,7 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 	NP_SendDirectly(internal, ping, sizeof(ping));
 
 	NP_Trace("SENT HI %s", NP_FormatSockaddr(pub));
+	NP_Trace("ALSO TO %s", NP_FormatSockaddr(internal));
 }
 
 static void NP_HandleBeating(NP_Message msg) {
@@ -1200,6 +1201,8 @@ static bool NP_SendHeartbeat() {
 		NP_AddrInfo addr = {0};
 		socklen_t addr_size = sizeof(addr);
 		getsockname(NP_Sock, (struct sockaddr*)&addr, &addr_size);
+
+		addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 		NutPunch_Memcpy(ptr, NP_AddrRaw(&addr), 4), ptr += 4;
 		NutPunch_Memcpy(ptr, NP_AddrPort(&addr), 2), ptr += 2;
 
