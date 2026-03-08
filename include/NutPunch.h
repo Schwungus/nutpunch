@@ -1124,51 +1124,50 @@ static void NP_HandleData(NP_Message msg) {
 	NP_PeerInfo* const peer = &NP_Peers[peer_idx];
 	peer->last_ping = clock();
 
-	const NP_PacketIndex index_as_recv = *(NP_PacketIndex*)msg.data,
-			     index = ntohl(index_as_recv);
-	msg.size -= sizeof(index), msg.data += sizeof(index);
+	const NP_PacketIndex index_as_recv = *(NP_PacketIndex*)msg.data;
+	msg.size -= sizeof(index_as_recv), msg.data += sizeof(index_as_recv);
 
 	NP_Data* const packet = (NP_Data*)NutPunch_Malloc(sizeof(*packet));
 	packet->data = (uint8_t*)NutPunch_Malloc(msg.size);
 	NutPunch_Memcpy(packet->data, msg.data, msg.size);
 	packet->destination = peer_idx, packet->size = msg.size;
-	packet->index = index;
+	packet->index = ntohl(index_as_recv);
 
-	if (!index) {
+	if (!packet->index) {
 		packet->next = NP_QueueIn[channel];
 		NP_QueueIn[channel] = packet;
 		return;
 	}
 
-	for (NP_Data* ptr = peer->out_of_order[channel]; ptr; ptr = ptr->next)
-		if (ptr->index == index) // check for duplicates
+	for (NP_Data* cur = peer->out_of_order[channel]; cur; cur = cur->next)
+		if (cur->index == packet->index) // check for duplicates
 			return;
 
 	packet->next = peer->out_of_order[channel];
 	peer->out_of_order[channel] = packet;
 
 	for (;;) {
-		NP_Data *ptr = peer->out_of_order[channel], *prev = NULL;
-		for (; ptr; prev = ptr, ptr = ptr->next)
-			if (ptr->index == peer->recv_counter + 1)
+		NP_Data *cur = peer->out_of_order[channel], *prev = NULL;
+		for (; cur; prev = cur, cur = cur->next)
+			if (cur->index == peer->recv_counter + 1)
 				break;
-		if (!ptr)
+		if (!cur)
 			break;
 
 		peer->recv_counter++;
 		if (prev)
-			prev->next = ptr->next;
+			prev->next = cur->next;
 		else
-			peer->out_of_order[channel] = ptr->next;
+			peer->out_of_order[channel] = cur->next;
 
-		ptr->next = NP_QueueIn[channel];
-		NP_QueueIn[channel] = ptr;
+		cur->next = NP_QueueIn[channel];
+		NP_QueueIn[channel] = cur;
 	}
 
 	static uint8_t acky[sizeof(NP_Header) + sizeof(NP_Acky)] = "ACKY";
 	uint8_t* ptr = acky + sizeof(NP_Header);
 	*ptr++ = channel;
-	NutPunch_Memcpy(ptr, &index_as_recv, sizeof(index));
+	NutPunch_Memcpy(ptr, &index_as_recv, sizeof(index_as_recv));
 	NP_SendDirectly(peer->addr, acky, sizeof(acky));
 }
 
@@ -1440,6 +1439,10 @@ bool NutPunch_HasMessage(NutPunch_Channel channel) {
 
 int NutPunch_NextMessage(NutPunch_Channel channel, void* out, int* size) {
 	NP_Data* const packet = NP_QueueIn[channel];
+	if (!packet) {
+		NP_Warn("You forgot to check `NutPunch_HasMessage(%d)`", channel);
+		return NUTPUNCH_MAX_PLAYERS;
+	}
 
 	if (*size < packet->size) {
 		NP_Warn("Not enough memory allocated to copy the next packet");
