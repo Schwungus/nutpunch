@@ -1049,7 +1049,8 @@ static void NP_HandleBeating(NP_Message msg) {
 	NP_LastBeating = clock();
 
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS,
-		   was_slave = NutPunch_MasterPeer() != NutPunch_LocalPeer();
+		   was_slave = NutPunch_MasterPeer() == NUTPUNCH_MAX_PLAYERS
+	                       || NutPunch_MasterPeer() != NutPunch_LocalPeer();
 
 	NP_LocalPeer = *msg.data++;
 	NP_Master = *msg.data++;
@@ -1061,9 +1062,6 @@ static void NP_HandleBeating(NP_Message msg) {
 	NP_HeartbeatFlags &= 0xF; // sync local and remote max player count
 	NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
 
-	if (NutPunch_MasterPeer() == NutPunch_LocalPeer() && was_slave)
-		NP_Info("We're the lobby's master now");
-
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		NP_PingPeer(i, msg.data);
 		if (i == NP_LocalPeer && just_joined)
@@ -1072,6 +1070,9 @@ static void NP_HandleBeating(NP_Message msg) {
 	}
 
 	NutPunch_Memcpy(NP_LobbyMetadataReceived, msg.data, sizeof(NP_Metadata));
+
+	if (NutPunch_MasterPeer() == NutPunch_LocalPeer() && was_slave)
+		NP_Info("We're the lobby's master now");
 }
 
 static void NP_HandleListing(NP_Message msg) {
