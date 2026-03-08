@@ -191,6 +191,9 @@ void NutPunch_Cleanup();
 /// against to see if something goes wrong.
 NutPunch_UpdateStatus NutPunch_Update();
 
+/// Sends all queued outgoing packets early (before a `NutPunch_Update()`). Useful in niche cases.
+void NutPunch_Flush();
+
 /// Requests a field of lobby metadata to be set. This will send out metadata changes only after a
 /// call to `NutPunch_Update()`, and won't do anything unless you're the lobby's master.
 ///
@@ -1354,6 +1357,12 @@ static void NP_SendGoodbyes() {
 	NP_SendTimesDirectly(10, NP_PuncherAddr, bye, sizeof(bye));
 }
 
+void NutPunch_Flush() {
+	if (NP_Closing)
+		NP_SendGoodbyes();
+	NP_PruneOutQueue(), NP_FlushOutQueue();
+}
+
 static void NP_NetworkUpdate() {
 	clock_t now = clock(), server_timeout = NUTPUNCH_SERVER_TIMEOUT_SECS * CLOCKS_PER_SEC,
 		peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
@@ -1375,28 +1384,20 @@ static void NP_NetworkUpdate() {
 	}
 
 	if (!NP_SendHeartbeat())
-		goto sockfail;
+		goto error;
 
 	for (;;) {
 		switch (NP_ReceiveShit()) {
 		case NP_RS_SockFail:
-			goto sockfail;
+			goto error;
 		case NP_RS_Done:
-			goto flush;
+			NutPunch_Flush();
+			return;
 		case NP_RS_Again:
 			break;
 		}
 	}
 
-flush:
-	if (NP_Closing)
-		NP_SendGoodbyes();
-
-	NP_PruneOutQueue(), NP_FlushOutQueue();
-	return;
-
-sockfail:
-	NP_Warn("Something went wrong with your socket!");
 error:
 	NP_LastStatus = NPS_Error;
 }
