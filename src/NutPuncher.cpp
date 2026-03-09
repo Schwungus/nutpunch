@@ -304,9 +304,12 @@ struct Lobby {
 
 	void accept(const AddrInfo& pub, const AddrInfo& internal,
 		const NP_HeartbeatFlagsStorage flags, const char* meta) {
-		NutPunch_Peer idx = index_of(pub), just_joined = false;
+		NutPunch_Peer idx = index_of(pub);
+		bool just_joined = false;
+
 		if (idx == NUTPUNCH_MAX_PLAYERS)
 			idx = next_dead(), just_joined = true;
+
 		if (idx == NUTPUNCH_MAX_PLAYERS) {
 			pub.gtfo(NPE_LobbyFull);
 			return;
@@ -564,9 +567,9 @@ static int receive() {
 
 	if (lobbies.count(id)) {
 		const auto& lobby = lobbies[id];
-		if ((flags & NP_HB_CreateLobby) && !lobby.has(pub))
+		if (!(flags & NP_HB_JoinExisting) && !lobby.has(pub))
 			err = NPE_LobbyExists;
-	} else if (!(flags & NP_HB_CreateLobby)) {
+	} else if (flags & NP_HB_JoinExisting) {
 		err = NPE_NoSuchLobby;
 	} else if (!create_lobby(id, pub)) {
 		return RecvKeepGoing;

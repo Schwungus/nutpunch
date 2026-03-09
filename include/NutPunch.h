@@ -547,7 +547,7 @@ static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_MAX_SEARCH_RESULTS] = {0};
 
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
-	NP_HB_CreateLobby = 1 << 0,
+	NP_HB_JoinExisting = 1 << 0,
 };
 
 static uint16_t* NP_AddrFamily(NP_AddrInfo* addr) {
@@ -871,14 +871,14 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
 
 bool NutPunch_Host(const char* lobby_id, int players) {
 	NP_LazyInit();
-	NP_HeartbeatFlags = NP_HB_CreateLobby;
+	NP_HeartbeatFlags = 0;
 	NutPunch_SetMaxPlayers(players);
 	return NutPunch_Connect(lobby_id, true);
 }
 
 bool NutPunch_Join(const char* lobby_id) {
 	NP_LazyInit();
-	NP_HeartbeatFlags = 0;
+	NP_HeartbeatFlags = NP_HB_JoinExisting;
 	return NutPunch_Connect(lobby_id, true);
 }
 
@@ -947,12 +947,15 @@ static void NP_HandlePing(NP_Message msg) {
 	if (idx >= NUTPUNCH_MAX_PLAYERS)
 		return;
 
-	NP_Peers[idx].addr = msg.addr;
-	NP_Peers[idx].last_ping = clock();
-	NP_Trace("PING FROM %d = %s", idx, NP_FormatSockaddr(msg.addr));
+	NP_PeerInfo* const peer = &NP_Peers[idx];
 
-	NP_Metadata* const pm = &NP_Peers[idx].metadata;
-	NutPunch_Memcpy(pm, msg.data, sizeof(NP_Metadata));
+	if (NP_AddrNull(peer->addr))
+		peer->addr = msg.addr;
+
+	peer->last_ping = clock();
+	NutPunch_Memcpy(peer->metadata, msg.data, sizeof(NP_Metadata));
+
+	NP_Trace("PING FROM %d = %s", idx, NP_FormatSockaddr(msg.addr));
 }
 
 static void NP_HandleGTFO(NP_Message msg) {
@@ -1011,7 +1014,7 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 	NutPunch_Memcpy(NP_AddrRaw(&internal), data, 4), data += 4;
 	*NP_AddrPort(&internal) = *(uint16_t*)data, data += 2;
 
-	if (NP_AddrNull(pub)) {
+	if (NP_AddrNull(pub) && NP_AddrNull(internal)) {
 		NP_KillPeer(idx); // dead on the NutPuncher's side
 		return;
 	}
@@ -1032,15 +1035,14 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 		peer->first_ping = now;
 
 	static uint8_t ping[NP_PING_SIZE] = "PING";
-
 	uint8_t* ptr = &ping[sizeof(NP_Header)];
 	*ptr++ = NP_LocalPeer;
 	NutPunch_Memcpy(ptr, NP_PeerMetadata, sizeof(NP_Metadata));
 
 	NP_SendDirectly(pub, ping, sizeof(ping));
-	NP_SendDirectly(internal, ping, sizeof(ping));
-
 	NP_Trace("SENT HI %s", NP_FormatSockaddr(pub));
+
+	NP_SendDirectly(internal, ping, sizeof(ping));
 	NP_Trace("ALSO TO %s", NP_FormatSockaddr(internal));
 }
 
@@ -1059,12 +1061,14 @@ static void NP_HandleBeating(NP_Message msg) {
 	NP_Master = *msg.data++;
 	NP_MaxPlayers = *msg.data++;
 
-	if (NP_LocalPeer >= NUTPUNCH_MAX_PLAYERS)
-		return; // TODO: shit myself
+	if (NP_LocalPeer >= NUTPUNCH_MAX_PLAYERS) {
+		NP_Warn("NutPuncher sent us a junk response?!");
+		return;
+	}
 
-	// clear the create-lobby flag after a confirmed join as it causes random "lobby already
-	// exists" errors a short while after you connect.
-	NP_HeartbeatFlags &= ~NP_HB_CreateLobby;
+	// clear the join-existing flag after a confirmed join in case the lobby disappears in a
+	// paranormal fashion in the midst of a game session.
+	NP_HeartbeatFlags &= ~NP_HB_JoinExisting;
 
 	// sync local and remote max player count
 	NP_HeartbeatFlags &= 0xF, NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
@@ -1539,13 +1543,11 @@ int NutPunch_PeerCount() {
 }
 
 bool NutPunch_PeerAlive(NutPunch_Peer peer) {
-	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS)
-		return false;
-	if (!NutPunch_IsReady())
+	if (!NutPunch_IsReady() || peer >= NUTPUNCH_MAX_PLAYERS)
 		return false;
 	if (NutPunch_LocalPeer() == peer)
 		return true;
-	return 0 != *NP_AddrPort(&NP_Peers[peer].addr);
+	return !NP_AddrNull(NP_Peers[peer].addr);
 }
 
 int NutPunch_LocalPeer() {
