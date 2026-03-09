@@ -166,6 +166,8 @@ typedef enum {
 	NPCB_PeerJoined,
 	/// Callback data: the index of the gone peer. Their metadata is still available to be read.
 	NPCB_PeerLeft,
+	/// Callback data: the index of the lobby's new master.
+	NPCB_NewMaster,
 	/// Total callback-event count. Do not pass this to `NutPunch_Register`.
 	NPCB_Count,
 } NutPunch_CallbackEvent;
@@ -1078,9 +1080,8 @@ static void NP_HandleBeating(NP_Message msg) {
 		return;
 	NP_LastBeating = clock();
 
-	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS,
-		   was_slave = NutPunch_MasterPeer() == NUTPUNCH_MAX_PLAYERS
-	                       || NutPunch_MasterPeer() != NutPunch_LocalPeer();
+	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
+	const NutPunch_Peer old_master = NutPunch_MasterPeer();
 
 	NP_LocalPeer = *msg.data++;
 	NP_Master = *msg.data++;
@@ -1107,8 +1108,12 @@ static void NP_HandleBeating(NP_Message msg) {
 
 	NutPunch_Memcpy(NP_LobbyMetadataReceived, msg.data, sizeof(NP_Metadata));
 
-	if (NutPunch_MasterPeer() == NutPunch_LocalPeer() && was_slave)
-		NP_Info("We're the lobby's master now");
+	const NutPunch_Peer new_master = NutPunch_MasterPeer();
+	if (old_master != new_master) {
+		if (new_master == NutPunch_LocalPeer())
+			NP_Info("We're the lobby's master now");
+		NP_HandleEventCb(NPCB_NewMaster, &new_master);
+	}
 }
 
 static void NP_HandleListing(NP_Message msg) {
