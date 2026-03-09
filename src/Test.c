@@ -87,7 +87,7 @@ static void receive_shit() {
 	while (NutPunch_HasMessage(CHAN_CHAT)) {
 		int size = sizeof(data);
 		const int peer = NutPunch_NextMessage(CHAN_CHAT, data, &size);
-		NutPunch_Log("[%s]: %s", (char*)NutPunch_PeerGet(peer, "NAME", &size), data);
+		NutPunch_Log("[%s]: %s", (char*)NutPunch_PeerGet(peer, "NAME", NULL), data);
 	}
 }
 
@@ -128,6 +128,16 @@ static void draw_debug_bits(int status) {
 		NutPunch_GetMaxPlayers(), 1 + NutPunch_LocalPeer());
 }
 
+static void greet(const void* raw) {
+	NutPunch_Peer peer = *(NutPunch_Peer*)raw;
+	NutPunch_Log("Welcome, %s!", (char*)NutPunch_PeerGet(peer, "NAME", NULL));
+}
+
+static void bye(const void* raw) {
+	NutPunch_Peer peer = *(NutPunch_Peer*)raw;
+	NutPunch_Log("Farewell, %s!", (char*)NutPunch_PeerGet(peer, "NAME", NULL));
+}
+
 int main(int argc, char* argv[]) {
 	if (argc < 2 || argc > 4) {
 		printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
@@ -135,6 +145,8 @@ int main(int argc, char* argv[]) {
 	}
 
 	NutPunch_SetChannelCount(CHAN_COUNT);
+	NutPunch_Register(NPCB_PeerJoined, greet);
+	NutPunch_Register(NPCB_PeerLeft, bye);
 
 	if (argc > 2)
 		NutPunch_SetServerAddr(argv[2]);

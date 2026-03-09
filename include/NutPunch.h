@@ -161,6 +161,17 @@ typedef enum {
 	NPE_Max,
 } NutPunch_ErrorCode;
 
+typedef enum {
+	/// Callback data: the index of the new peer. Their metadata is available to be read.
+	NPCB_PeerJoined,
+	/// Callback data: the index of the gone peer. Their metadata is still available to be read.
+	NPCB_PeerLeft,
+	/// Total callback-event count. Do not pass this to `NutPunch_Register`.
+	NPCB_Count,
+} NutPunch_CallbackEvent;
+
+typedef void (*NutPunch_Callback)(const void*);
+
 /// Set a custom NutPuncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
 
@@ -182,6 +193,9 @@ void NutPunch_SetMaxPlayers(int players);
 
 /// Get the maximum player count of the lobby you are in. Returns 0 if you aren't in a lobby.
 int NutPunch_GetMaxPlayers();
+
+/// Register an event handler. The callback functions are called as part of `NutPunch_Update()`.
+void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb);
 
 /// Call this at the end of your program to disconnect gracefully and run other semi-important
 /// cleanup routines.
@@ -529,6 +543,8 @@ static char NP_LobbyId[sizeof(NutPunch_LobbyId) + 1] = {0};
 static NP_PeerInfo NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static NutPunch_Peer NP_LocalPeer = NUTPUNCH_MAX_PLAYERS, NP_Master = NUTPUNCH_MAX_PLAYERS,
 		     NP_MaxPlayers = 0;
+
+static NutPunch_Callback NP_Callbacks[NPCB_Count] = {0};
 
 static NP_Socket NP_Sock = NUTPUNCH_INVALID_SOCKET;
 static NP_AddrInfo NP_PuncherAddr = {0};
@@ -927,6 +943,11 @@ const char* NutPunch_GetLastError() {
 	return NP_LastError;
 }
 
+static void NP_HandleEventCb(NutPunch_CallbackEvent event, const void* data) {
+	if (NP_Callbacks[event])
+		NP_Callbacks[event](data);
+}
+
 static const char* NP_FormatSockaddr(NP_AddrInfo addr) {
 	static char buf[64] = "";
 	NP_Memzero(buf);
@@ -949,11 +970,13 @@ static void NP_HandlePing(NP_Message msg) {
 
 	NP_PeerInfo* const peer = &NP_Peers[idx];
 
-	if (NP_AddrNull(peer->addr))
-		peer->addr = msg.addr;
-
 	peer->last_ping = clock();
 	NutPunch_Memcpy(peer->metadata, msg.data, sizeof(NP_Metadata));
+
+	if (NP_AddrNull(peer->addr)) {
+		peer->addr = msg.addr;
+		NP_HandleEventCb(NPCB_PeerJoined, &idx);
+	}
 
 	NP_Trace("PING FROM %d = %s", idx, NP_FormatSockaddr(msg.addr));
 }
@@ -1014,8 +1037,10 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 	NutPunch_Memcpy(NP_AddrRaw(&internal), data, 4), data += 4;
 	*NP_AddrPort(&internal) = *(uint16_t*)data, data += 2;
 
-	if (NP_AddrNull(pub) && NP_AddrNull(internal)) {
-		NP_KillPeer(idx); // dead on the NutPuncher's side
+	if (NP_AddrNull(pub) && NP_AddrNull(internal)) { // dead on the NutPuncher's side
+		if (NutPunch_PeerAlive(idx))
+			NP_HandleEventCb(NPCB_PeerLeft, &idx);
+		NP_KillPeer(idx);
 		return;
 	}
 
@@ -1366,6 +1391,11 @@ void NutPunch_Flush() {
 	NP_PruneOutQueue(), NP_FlushOutQueue();
 }
 
+void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
+	if (event < NPCB_Count)
+		NP_Callbacks[event] = cb;
+}
+
 static void NP_NetworkUpdate() {
 	clock_t now = clock(), server_timeout = NUTPUNCH_SERVER_TIMEOUT_SECS * CLOCKS_PER_SEC,
 		peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
@@ -1383,6 +1413,7 @@ static void NP_NetworkUpdate() {
 		if (!timed_out || !NutPunch_PeerAlive(i))
 			continue;
 		NP_Info("Peer %d timed out", i + 1);
+		NP_HandleEventCb(NPCB_PeerLeft, &i);
 		NP_KillPeer(i);
 	}
 
