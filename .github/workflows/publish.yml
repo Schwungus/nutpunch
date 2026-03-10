@@ -48,9 +48,11 @@ jobs:
           key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
           envs: TMPPATH,OUTPATH
           script: |
+            set -e
             wget -O $TMPPATH https://github.com/Schwungus/nutpunch/releases/download/rolling/NutPuncher-Linux
             chmod +x $TMPPATH
             PORT=$($TMPPATH a b c)
-            systemctl stop nutpuncher@$PORT || true
+            systemctl stop nutpuncher@$PORT || :
             cp $TMPPATH ${OUTPATH}-$PORT
-            systemctl restart nutpuncher@$PORT && echo Restarted service || exit 1
+            systemctl restart nutpuncher@$PORT
+            echo Restarted the NutPuncher service on port $PORT
