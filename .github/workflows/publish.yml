@@ -49,6 +49,7 @@ jobs:
           envs: TMPPATH,OUTPATH
           script: |
             set -e
+            sleep 5 # the damn blob may not be available for a few seconds right after upload....
             wget -O $TMPPATH https://github.com/Schwungus/nutpunch/releases/download/rolling/NutPuncher-Linux
             chmod +x $TMPPATH
             PORT=$($TMPPATH a b c)
