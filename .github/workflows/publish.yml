@@ -51,5 +51,6 @@ jobs:
             wget -O $TMPPATH https://github.com/Schwungus/nutpunch/releases/download/rolling/NutPuncher-Linux
             chmod +x $TMPPATH
             PORT=$($TMPPATH a b c)
+            systemctl stop nutpuncher@$PORT || true
             cp $TMPPATH ${OUTPATH}-$PORT
             systemctl restart nutpuncher@$PORT && echo Restarted service || exit 1
