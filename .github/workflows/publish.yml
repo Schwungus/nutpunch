@@ -51,7 +51,6 @@ jobs:
   binary:
     name: Upload binaries for ${{ matrix.os-name }}
     runs-on: ${{ matrix.runner-os }}
-    if: github.ref_type == 'tag'
     env:
       BINARY: NutPuncher-${{ matrix.os-name }}-${{ github.ref_name }}${{ matrix.bin-ext }}
     strategy:
