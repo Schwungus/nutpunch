@@ -27,7 +27,7 @@ This library implements P2P networking, where **each peer communicates with all 
 
 Before you can punch any holes in your peers' NAT, you will need a hole-punching server **with a public IP address** assigned. Querying a public server lets us bust a gateway open to the global network, all while the server relays the connection info for other peers to us. If you're just testing, you can use [our public instance](#public-instance) instead of [hosting your own](#hosting-your-own-nutpuncher). The current server implementation uses a lobby-based approach, where each lobby supports up to 16 peers and is identified by a unique ASCII string.
 
-In order to run your own hole-puncher server, you'll need to get the server binary from our [reference implementation releases](https://github.com/Schwungus/nutpunch/releases/tag/stable). [A Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher) is also available for hosting a NutPuncher server on Linux. If you're in a pinch, don't have access to a public IP address, and your players reside on a LAN/virtual network such as [Radmin VPN](https://www.radmin-vpn.com), you can actually run NutPuncher locally and use your LAN IP address to connect to it.
+In order to run your own hole-puncher server, you'll need to get the server binary from our [reference implementation releases](https://github.com/Schwungus/nutpunch/releases/tag/rolling). If you're in a pinch, don't have access to a public IP address, and your players reside on a LAN/virtual network such as [Radmin VPN](https://www.radmin-vpn.com), you can actually run NutPuncher locally and use your LAN IP address to connect to it.
 
 Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/Test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. Here's the general usage guide for the NutPunch library:
 
@@ -152,17 +152,6 @@ Just like in the example above, you can override NutPunch's logging facility bef
 
 If you're dissatisfied with [the public instance](#public-instance), whether from needing to stick to a specific build or fork or whatever, you can host your own. Make sure to read [the introductory pamphlet](#introductory-lecture) before attempting this.
 
-On Windows and Linux, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/stable) and make sure the **UDP port `30000`** is open to the public.
-
-If you're crazy enough, you may also use [our Docker image](https://github.com/Schwungus/nutpunch/pkgs/container/nutpuncher), e.g. with docker-compose:
-
-```yaml
-services:
-  main:
-    image: ghcr.io/schwungus/nutpuncher
-    container_name: nutpuncher
-    ports: [30000:30000/udp]
-    restart: always
-```
+On Windows and Linux, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/rolling). It runs on UDP port 30000 + some small number, which you need to expose to the public network through your firewall. Verify the exact port number by looking into the server's logs.
 
 If you're on MacOS, well, bad luck, buddy...
