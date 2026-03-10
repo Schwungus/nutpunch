@@ -46,10 +46,12 @@ extern "C" {
 /// Maximum amount of players in a lobby. Not intended to be customizable.
 #define NUTPUNCH_MAX_PLAYERS (16)
 
-#ifndef NUTPUNCH_SERVER_PORT
-/// The UDP port used by the punching mediator server.
-#define NUTPUNCH_SERVER_PORT (30000)
-#endif
+/// Increment this every time you break the NutPuncher to make it use a different port and retain
+/// compatibility with the previous version by keeping the old NutPunchers running.
+#define NUTPUNCH_API_VERSION (0)
+
+/// The UDP port used by the nutpunching mediator server.
+#define NUTPUNCH_SERVER_PORT (30000 + NUTPUNCH_API_VERSION)
 
 #ifndef NUTPUNCH_SERVER_TIMEOUT_SECS
 /// How many seconds to wait for NutPuncher to respond before disconnecting.

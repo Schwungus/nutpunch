@@ -17,14 +17,7 @@ if(WIN32)
     target_link_libraries(NutPunch INTERFACE ws2_32)
 endif()
 
-option(NUTPUNCH_STAGING
-    "Staging-facing build? Uses a different port from the regular build.")
 option(NUTPUNCH_TRACING "Enable extra debug logging?")
-
-if(NUTPUNCH_STAGING)
-    message("NutPunch staging-mode enabled")
-    target_compile_definitions(NutPunch INTERFACE NUTPUNCH_SERVER_PORT=29999)
-endif()
 
 if(NUTPUNCH_TRACING)
     message("NutPunch tracing enabled")
