@@ -2,6 +2,7 @@ name: Publish NutPuncher for major platforms
 
 on:
   push:
+    tags: [rolling]
 
 jobs:
   docker:
@@ -52,7 +53,7 @@ jobs:
     name: Upload binaries for ${{ matrix.os-name }}
     runs-on: ${{ matrix.runner-os }}
     env:
-      BINARY: NutPuncher-${{ matrix.os-name }}-${{ github.ref_name }}${{ matrix.bin-ext }}
+      BINARY: NutPuncher-${{ matrix.os-name }}${{ matrix.bin-ext }}
     strategy:
       matrix:
         include:
@@ -89,9 +90,9 @@ jobs:
           host: nutpunch.schwung.us
           username: root
           key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
-          envs: OUTPATH
+          envs: TMPPATH,OUTPATH
           script: |
-            wget -O $TMPPATH https://github.com/Schwungus/nutpunch/releases/download/${{ github.ref_name }}/NutPuncher-Linux-${{ github.ref_name }}
+            wget -O $TMPPATH https://github.com/Schwungus/nutpunch/releases/download/rolling/NutPuncher-Linux
             chmod +x $TMPPATH
             PORT=$($TMPPATH a b c)
             cp $TMPPATH ${OUTPATH}-$PORT
