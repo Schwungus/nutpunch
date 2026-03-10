@@ -1096,8 +1096,9 @@ static void NP_HandleBeating(NP_Message msg) {
 	// random-ass disconnection with the "Lobby already exists!" error message.
 	NP_HeartbeatFlags |= NP_HB_JoinExisting;
 
-	// sync local and remote max player count
-	NP_HeartbeatFlags &= 0xF, NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
+	// sync outgoing max player count with the one we just received.
+	NP_HeartbeatFlags &= 0xF;
+	NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
 		NP_PingPeer(i, msg.data);
