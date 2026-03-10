@@ -1092,9 +1092,9 @@ static void NP_HandleBeating(NP_Message msg) {
 		return;
 	}
 
-	// clear the join-existing flag after a confirmed join in case the lobby disappears in a
-	// paranormal fashion in the midst of a game session.
-	NP_HeartbeatFlags &= ~NP_HB_JoinExisting;
+	// add the join-existing flag after a successful join because otherwise we could get a
+	// random-ass disconnection with the "Lobby already exists!" error message.
+	NP_HeartbeatFlags |= NP_HB_JoinExisting;
 
 	// sync local and remote max player count
 	NP_HeartbeatFlags &= 0xF, NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
