@@ -53,12 +53,12 @@ extern "C" {
 
 #ifndef NUTPUNCH_SERVER_TIMEOUT_SECS
 /// How many seconds to wait for NutPuncher to respond before disconnecting.
-#define NUTPUNCH_SERVER_TIMEOUT_SECS (10)
+#define NUTPUNCH_SERVER_TIMEOUT_SECS (5)
 #endif
 
 #ifndef NUTPUNCH_PEER_TIMEOUT_SECS
 /// How many seconds to wait for a peer to respond before timing out.
-#define NUTPUNCH_PEER_TIMEOUT_SECS (10)
+#define NUTPUNCH_PEER_TIMEOUT_SECS (5)
 #endif
 
 /// How many bytes to reserve for every network packet.
