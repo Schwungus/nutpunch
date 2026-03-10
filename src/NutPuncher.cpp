@@ -614,7 +614,7 @@ int main(int argc, char*[]) {
 	constexpr const int64_t MIN_DELTA = CLOCKS_PER_SEC / BEATS_PER_SECOND;
 	int result = 0;
 
-	NP_Info("Running!");
+	NP_Info("Running on port %d", NUTPUNCH_SERVER_PORT);
 	for (;;) {
 		const int64_t start = clock();
 
