@@ -4,12 +4,5 @@ updates:
     directory: /
     schedule: { interval: weekly }
     groups:
-      everything:
-        patterns: ["*"]
-
-  - package-ecosystem: docker
-    directory: /
-    schedule: { interval: weekly }
-    groups:
-      everything:
+      sybau:
         patterns: ["*"]
