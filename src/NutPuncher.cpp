@@ -316,7 +316,8 @@ struct Lobby {
 		}
 
 		if (just_joined)
-			NP_Info("Peer %d joined lobby '%s'", idx + 1, fmt_id());
+			NP_Info("Player %d joined lobby '%s' %s", idx + 1, fmt_id(),
+				NP_FormatSockaddr(pub));
 
 		auto& player = players[idx];
 		player.pub = pub, player.internal = internal;
@@ -333,7 +334,7 @@ struct Lobby {
 		plr.countdown--;
 		if (plr)
 			return;
-		NP_Warn("Peer %d timed out", idx + 1);
+		NP_Warn("Player %d timed out", idx + 1);
 		plr.reset();
 	}
 
