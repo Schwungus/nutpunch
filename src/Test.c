@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 // gotta use a logfile since we're drawing to the console
 static FILE* logfile = NULL;
@@ -56,7 +55,6 @@ static void maybe_join_netgame() {
 
 	NutPunch_LobbySet(magicKey, sizeof(magicValue), &magicValue);
 
-	srand(time(NULL));
 	const char* name = randomNames[rand() % nameCount];
 	NutPunch_PeerSet("NAME", (int)strlen(name) + 1, name);
 }

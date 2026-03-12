@@ -222,6 +222,7 @@ static bool operator==(const NP_AddrInfo& a, const NP_AddrInfo& b) {
 }
 
 struct Player {
+	NutPunch_PeerId id;
 	AddrInfo pub, internal;
 	std::uint32_t countdown = 0;
 
@@ -276,9 +277,9 @@ struct Lobby {
 		return gamers() > 0;
 	}
 
-	NutPunch_Peer index_of(const AddrInfo& pub) const {
+	NutPunch_Peer index_of(const NutPunch_PeerId id) const {
 		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (players[i] && players[i].pub == pub)
+			if (players[i] && !std::memcmp(id, players[i].id, sizeof(NutPunch_PeerId)))
 				return i;
 		return NUTPUNCH_MAX_PLAYERS;
 	}
@@ -290,8 +291,8 @@ struct Lobby {
 		return NUTPUNCH_MAX_PLAYERS;
 	}
 
-	bool has(const AddrInfo& pub) const {
-		return index_of(pub) != NUTPUNCH_MAX_PLAYERS;
+	bool has(const NutPunch_PeerId id) const {
+		return index_of(id) != NUTPUNCH_MAX_PLAYERS;
 	}
 
 	NutPunch_Peer gamers() const {
@@ -302,9 +303,9 @@ struct Lobby {
 		return count;
 	}
 
-	void accept(const AddrInfo& pub, const AddrInfo& internal,
+	void accept(const NutPunch_PeerId id, const AddrInfo& pub, const AddrInfo& internal,
 		const NP_HeartbeatFlagsStorage flags, const char* meta) {
-		NutPunch_Peer idx = index_of(pub);
+		NutPunch_Peer idx = index_of(id);
 		bool just_joined = false;
 
 		if (idx == NUTPUNCH_MAX_PLAYERS)
@@ -316,10 +317,10 @@ struct Lobby {
 		}
 
 		if (just_joined)
-			NP_Info("Player %d joined lobby '%s' %s", idx + 1, fmt_id(),
-				NP_FormatSockaddr(pub));
+			NP_Info("Player %d joined lobby '%s'", idx + 1, fmt_id());
 
 		auto& player = players[idx];
+		std::memcpy(player.id, id, sizeof(NutPunch_PeerId));
 		player.pub = pub, player.internal = internal;
 		player.countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND;
 
@@ -552,8 +553,12 @@ static int receive() {
 	if (std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
 		return RecvKeepGoing;
 
-	static char id[sizeof(NutPunch_LobbyId) + 1] = {0};
-	std::memcpy(id, ptr, sizeof(NutPunch_LobbyId));
+	static NutPunch_PeerId peer_id = {0};
+	std::memcpy(peer_id, ptr, sizeof(NutPunch_PeerId));
+	ptr += sizeof(NutPunch_PeerId);
+
+	static char lobby_id[sizeof(NutPunch_LobbyId) + 1] = {0};
+	std::memcpy(lobby_id, ptr, sizeof(NutPunch_LobbyId));
 	ptr += sizeof(NutPunch_LobbyId);
 
 	AddrInfo internal;
@@ -565,17 +570,17 @@ static int receive() {
 
 	NutPunch_ErrorCode err = NPE_Ok;
 
-	if (lobbies.count(id)) {
-		if (!(flags & NP_HB_JoinExisting) && !lobbies[id].has(pub))
+	if (lobbies.count(lobby_id)) {
+		if (!(flags & NP_HB_JoinExisting) && !lobbies[lobby_id].has(peer_id))
 			err = NPE_LobbyExists;
 	} else if (flags & NP_HB_JoinExisting) {
 		err = NPE_NoSuchLobby;
-	} else if (!create_lobby(id, pub)) {
+	} else if (!create_lobby(lobby_id, pub)) {
 		return RecvKeepGoing;
 	}
 
 	if (err == NPE_Ok)
-		lobbies[id].accept(pub, internal, flags, ptr);
+		lobbies[lobby_id].accept(peer_id, pub, internal, flags, ptr);
 	else
 		pub.gtfo(err);
 

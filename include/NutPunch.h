@@ -49,7 +49,7 @@ extern "C" {
 /// Increment this every time you break the communications format between the peer and the
 /// NutPuncher, to make it use a different port and retain compatibility with the previous versions
 /// by keeping the old NutPunchers running.
-#define NUTPUNCH_API_VERSION (0)
+#define NUTPUNCH_API_VERSION (1)
 
 /// The UDP port used by the nutpunching mediator server.
 #define NUTPUNCH_SERVER_PORT (30000 + NUTPUNCH_API_VERSION)
@@ -96,6 +96,10 @@ extern "C" {
 // we still depend on `time.h` through `clock_t` and `clock()` though.
 #include <time.h>
 
+/// The internal unique identifier for your peer. You don't actually interact with it in your code.
+typedef char NutPunch_PeerId[8];
+
+/// A string uniquely identifying a NutPunch lobby.
 typedef char NutPunch_LobbyId[32];
 
 typedef uint8_t NutPunch_Channel, NutPunch_Peer;
@@ -507,7 +511,8 @@ typedef struct {
 } NP_Acky;
 
 typedef struct {
-	NutPunch_LobbyId id;
+	NutPunch_PeerId peer;
+	NutPunch_LobbyId lobby;
 	NP_HeartbeatFlagsStorage flags;
 	NP_PeerAddr internal_addr;
 	NP_Metadata lobby_metadata;
@@ -545,6 +550,8 @@ static bool NP_InitDone = false, NP_Closing = false;
 static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
 static char NP_LobbyId[sizeof(NutPunch_LobbyId) + 1] = {0};
+static char NP_PeerId[sizeof(NutPunch_PeerId) + 1] = {0};
+
 static NP_PeerInfo NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static NutPunch_Peer NP_LocalPeer = NUTPUNCH_MAX_PLAYERS, NP_Master = NUTPUNCH_MAX_PLAYERS,
 		     NP_MaxPlayers = 0;
@@ -644,6 +651,10 @@ static void NP_LazyInit() {
 	if (NP_InitDone)
 		return;
 	NP_InitDone = true;
+
+	srand(time(NULL)); // TODO: abstract `srand`, `rand`, and `time`
+	for (int i = 0; i < sizeof(NP_PeerId); i++)
+		NP_PeerId[i] = (char)('A' + rand() % 26);
 
 #ifdef NUTPUNCH_WINDOSE
 	WSADATA bitch = {0};
@@ -1236,6 +1247,10 @@ static bool NP_SendHeartbeat() {
 	} else {
 		NutPunch_Memcpy(ptr, "JOIN", sizeof(NP_Header));
 		ptr += sizeof(NP_Header);
+
+		NutPunch_Memset(ptr, 0, sizeof(NutPunch_PeerId));
+		NutPunch_Memcpy(ptr, NP_PeerId, sizeof(NutPunch_PeerId));
+		ptr += sizeof(NutPunch_PeerId);
 
 		NutPunch_Memset(ptr, 0, sizeof(NutPunch_LobbyId));
 		NutPunch_Memcpy(ptr, NP_LobbyId, sizeof(NutPunch_LobbyId));
