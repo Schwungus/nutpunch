@@ -652,7 +652,7 @@ static void NP_LazyInit() {
 		return;
 	NP_InitDone = true;
 
-	srand(time(NULL)); // TODO: abstract `srand`, `rand`, and `time`
+	srand(clock()); // TODO: abstract `rand` & `srand`
 	for (int i = 0; i < sizeof(NP_PeerId); i++)
 		NP_PeerId[i] = (char)('A' + rand() % 26);
 
