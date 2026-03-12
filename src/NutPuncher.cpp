@@ -535,12 +535,11 @@ static int receive() {
 
 	const char* ptr = heartbeat + sizeof(NP_Header);
 
-	if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header)))
-		if (rcv == sizeof(NP_Filters)) {
-			const auto* filters = reinterpret_cast<const NutPunch_Filter*>(ptr);
-			send_lobbies(pub, filters);
-			return RecvKeepGoing;
-		}
+	if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header))) {
+		if (rcv == sizeof(NP_Filters))
+			send_lobbies(pub, reinterpret_cast<const NutPunch_Filter*>(ptr));
+		return RecvKeepGoing; // junk...
+	}
 
 	if (!std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {
 		kill_bro(pub);
@@ -566,8 +565,7 @@ static int receive() {
 	NutPunch_ErrorCode err = NPE_Ok;
 
 	if (lobbies.count(id)) {
-		const auto& lobby = lobbies[id];
-		if (!(flags & NP_HB_JoinExisting) && !lobby.has(pub))
+		if (!(flags & NP_HB_JoinExisting) && !lobbies[id].has(pub))
 			err = NPE_LobbyExists;
 	} else if (flags & NP_HB_JoinExisting) {
 		err = NPE_NoSuchLobby;
