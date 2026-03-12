@@ -365,9 +365,9 @@ struct Lobby {
 		}
 	}
 
-	bool kill_bro(const NP_AddrInfo& pub) {
+	bool kill_bro(const NutPunch_PeerId id) {
 		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (!players[i] || players[i].pub != pub)
+			if (!players[i] || std::memcmp(players[i].id, id, sizeof(NutPunch_PeerId)))
 				continue;
 			NP_Info("Player %d disconnected gracefully", i + 1);
 			players[i].reset();
@@ -498,9 +498,9 @@ static void send_lobbies(AddrInfo addr, const NutPunch_Filter* filters) {
 		addr.send(buf, sizeof(buf));
 }
 
-static void kill_bro(const AddrInfo& pub) {
+static void kill_bro(const NutPunch_PeerId bro) {
 	for (auto& [id, lobby] : lobbies)
-		if (lobby.kill_bro(pub))
+		if (lobby.kill_bro(bro))
 			break;
 }
 
@@ -543,8 +543,8 @@ static int receive() {
 		return RecvKeepGoing; // junk...
 	}
 
-	if (!std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {
-		kill_bro(pub);
+	if (rcv >= sizeof(NutPunch_PeerId) && !std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {
+		kill_bro(ptr);
 		return RecvKeepGoing;
 	}
 

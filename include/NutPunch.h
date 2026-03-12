@@ -653,7 +653,7 @@ static void NP_LazyInit() {
 	NP_InitDone = true;
 
 	srand(clock()); // TODO: abstract `rand` & `srand`
-	for (int i = 0; i < sizeof(NP_PeerId); i++)
+	for (int i = 0; i < sizeof(NutPunch_PeerId); i++)
 		NP_PeerId[i] = (char)('A' + rand() % 26);
 
 #ifdef NUTPUNCH_WINDOSE
@@ -1405,7 +1405,8 @@ static void NP_FlushOutQueue() {
 }
 
 static void NP_SendGoodbyes() {
-	static uint8_t bye[sizeof(NP_Header)] = {'D', 'I', 'S', 'C'};
+	static uint8_t bye[sizeof(NP_Header) + sizeof(NutPunch_PeerId)] = "DISC";
+	NutPunch_Memcpy(bye + sizeof(NP_Header), NP_PeerId, sizeof(NutPunch_PeerId));
 	NP_SendTimesDirectly(10, NP_PuncherAddr, bye, sizeof(bye));
 }
 
