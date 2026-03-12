@@ -453,7 +453,7 @@ sockfail:
 
 static bool create_lobby(const char* id, const AddrInfo& pub) {
 	if (lobbies.size() >= MAX_LOBBIES) {
-		pub.gtfo(NPE_NoSuchLobby); // TODO: update bogus error code
+		pub.gtfo(NPE_NoSuchLobby);
 		NP_Warn("Reached lobby limit");
 		return false;
 	}
