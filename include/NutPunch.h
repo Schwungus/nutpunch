@@ -113,8 +113,8 @@ typedef struct {
 
 /// A struct containing a comparison between previous and updated metadata.
 typedef struct {
-	NutPunch_Field old;
-	NutPunch_Field new;
+	NutPunch_Field previous;
+	NutPunch_Field current;
 } NutPunch_FieldChanged;
 
 /// Same as `NutPunch_FieldChanged`, but with a peer identifier.
@@ -1138,15 +1138,16 @@ static void NP_HandleBeating(NP_Message msg) {
 	}
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		NutPunch_Field* old = &NP_LobbyMetadataReceived[i];
-		NutPunch_Field* new = (NutPunch_Field*)msg.data;
+		NutPunch_Field* prev = &NP_LobbyMetadataReceived[i];
+		NutPunch_Field* cur = (NutPunch_Field*)msg.data;
 		msg.data += sizeof(NutPunch_Field);
 
-		if (!NutPunch_Memcmp(old, new, sizeof(NutPunch_Field)))
+		if (!NutPunch_Memcmp(prev, cur, sizeof(NutPunch_Field)))
 			continue;
 
-		NutPunch_FieldChanged changed = {.old = *old, .new = *new};
-		NutPunch_Memcpy(old, new, sizeof(NP_Metadata));
+		NutPunch_FieldChanged changed = {0};
+		changed.previous = *prev, changed.current = *cur;
+		NutPunch_Memcpy(prev, cur, sizeof(NP_Metadata));
 		NP_HandleEventCb(NPCB_LobbyMetadataChanged, &changed);
 	}
 
