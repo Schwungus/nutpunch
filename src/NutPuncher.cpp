@@ -229,10 +229,11 @@ struct Player {
 	Player() {}
 
 	explicit operator bool() const {
-		return countdown > 0 && !is_memzero(pub) && !is_memzero(internal);
+		return countdown > 0 && !is_memzero(id);
 	}
 
 	void reset() {
+		std::memset(id, 0, sizeof(id));
 		pub.reset(), internal.reset(), countdown = 0;
 	}
 };
