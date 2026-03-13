@@ -1001,7 +1001,6 @@ static void NP_HandlePing(NP_Message msg) {
 		return;
 
 	NP_PeerInfo* const peer = &NP_Peers[idx];
-
 	peer->last_ping = clock();
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
@@ -1019,10 +1018,9 @@ static void NP_HandlePing(NP_Message msg) {
 		NP_HandleEventCb(NPCB_PeerMetadataChanged, &changed);
 	}
 
-	if (NP_AddrNull(peer->addr)) {
-		peer->addr = msg.addr;
+	peer->addr = msg.addr;
+	if (NP_AddrNull(peer->addr))
 		NP_HandleEventCb(NPCB_PeerJoined, &idx);
-	}
 
 	NP_Trace("PING FROM %d = %s", idx, NP_FormatSockaddr(msg.addr));
 }
