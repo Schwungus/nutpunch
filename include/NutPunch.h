@@ -113,15 +113,14 @@ typedef struct {
 
 /// A struct containing a comparison between previous and updated metadata.
 typedef struct {
-	NutPunch_Field previous;
-	NutPunch_Field current;
-} NutPunch_FieldChanged;
+	NutPunch_Field then, now;
+} NutPunch_FieldDiff;
 
-/// Same as `NutPunch_FieldChanged`, but with a peer identifier.
+/// Same as `NutPunch_FieldDiff`, but with a peer identifier.
 typedef struct {
+	NutPunch_Field then, now;
 	NutPunch_Peer peer;
-	NutPunch_FieldChanged changed;
-} NutPunch_PeerFieldChanged;
+} NutPunch_PeerFieldDiff;
 
 /// Special fields you can query inside `NutPunch_Filter`s.
 typedef enum {
@@ -1004,17 +1003,16 @@ static void NP_HandlePing(NP_Message msg) {
 	peer->last_ping = clock();
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		NutPunch_Field* prev = &peer->metadata[i];
-		NutPunch_Field* cur = (NutPunch_Field*)msg.data;
+		NutPunch_Field* then = &peer->metadata[i];
+		NutPunch_Field* now = (NutPunch_Field*)msg.data;
 		msg.data += sizeof(NutPunch_Field);
 
-		if (!NutPunch_Memcmp(prev, cur, sizeof(NutPunch_Field)))
+		if (!NutPunch_Memcmp(then, now, sizeof(NutPunch_Field)))
 			continue;
 
-		NutPunch_PeerFieldChanged changed = {0};
-		changed.peer = idx;
-		changed.changed.previous = *prev, changed.changed.current = *cur;
-		NutPunch_Memcpy(prev, cur, sizeof(NP_Metadata));
+		NutPunch_PeerFieldDiff changed = {0};
+		changed.peer = idx, changed.then = *then, changed.now = *now;
+		NutPunch_Memcpy(then, now, sizeof(NP_Metadata));
 		NP_HandleEventCb(NPCB_PeerMetadataChanged, &changed);
 	}
 
@@ -1150,17 +1148,17 @@ static void NP_HandleBeating(NP_Message msg) {
 	}
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		NutPunch_Field* prev = &NP_LobbyMetadataReceived[i];
-		NutPunch_Field* cur = (NutPunch_Field*)msg.data;
+		NutPunch_Field* then = &NP_LobbyMetadataReceived[i];
+		NutPunch_Field* now = (NutPunch_Field*)msg.data;
 		msg.data += sizeof(NutPunch_Field);
 
-		if (!NutPunch_Memcmp(prev, cur, sizeof(NutPunch_Field)))
+		if (!NutPunch_Memcmp(then, now, sizeof(NutPunch_Field)))
 			continue;
 
-		NutPunch_FieldChanged changed = {0};
-		changed.previous = *prev, changed.current = *cur;
-		NutPunch_Memcpy(prev, cur, sizeof(NP_Metadata));
-		NP_HandleEventCb(NPCB_LobbyMetadataChanged, &changed);
+		NutPunch_FieldDiff diff = {0};
+		diff.then = *then, diff.now = *now;
+		NutPunch_Memcpy(then, now, sizeof(NP_Metadata));
+		NP_HandleEventCb(NPCB_LobbyMetadataChanged, &diff);
 	}
 
 	const NutPunch_Peer new_master = NutPunch_MasterPeer();
