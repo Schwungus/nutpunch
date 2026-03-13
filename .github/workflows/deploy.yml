@@ -1,0 +1,44 @@
+name: Deploy the public instance
+
+on:
+  push:
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      TMPPATH: /tmp/NutPuncher-${{ github.ref_name }}
+      OUTPATH: /usr/local/bin/NutPuncher
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -D CMAKE_BUILD_TYPE=Release -D NUTPUNCH_BUILD_SERVER=ON
+      - name: Build
+        run: cmake --build build --target NutPuncher
+      - name: Upload binary artifact
+        uses: appleboy/scp-action@v1
+        with:
+          host: nutpunch.schwung.us
+          username: root
+          key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
+          source: build/NutPuncher
+          target: ${{ env.TMPPATH }}
+      - name: Deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: nutpunch.schwung.us
+          username: root
+          key: ${{ secrets.PUBLIC_INSTANCE_SSH_KEY }}
+          envs: TMPPATH,OUTPATH
+          script: |
+            set -e
+            chmod +x $TMPPATH
+            PORT=$($TMPPATH a b c)
+            systemctl stop nutpuncher@$PORT || :
+            cp $TMPPATH ${OUTPATH}-$PORT
+            systemctl restart nutpuncher@$PORT
+            echo Restarted the NutPuncher service on port $PORT
