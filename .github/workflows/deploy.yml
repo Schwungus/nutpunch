@@ -10,7 +10,7 @@ jobs:
     permissions:
       contents: write
     env:
-      TMPPATH: /tmp/NutPuncher
+      TMPPATH: /tmp/build/NutPuncher
       OUTPATH: /usr/local/bin/NutPuncher
     steps:
       - name: Checkout
