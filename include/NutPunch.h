@@ -111,6 +111,18 @@ typedef struct {
 	uint8_t size;
 } NutPunch_Field;
 
+/// A struct containing a comparison between previous and updated metadata.
+typedef struct {
+	NutPunch_Field old;
+	NutPunch_Field new;
+} NutPunch_FieldChanged;
+
+/// Same as `NutPunch_FieldChanged`, but with a peer identifier.
+typedef struct {
+	NutPunch_Peer peer;
+	NutPunch_FieldChanged changed;
+} NutPunch_PeerFieldChanged;
+
 /// Special fields you can query inside `NutPunch_Filter`s.
 typedef enum {
 	/// Lobby player count.
@@ -175,6 +187,10 @@ typedef enum {
 	NPCB_PeerLeft,
 	/// Callback data: the index of the lobby's new master.
 	NPCB_NewMaster,
+	/// Callback data: see `NutPunch_FieldChanged`.
+	NPCB_LobbyMetadataChanged,
+	/// Callback data: see `NutPunch_PeerFieldChanged`.
+	NPCB_PeerMetadataChanged,
 	/// Total callback-event count. Do not pass this to `NutPunch_Register`.
 	NPCB_Count,
 } NutPunch_CallbackEvent;
@@ -1121,7 +1137,18 @@ static void NP_HandleBeating(NP_Message msg) {
 		msg.data += 2 * sizeof(NP_PeerAddr);
 	}
 
-	NutPunch_Memcpy(NP_LobbyMetadataReceived, msg.data, sizeof(NP_Metadata));
+	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+		NutPunch_Field* old = &NP_LobbyMetadataReceived[i];
+		NutPunch_Field* new = (NutPunch_Field*)msg.data;
+		msg.data += sizeof(NutPunch_Field);
+
+		if (!NutPunch_Memcmp(old, new, sizeof(NutPunch_Field)))
+			continue;
+
+		NutPunch_FieldChanged changed = {.old = *old, .new = *new};
+		NutPunch_Memcpy(old, new, sizeof(NP_Metadata));
+		NP_HandleEventCb(NPCB_LobbyMetadataChanged, &changed);
+	}
 
 	const NutPunch_Peer new_master = NutPunch_MasterPeer();
 	if (old_master != new_master) {
