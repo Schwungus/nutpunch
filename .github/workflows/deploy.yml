@@ -2,6 +2,7 @@ name: Deploy the public instance
 
 on:
   push:
+    branches: [master]
 
 jobs:
   deploy:
