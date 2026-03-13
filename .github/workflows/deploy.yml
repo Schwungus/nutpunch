@@ -10,7 +10,7 @@ jobs:
     permissions:
       contents: write
     env:
-      TMPPATH: /tmp/NutPuncher-${{ github.ref_name }}
+      TMPPATH: /tmp/NutPuncher
       OUTPATH: /usr/local/bin/NutPuncher
     steps:
       - name: Checkout
