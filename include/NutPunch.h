@@ -1003,7 +1003,21 @@ static void NP_HandlePing(NP_Message msg) {
 	NP_PeerInfo* const peer = &NP_Peers[idx];
 
 	peer->last_ping = clock();
-	NutPunch_Memcpy(peer->metadata, msg.data, sizeof(NP_Metadata));
+
+	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+		NutPunch_Field* prev = &peer->metadata[i];
+		NutPunch_Field* cur = (NutPunch_Field*)msg.data;
+		msg.data += sizeof(NutPunch_Field);
+
+		if (!NutPunch_Memcmp(prev, cur, sizeof(NutPunch_Field)))
+			continue;
+
+		NutPunch_PeerFieldChanged changed = {0};
+		changed.peer = idx;
+		changed.changed.previous = *prev, changed.changed.current = *cur;
+		NutPunch_Memcpy(prev, cur, sizeof(NP_Metadata));
+		NP_HandleEventCb(NPCB_PeerMetadataChanged, &changed);
+	}
 
 	if (NP_AddrNull(peer->addr)) {
 		peer->addr = msg.addr;
