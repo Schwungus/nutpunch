@@ -565,7 +565,7 @@ static bool NP_InitDone = false, NP_Closing = false;
 static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
 static char NP_LobbyId[sizeof(NutPunch_LobbyId) + 1] = {0};
-static char NP_PeerId[sizeof(NutPunch_PeerId) + 1] = {0};
+static NutPunch_PeerId NP_PeerId = {0};
 
 static NP_PeerInfo NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static NutPunch_Peer NP_LocalPeer = NUTPUNCH_MAX_PLAYERS, NP_Master = NUTPUNCH_MAX_PLAYERS,
@@ -910,9 +910,8 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
 	NP_LastStatus = NPS_Online;
 	NP_Memzero(NP_LastError);
 
-	if (!lobby_id)
-		return true;
-	NutPunch_SNPrintF(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobby_id);
+	if (lobby_id)
+		NutPunch_SNPrintF(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobby_id);
 	return true;
 }
 
@@ -1505,7 +1504,8 @@ NutPunch_UpdateStatus NutPunch_Update() {
 	if (NP_LastStatus == NPS_Idle || NP_Sock == NUTPUNCH_INVALID_SOCKET)
 		return NPS_Idle;
 
-	NP_LastStatus = NPS_Online, NP_NetworkUpdate();
+	NP_LastStatus = NPS_Online;
+	NP_NetworkUpdate();
 
 	if (NP_LastStatus == NPS_Error) {
 		NutPunch_Disconnect();
