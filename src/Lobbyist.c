@@ -5,19 +5,10 @@
 #include <NutPunch.h>
 
 int main(int argc, char* argv[]) {
-	if (argc < 3)
+	if (argc < 1)
 		goto fail;
-	uint8_t data = (uint8_t)strtol(argv[1], NULL, 10);
-	if (!data)
-		goto fail;
-	if (argc >= 3)
-		NutPunch_SetServerAddr(argv[2]);
-
-	size_t len = strlen(argv[1]);
-	if (len > NUTPUNCH_FIELD_NAME_MAX)
-		len = NUTPUNCH_FIELD_NAME_MAX;
-	else if (!len)
-		goto fail;
+	if (argc > 1)
+		NutPunch_SetServerAddr(argv[1]);
 
 	NutPunch_FindLobbies();
 
