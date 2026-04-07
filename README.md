@@ -32,20 +32,20 @@ In order to run your own hole-puncher server, you'll need to get the server bina
 Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/Test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. Here's the general usage guide for the NutPunch library:
 
 1. Host a lobby with `NutPunch_Host("lobby-id")`, or join an existing one with `NutPunch_Join("lobby-id")`.
-2. (Optional) Set lobby metadata:
-   1. If you join or host an empty lobby, you will be considered its master. A lobby master has the authority from the matchmaking server to set lobby-specific metadata. This is usually needed to start games with specific parameters. If you don't need lobby metadata, you can just skip this entire step.
-   2. After calling `NutPunch_Join()`, you can set metadata in the lobby by calling `NutPunch_LobbySet()` as its master. You don't have to finish "connecting" and handshaking with NutPuncher before setting metadata. A lobby can hold up to 16 fields, each identified by 8-byte strings and holding up to 16 bytes of data. Non-masters can try to set lobby metadata, but such attempts will be ingored by the NutPuncher. The remote-side metadata also won't be updated until the next call to `NutPunch_Update()`.
-   3. Just like `NutPunch_LobbySet()`, you can use `NutPunch_PeerSet()` to set your very own peer-specific metadata such as nickname or skin spritesheet name. Use `NutPunch_PeerGet()` with a peer index to query your own or others' peer metadata.
-3. Listen for events:
+2. Listen for events:
    1. Call `NutPunch_Update()` each frame, regardless of whether you're still joining or already [playing with the boys](https://nonk.dev/blog/battlecry). This will also automatically send lobby metadata back and forth to the NutPuncher server.
    2. Check your status by matching the returned value against `NPS_*` constants. `NPS_Online` is what you're looking for normally, but make sure to handle `NPS_Error`. To get a human-readable error description, call `NutPunch_GetLastError()`.
-4. (Optional) Read lobby metadata:
-   1. Use `NutPunch_LobbyGet()` and `NutPunch_PeerGet()` to get a pointer to a field's value. These pointers are volatile, especially when calling `NutPunch_Update()`, so if you need to use the values between NutPunch function calls, make sure to cache them somewhere.
-5. Run the game logic.
-6. Keep in sync with the peers:
+3. Run the game logic.
+4. Keep in sync with the peers:
    1. Send datagrams with `NutPunch_Send()` or `NutPunch_SendReliably()`.
    2. Poll for incoming datagrams with `NutPunch_HasMessage()` and retrieve the datagrams with `NutPunch_NextMessage()`. In scenarios where you need to cache packet data between NutPunch function calls, `memcpy` the data into a static array of `NUTPUNCH_BUFFER_SIZE`[^kb] bytes in order to fit the whole packet without overflowing and/or segfaulting.
-7. Repeat steps 3 through 6. You're all Gucci!
+5. Repeat steps 2 through 4. You're all Gucci!
+
+Another important aspect of NutPunch networking would be the ability to set peer/lobby metadata in a simplified key-value store fashion. Peer metadata can include e.g. the peer's nickname, their skin spritesheet name, their lives count - anything you can squeeze into 16 bytes with 8 bytes per key.
+
+Call `NutPunch_SetVar(...)`/`NutPunch_GetVar(...)` on various sources of metadata to set/get key-value pairs. Setting metadata only does anything if you're "in charge" of the metadata object: either you're the lobby's master and want to set the lobby's metadata, or you're trying to set your own metadata as a peer.
+
+You can use `NutPunch_PeerMetadata()` to get your own metadata, `NutPunch_PeerMetadata(peer_idx)` to get another peer's metadata, `NutPunch_LobbyMetadata()` to get the current lobby's metadata, or `NutPunch_LobbyMetadata("id")` to request a foreign lobby's metadata when you're searching in the lobby listing.
 
 [^kb]: `NUTPUNCH_BUFFER_SIZE` is currently defined to be 1024 bytes. Should be small enough for WinSock not to signal a `WSAEMSGSIZE` error on send.
 
@@ -152,6 +152,4 @@ Just like in the example above, you can override NutPunch's logging facility bef
 
 If you're dissatisfied with [the public instance](#public-instance), whether from needing to stick to a specific build or fork or whatever, you can host your own. Make sure to read [the introductory pamphlet](#introductory-lecture) before attempting this.
 
-On Windows and Linux, use [the provided server binary](https://github.com/Schwungus/nutpunch/releases/tag/rolling). It runs on UDP port 30000 + some small number, which you need to expose to the public network through your firewall. Verify the exact port number by looking into the server's logs.
-
-If you're on MacOS, well, bad luck, buddy...
+**TODO**: document how to build a NutPuncher yourself.
