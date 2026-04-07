@@ -53,10 +53,10 @@ static void maybe_join_netgame() {
 	else
 		return;
 
-	NutPunch_LobbySet(magicKey, sizeof(magicValue), &magicValue);
+	NutPunch_SetVar(NutPunch_LobbyMetadata(), magicKey, sizeof(magicValue), &magicValue);
 
 	const char* name = randomNames[rand() % nameCount];
-	NutPunch_PeerSet("NAME", (int)strlen(name) + 1, name);
+	NutPunch_SetVar(NutPunch_PeerMetadata(), "NAME", (int)strlen(name) + 1, name);
 }
 
 static void draw_players() {
@@ -85,12 +85,13 @@ static void receive_shit() {
 	while (NutPunch_HasMessage(CHAN_CHAT)) {
 		int size = sizeof(data);
 		const int peer = NutPunch_NextMessage(CHAN_CHAT, data, &size);
-		NutPunch_Log("[%s]: %s", (char*)NutPunch_PeerGet(peer, "NAME", NULL), data);
+		NutPunch_Log("[%s]: %s",
+			(char*)NutPunch_GetVar(NutPunch_PeerMetadata(peer), "NAME", NULL), data);
 	}
 }
 
 static void chat_with(int idx) {
-	const char* theirName = NutPunch_PeerGet(idx, "NAME", NULL);
+	const char* theirName = NutPunch_GetVar(NutPunch_PeerMetadata(idx), "NAME", NULL);
 	if (theirName == NULL)
 		return;
 	static char buf[96] = {0};
@@ -128,12 +129,14 @@ static void draw_debug_bits(int status) {
 
 static void greet(const void* raw) {
 	NutPunch_Peer peer = *(NutPunch_Peer*)raw;
-	NutPunch_Log("Welcome, %s!", (char*)NutPunch_PeerGet(peer, "NAME", NULL));
+	NutPunch_Log(
+		"Welcome, %s!", (char*)NutPunch_GetVar(NutPunch_PeerMetadata(peer), "NAME", NULL));
 }
 
 static void bye(const void* raw) {
 	NutPunch_Peer peer = *(NutPunch_Peer*)raw;
-	NutPunch_Log("Farewell, %s!", (char*)NutPunch_PeerGet(peer, "NAME", NULL));
+	NutPunch_Log(
+		"Farewell, %s!", (char*)NutPunch_GetVar(NutPunch_PeerMetadata(peer), "NAME", NULL));
 }
 
 int main(int argc, char* argv[]) {

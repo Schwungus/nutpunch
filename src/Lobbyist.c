@@ -7,11 +7,11 @@
 int main(int argc, char* argv[]) {
 	if (argc < 3)
 		goto fail;
-	uint8_t data = (uint8_t)strtol(argv[2], NULL, 10);
+	uint8_t data = (uint8_t)strtol(argv[1], NULL, 10);
 	if (!data)
 		goto fail;
-	if (argc >= 4)
-		NutPunch_SetServerAddr(argv[3]);
+	if (argc >= 3)
+		NutPunch_SetServerAddr(argv[2]);
 
 	size_t len = strlen(argv[1]);
 	if (len > NUTPUNCH_FIELD_NAME_MAX)
@@ -19,11 +19,7 @@ int main(int argc, char* argv[]) {
 	else if (!len)
 		goto fail;
 
-	NutPunch_Filter filter = {0};
-	memcpy(filter.field.name, argv[1], len);
-	memcpy(filter.field.value, &data, sizeof(data));
-	filter.comparison = NPF_Eq;
-	NutPunch_FindLobbies(1, &filter);
+	NutPunch_FindLobbies();
 
 	int rate = 20, ms = 1000;
 	for (int i = 0; i < ms / rate; i++) {

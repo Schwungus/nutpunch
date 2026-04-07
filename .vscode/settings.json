@@ -14,7 +14,8 @@
         "__cmake*": true
     },
     "files.associations": {
-        "*.h": "c"
+        "*.h": "c",
+        ".clang*": "yaml"
     },
     "[c]": {
         "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd"

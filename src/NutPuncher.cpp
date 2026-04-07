@@ -66,25 +66,6 @@ static const char* fmt_lobby_id(const char* id) {
 	return buf;
 }
 
-static bool match_field_value(const int diff, const int flags) {
-	const int eq = !diff;
-	bool result = true;
-	if (flags & NPF_Greater) {
-		result &= diff > 0;
-		if (flags & NPF_Eq)
-			result |= eq;
-	} else if (flags & NPF_Less) {
-		result &= diff < 0;
-		if (flags & NPF_Eq)
-			result |= eq;
-	} else if (flags & NPF_Eq) {
-		result &= eq;
-	} else { // junk
-		return false;
-	}
-	return (flags & NPF_Not) ? !result : result;
-}
-
 struct Field : NutPunch_Field {
 	Field() {
 		reset();
@@ -110,11 +91,6 @@ struct Field : NutPunch_Field {
 			}
 
 		return our_len == arg_len && !std::memcmp(this->name, name, our_len);
-	}
-
-	bool matches(const NutPunch_Filter& filter) const {
-		const int diff = std::memcmp(data, filter.field.value, size);
-		return match_field_value(diff, filter.comparison);
 	}
 
 	void reset() {
@@ -263,17 +239,6 @@ struct Lobby {
 		}
 	}
 
-	int special(uint8_t idx) const {
-		switch (idx) {
-		case NPSF_Capacity:
-			return capacity;
-		case NPSF_Players:
-			return gamers();
-		default:
-			return 0;
-		}
-	}
-
 	explicit operator bool() const {
 		return gamers() > 0;
 	}
@@ -377,31 +342,6 @@ struct Lobby {
 		return false;
 	}
 
-	bool match_against(const NutPunch_Filter* filters, size_t filter_count) const {
-		for (int f = 0; f < filter_count; f++) {
-			const auto& filter = filters[f];
-			if (filter.field.alwayszero != 0) {
-				int diff = (uint8_t)filter.special.value;
-				diff -= special(filter.special.index);
-				if (match_field_value(diff, filter.comparison))
-					goto next_filter;
-				return false;
-			}
-			for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++) {
-				const auto& field = metadata.fields[m];
-				if (!field.named(filter.field.name))
-					continue;
-				if (field.matches(filter))
-					goto next_filter;
-			}
-			return false; // no field matched the filter
-		next_filter:
-			continue;
-		}
-		// All filters matched.
-		return true;
-	}
-
 	NutPunch_Peer master() {
 		if (master_idx < NUTPUNCH_MAX_PLAYERS && players[master_idx])
 			return master_idx;
@@ -473,26 +413,25 @@ static bool create_lobby(const char* id, const AddrInfo& pub) {
 	return true;
 }
 
-static void send_lobbies(AddrInfo addr, const NutPunch_Filter* filters) {
+static void send_lobbies(AddrInfo addr, const char* id) {
+	// TODO: implement.
+}
+
+static void send_lobbies(AddrInfo addr) {
 	static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Listing)] = "LIST";
 	uint8_t* ptr = buf + sizeof(NP_Header);
-	size_t filter_count = 0;
-
-	for (; filter_count < NUTPUNCH_MAX_SEARCH_FILTERS; filter_count++)
-		if (is_memzero(filters[filter_count]))
-			break;
-
-	if (!filter_count)
-		return;
 
 	std::memset(ptr, 0, sizeof(NP_Listing));
+	size_t count = 0;
+
 	for (const auto& [id, lobby] : lobbies) {
-		if (!lobby.match_against(filters, filter_count))
-			continue;
 		*ptr++ = lobby.gamers(), *ptr++ = lobby.capacity;
 		std::memset(ptr, 0, sizeof(NutPunch_LobbyId));
 		std::memcpy(ptr, id.data(), std::strlen(lobby.fmt_id()));
 		ptr += sizeof(NutPunch_LobbyId);
+
+		if (++count >= NUTPUNCH_MAX_SEARCH_RESULTS)
+			break;
 	}
 
 	for (int i = 0; i < 5; i++)
@@ -539,9 +478,15 @@ static int receive() {
 	const char* ptr = heartbeat + sizeof(NP_Header);
 
 	if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header))) {
-		if (rcv == sizeof(NP_Filters))
-			send_lobbies(pub, reinterpret_cast<const NutPunch_Filter*>(ptr));
-		return RecvKeepGoing; // junk...
+		if (rcv == sizeof(NutPunch_LobbyId)) {
+			send_lobbies(pub, ptr);
+		} else if (rcv == 0) {
+			send_lobbies(pub);
+		} else {
+			// junk...
+		}
+
+		return RecvKeepGoing;
 	}
 
 	if (rcv >= sizeof(NutPunch_PeerId) && !std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {

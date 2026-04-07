@@ -7,7 +7,7 @@ set(BUILD_SHARED_LIBS OFF)
 
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-add_library(NutPunch INTERFACE)
+add_library(NutPunch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include/NutPunch.h)
 target_include_directories(NutPunch INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_definitions(NutPunch INTERFACE

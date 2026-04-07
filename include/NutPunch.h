@@ -49,7 +49,7 @@ extern "C" {
 /// Increment this every time you break the communications format between the peer and the
 /// NutPuncher, to make it use a different port and retain compatibility with the previous versions
 /// by keeping the old NutPunchers running.
-#define NUTPUNCH_API_VERSION (1)
+#define NUTPUNCH_API_VERSION (2)
 
 /// The UDP port used by the nutpunching mediator server.
 #define NUTPUNCH_SERVER_PORT (30000 + NUTPUNCH_API_VERSION)
@@ -111,6 +111,9 @@ typedef struct {
 	uint8_t size;
 } NutPunch_Field;
 
+/// An array of key-value metadata pairs.
+typedef NutPunch_Field NutPunch_Metadata[NUTPUNCH_MAX_FIELDS];
+
 /// A struct containing a comparison between previous and updated metadata.
 typedef struct {
 	NutPunch_Field then, now;
@@ -122,33 +125,10 @@ typedef struct {
 	NutPunch_Peer peer;
 } NutPunch_PeerFieldDiff;
 
-/// Special fields you can query inside `NutPunch_Filter`s.
-typedef enum {
-	/// Lobby player count.
-	NPSF_Players = 1,
-	/// Lobby max players.
-	NPSF_Capacity,
-} NutPunch_SpecialField;
-
-/// A filter used in `NutPunch_FindLobbies`. At least one is required.
-typedef struct {
-	union {
-		struct {
-			uint8_t alwayszero;
-			char name[NUTPUNCH_FIELD_NAME_MAX];
-			char value[NUTPUNCH_FIELD_DATA_MAX];
-		} field;
-		struct {
-			uint8_t index;
-			int8_t value;
-		} special;
-	};
-	uint8_t comparison;
-} NutPunch_Filter;
-
 /// About as much data as you are allowed to see from lobbies you aren't part of.
 typedef struct {
 	char name[sizeof(NutPunch_LobbyId) + 1];
+	NutPunch_Metadata metadata;
 	uint8_t players, capacity;
 } NutPunch_LobbyInfo;
 
@@ -161,14 +141,6 @@ typedef enum {
 	/// Actively participating in a lobby.
 	NPS_Online,
 } NutPunch_UpdateStatus;
-
-/// Comparison operators used in `NutPunch_Filter`s.
-typedef enum {
-	NPF_Not = 1 << 0,
-	NPF_Eq = 1 << 1,
-	NPF_Less = 1 << 2,
-	NPF_Greater = 1 << 3,
-} NutPunch_Operator;
 
 typedef enum {
 	NPE_Ok,
@@ -232,30 +204,39 @@ NutPunch_UpdateStatus NutPunch_Update();
 /// Sends all queued outgoing packets early (before a `NutPunch_Update()`). Useful in niche cases.
 void NutPunch_Flush();
 
-/// Requests a field of lobby metadata to be set. This will send out metadata changes only after a
-/// call to `NutPunch_Update()`, and won't do anything unless you're the lobby's master.
+/// Returns a piece of metadata. Obtain a `NutPunch_Metadata` pointer by calling
+/// `NutPunch_PeerMetadata()` or `NutPunch_LobbyMetadata()`
 ///
 /// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
 /// squeeze into a field.
-void NutPunch_LobbySet(const char* name, int size, const void* data);
+const void* NutPunch_GetVar(const NutPunch_Field* fields, const char* name, int* size);
 
-/// Queries lobby metadata. Sets `size` to the field's actual size unless you pass it as `NULL`.
-/// Returns a pointer to the static allocation containing the field's data.
+/// Sets a piece of metadata. Doesn't do anything unless you're setting it on
+/// `NutPunch_PeerMetadata()` of the local peer, or on `NutPunch_LobbyMetadata()` of the lobby you
+/// are the master of.
 ///
-/// You cannot query the metadata of a lobby you aren't connected to. To do that, use
-/// `NutPunch_FindLobbies` and specify some filters (instead of accessing that metadata directly,
-/// which you can't).
+/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
+/// squeeze into a field.
+void NutPunch_SetVar(NutPunch_Field* fields, const char* name, int size, const void* data);
+
+NutPunch_Field *NutPunch_PeerMetadata0(), *NutPunch_PeerMetadata1(NutPunch_Peer);
+NutPunch_Field *NutPunch_LobbyMetadata0(), *NutPunch_LobbyMetadata1(const char*);
+
+#define NUTPUNCH_01_ARG(_0, _1, NAME, ...) NAME
+
+/// Returns a peer's metadata table if they are alive, or NULL otherwise. Pass no args to get the
+/// local peer's metadata.
+#define NutPunch_PeerMetadata(...)                                                                 \
+	(NUTPUNCH_01_ARG("ignored", ##__VA_ARGS__, NutPunch_PeerMetadata1,                         \
+		NutPunch_PeerMetadata0)(__VA_ARGS__))
+
+/// Returns the lobby's metadata table if we are connected to one, or NULL otherwise.
 ///
-/// Keep in mind that metadata updates are processed once every call to `NutPunch_Update()`.
-const void* NutPunch_LobbyGet(const char* name, int* size);
-
-/// Requests your peer-specific metadata to be set. Otherwise, this works the same way as
-/// `NutPunch_LobbySet`, which see.
-void NutPunch_PeerSet(const char* name, int size, const void* data);
-
-/// Queries metadata for a specific peer. Otherwise, this works the same way as `NutPunch_LobbyGet`,
-/// which see.
-const void* NutPunch_PeerGet(NutPunch_Peer, const char* name, int* size);
+/// If you are querying lobbies via `NutPunch_FindLobbies()`, pass a lobby ID to request and
+/// retrieve that lobby's metadata.
+#define NutPunch_LobbyMetadata(...)                                                                \
+	(NUTPUNCH_01_ARG("ignored", ##__VA_ARGS__, NutPunch_LobbyMetadata1,                        \
+		NutPunch_LobbyMetadata0)(__VA_ARGS__))
 
 /// Set the maximum amount of channels this peer can receive from. Packets with an index higher than
 /// or equal to maximum channel count are discarded silently.
@@ -303,10 +284,12 @@ int NutPunch_PeerCount();
 /// individually using this function.
 bool NutPunch_PeerAlive(NutPunch_Peer);
 
-/// Get the local peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
+/// Get the local peer's index. Available only after successfully joining a lobby. Returns
+/// `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
 int NutPunch_LocalPeer();
 
-/// Get the master peer's index. Returns `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
+/// Get the master peer's index. Available only after successfully joining a lobby. Returns
+/// `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
 int NutPunch_MasterPeer();
 
 /// Returns `true` if we are in a lobby. This doesn't guarantee local/master peer indices or any
@@ -320,39 +303,11 @@ bool NutPunch_IsReady();
 /// Call this to gracefully disconnect from a lobby.
 void NutPunch_Disconnect();
 
-/// Query the lobbies list given a set of filters. Use `NutPunch_GetLobby` to retrieve the results.
+/// Query the lobbies list. Use `NutPunch_GetLobby()` to retrieve the results.
 ///
-/// The list of lobbies will update after a few ticks of `NutPunch_Update`; don't expect immediate
-/// results.
-///
-/// Each filter consists of either a special or a named metadata field, with a corresponding value
-/// to compare it to. All filters must match in order for a lobby to be listed.
-///
-/// Bitwise-or the `NPF_*` constants to set a filter's comparison flags.
-///
-/// To query "special" fields such as lobby current or max player count, pass one of the `NPSF_*`
-/// constants with an `int8_t` value to compare against. For example, to query lobbies for exactly a
-/// 2-player duo to play:
-///
-/// ```c
-/// NutPunch_Filter filters[2] = {0};
-///
-/// // exactly 2 players capacity:
-/// filters[0].special.index = NPSF_Capacity;
-/// filters[0].special.value = 2;
-/// filters[0].comparison = NPF_Eq;
-///
-/// // less than two players in the lobby so we can join:
-/// filters[1].special.index = NPSF_Players;
-/// filters[1].special.value = 2;
-/// filters[1].comparison = NPF_Less;
-///
-/// NutPunch_FindLobbies(2, &filters);
-/// ```
-///
-/// To query metadata fields, `memcpy` their names and values into the filter's `field` property.
-/// The comparison will be performed bytewise in a fashion similar to `memcmp`.
-void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters);
+/// Request and retrieve lobby metadata by calling `NutPunch_LobbyMetadata()` with a lobby
+/// identifier.
+void NutPunch_FindLobbies();
 
 /// Extract lobby info after a call to `NutPunch_FindLobbies`. Updates every call to
 /// `NutPunch_Update`; don't expect an immediate response.
@@ -473,7 +428,6 @@ typedef struct sockaddr_in NP_AddrInfo;
 typedef uint8_t NP_HeartbeatFlagsStorage, NP_ResponseFlagsStorage;
 
 typedef uint8_t NP_Header[4];
-typedef NutPunch_Field NP_Metadata[NUTPUNCH_MAX_FIELDS];
 
 typedef struct NP_Data {
 	uint8_t* data;
@@ -492,7 +446,7 @@ typedef struct {
 	NP_PacketIndex recv_counter, send_counter;
 	NP_Data* out_of_order[NUTPUNCH_CHANNEL_COUNT];
 
-	NP_Metadata metadata;
+	NutPunch_Metadata metadata;
 } NP_PeerInfo;
 
 typedef struct {
@@ -512,7 +466,7 @@ typedef struct {
 typedef struct {
 	NutPunch_Peer local, master, capacity;
 	NP_PeerAddr peers[2][NUTPUNCH_MAX_PLAYERS];
-	NP_Metadata metadata;
+	NutPunch_Metadata metadata;
 } NP_Beating;
 
 typedef struct {
@@ -530,7 +484,7 @@ typedef struct {
 	NutPunch_LobbyId lobby;
 	NP_HeartbeatFlagsStorage flags;
 	NP_PeerAddr internal_addr;
-	NP_Metadata lobby_metadata;
+	NutPunch_Metadata lobby_metadata;
 } NP_Heartbeat;
 
 #pragma pack(pop)
@@ -542,14 +496,14 @@ typedef struct {
 } NP_MessageType;
 
 #define NP_ANY_LEN (-1)
-#define NP_PING_SIZE (sizeof(NP_Header) + 1 + sizeof(NP_Metadata))
+#define NP_PING_SIZE (sizeof(NP_Header) + 1 + sizeof(NutPunch_Metadata))
 
 static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
 	NP_HandleListing(NP_Message), NP_HandleAcky(NP_Message), NP_HandleData(NP_Message);
 
 // clang-format off
 static const NP_MessageType NP_MessageTypes[] = {
-	{"PING", 1 + sizeof(NP_Metadata), NP_HandlePing },
+	{"PING", 1 + sizeof(NutPunch_Metadata), NP_HandlePing },
 	{"LIST", sizeof(NP_Listing),      NP_HandleListing},
 	{"ACKY", sizeof(NP_Acky),         NP_HandleAcky   },
 	{"DATA", NP_ANY_LEN,              NP_HandleData   },
@@ -581,11 +535,9 @@ static NutPunch_Channel NP_MaxChannel = 0;
 static NP_Data* NP_QueueOut[NUTPUNCH_CHANNEL_COUNT] = {0};
 static NP_Data* NP_QueueIn[NUTPUNCH_CHANNEL_COUNT] = {0};
 
-static NP_Metadata NP_LobbyMetadataSent = {0}, NP_LobbyMetadataReceived = {0},
-		   NP_PeerMetadata = {0};
+static NutPunch_Metadata NP_LobbyMetadata = {0}, NP_PeerMetadata = {0};
 
 static bool NP_Querying = false;
-static NutPunch_Filter NP_Filters[NUTPUNCH_MAX_SEARCH_FILTERS] = {0};
 static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_MAX_SEARCH_RESULTS] = {0};
 
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
@@ -626,11 +578,9 @@ static void NP_CleanupPackets(NP_Data** queue) {
 static void NP_NukeLobbyData() {
 	NP_Closing = NP_Querying = false;
 	NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
-	NP_Memzero(NP_LobbyMetadataReceived);
-	NP_Memzero(NP_LobbyMetadataSent);
+	NP_Memzero(NP_LobbyMetadata);
 	NP_Memzero(NP_PeerMetadata);
 	NP_Memzero(NP_Peers);
-	NP_Memzero(NP_Filters);
 
 	for (int i = 0; i < NUTPUNCH_CHANNEL_COUNT; i++) {
 		NP_CleanupPackets(&NP_QueueIn[i]);
@@ -641,7 +591,7 @@ static void NP_NukeLobbyData() {
 static void NP_NukeRemote() {
 	NP_LobbyId[0] = 0, NP_HeartbeatFlags = 0;
 	NP_MemzeroRef(NP_PuncherAddr), NP_Memzero(NP_Peers);
-	NP_Memzero(NP_Filters), NP_LastStatus = NPS_Idle;
+	NP_LastStatus = NPS_Idle;
 }
 
 static void NP_NukeSocket(NP_Socket* sock) {
@@ -706,7 +656,7 @@ static int NP_FieldNameSize(const char* name) {
 	return NUTPUNCH_FIELD_NAME_MAX;
 }
 
-static const void* NP_GetMetadataFrom(const NP_Metadata fields, const char* name, int* size) {
+const void* NutPunch_GetVar(const NutPunch_Field* fields, const char* name, int* size) {
 	static uint8_t buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
 	NP_Memzero(buf);
 
@@ -729,28 +679,18 @@ static const void* NP_GetMetadataFrom(const NP_Metadata fields, const char* name
 			*size = field->size;
 		return buf;
 	}
+
 none:
 	if (size)
 		*size = 0;
 	return NULL;
 }
 
-const void* NutPunch_LobbyGet(const char* name, int* size) {
-	return NP_GetMetadataFrom(NP_LobbyMetadataReceived, name, size);
-}
+void NutPunch_SetVar(NutPunch_Field* fields, const char* name, int size, const void* data) {
+	if (!fields)
+		return;
 
-const void* NutPunch_PeerGet(NutPunch_Peer peer, const char* name, int* size) {
-	if (peer < 0 || peer >= NUTPUNCH_MAX_PLAYERS || !NutPunch_PeerAlive(peer))
-		return NP_GetMetadataFrom(NULL, "", size);
-	else if (peer == NutPunch_LocalPeer())
-		return NP_GetMetadataFrom(NP_PeerMetadata, name, size);
-	else
-		return NP_GetMetadataFrom(NP_Peers[peer].metadata, name, size);
-}
-
-static void NP_MetadataSet(NutPunch_Field* fields, const char* name, int size, const void* data) {
 	const int name_size = NP_FieldNameSize(name);
-
 	if (!name_size)
 		return;
 
@@ -792,12 +732,25 @@ static void NP_MetadataSet(NutPunch_Field* fields, const char* name, int size, c
 	}
 }
 
-void NutPunch_PeerSet(const char* name, int size, const void* data) {
-	NP_MetadataSet(NP_PeerMetadata, name, size, data);
+NutPunch_Field* NutPunch_PeerMetadata0() {
+	return NP_PeerMetadata;
 }
 
-void NutPunch_LobbySet(const char* name, int size, const void* data) {
-	NP_MetadataSet(NP_LobbyMetadataSent, name, size, data);
+NutPunch_Field* NutPunch_PeerMetadata1(NutPunch_Peer peer) {
+	if (NutPunch_IsOnline() && peer == NutPunch_LocalPeer())
+		return NP_PeerMetadata;
+	else if (peer >= 0 && peer < NUTPUNCH_MAX_PLAYERS)
+		return NP_Peers[peer].metadata;
+	else
+		return NULL;
+}
+
+NutPunch_Field* NutPunch_LobbyMetadata0() {
+	return NP_LobbyMetadata;
+}
+
+NutPunch_Field* NutPunch_LobbyMetadata1(const char* id) {
+	return NULL; // TODO: implement
 }
 
 static bool NP_ResolveNutpuncher() {
@@ -946,20 +899,9 @@ int NutPunch_GetMaxPlayers() {
 	return NP_MaxPlayers;
 }
 
-void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
-	if (filter_count < 1) {
-		NP_Warn("No filters given to `NutPunch_FindLobbies`; this is a no-op");
-		return;
-	}
-
-	if (filter_count > NUTPUNCH_MAX_SEARCH_FILTERS) {
-		NP_Warn("Filter count exceeded in `NutPunch_FindLobbies`; truncating the input");
-		filter_count = NUTPUNCH_MAX_SEARCH_FILTERS;
-	}
-
+void NutPunch_FindLobbies() {
 	NP_LazyInit();
 	NP_Querying = NutPunch_Connect(NULL, false);
-	NutPunch_Memcpy(NP_Filters, filters, filter_count * sizeof(*filters));
 }
 
 void NutPunch_Cleanup() {
@@ -1011,7 +953,7 @@ static void NP_HandlePing(NP_Message msg) {
 
 		NutPunch_PeerFieldDiff changed = {0};
 		changed.peer = idx, changed.then = *then, changed.now = *now;
-		NutPunch_Memcpy(then, now, sizeof(NP_Metadata));
+		NutPunch_Memcpy(then, now, sizeof(NutPunch_Metadata));
 		NP_HandleEventCb(NPCB_PeerMetadataChanged, &changed);
 	}
 
@@ -1103,7 +1045,7 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 	static uint8_t ping[NP_PING_SIZE] = "PING";
 	uint8_t* ptr = &ping[sizeof(NP_Header)];
 	*ptr++ = NP_LocalPeer;
-	NutPunch_Memcpy(ptr, NP_PeerMetadata, sizeof(NP_Metadata));
+	NutPunch_Memcpy(ptr, NP_PeerMetadata, sizeof(NutPunch_Metadata));
 
 	NP_SendDirectly(pub, ping, sizeof(ping));
 	NP_Trace("SENT HI %s", NP_FormatSockaddr(pub));
@@ -1147,7 +1089,7 @@ static void NP_HandleBeating(NP_Message msg) {
 	}
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-		NutPunch_Field* then = &NP_LobbyMetadataReceived[i];
+		NutPunch_Field* then = &NP_LobbyMetadata[i];
 		NutPunch_Field* now = (NutPunch_Field*)msg.data;
 		msg.data += sizeof(NutPunch_Field);
 
@@ -1156,7 +1098,7 @@ static void NP_HandleBeating(NP_Message msg) {
 
 		NutPunch_FieldDiff diff = {0};
 		diff.then = *then, diff.now = *now;
-		NutPunch_Memcpy(then, now, sizeof(NP_Metadata));
+		NutPunch_Memcpy(then, now, sizeof(NutPunch_Metadata));
 		NP_HandleEventCb(NPCB_LobbyMetadataChanged, &diff);
 	}
 
@@ -1278,9 +1220,6 @@ static bool NP_SendHeartbeat() {
 	if (NP_Querying) {
 		NutPunch_Memcpy(ptr, "LIST", sizeof(NP_Header));
 		ptr += sizeof(NP_Header);
-
-		NutPunch_Memcpy(ptr, NP_Filters, sizeof(NP_Filters));
-		ptr += sizeof(NP_Filters);
 	} else {
 		NutPunch_Memcpy(ptr, "JOIN", sizeof(NP_Header));
 		ptr += sizeof(NP_Header);
@@ -1304,8 +1243,8 @@ static bool NP_SendHeartbeat() {
 		*(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags,
 		ptr += sizeof(NP_HeartbeatFlagsStorage);
 
-		NutPunch_Memcpy(ptr, NP_LobbyMetadataSent, sizeof(NP_Metadata));
-		ptr += sizeof(NP_Metadata);
+		NutPunch_Memcpy(ptr, NP_LobbyMetadata, sizeof(NutPunch_Metadata));
+		ptr += sizeof(NutPunch_Metadata);
 	}
 
 	const int len = (int)(ptr - heartbeat);
