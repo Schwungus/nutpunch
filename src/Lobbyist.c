@@ -5,17 +5,21 @@
 #include <NutPunch.h>
 
 int main(int argc, char* argv[]) {
-	if (argc < 1)
-		goto fail;
-	if (argc > 1)
+	if (argc < 1) {
+		printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
+		return EXIT_FAILURE;
+	} else if (argc > 1) {
 		NutPunch_SetServerAddr(argv[1]);
+	}
 
 	NutPunch_FindLobbies();
 
 	int rate = 20, ms = 1000;
 	for (int i = 0; i < ms / rate; i++) {
-		if (NPS_Error == NutPunch_Update())
-			goto shit;
+		if (NPS_Error == NutPunch_Update()) {
+			printf("failed to connect or smth\n");
+			return EXIT_FAILURE;
+		}
 		NP_SleepMs(ms / rate);
 	}
 
@@ -29,12 +33,4 @@ int main(int argc, char* argv[]) {
 	if (lobby_count)
 		printf("\n");
 	return EXIT_SUCCESS;
-
-fail:
-	printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
-	return EXIT_FAILURE;
-
-shit:
-	printf("failed to connect or smth\n");
-	return EXIT_FAILURE;
 }
