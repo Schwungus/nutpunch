@@ -130,6 +130,7 @@ typedef struct {
 	char name[sizeof(NutPunch_LobbyId) + 1];
 	NutPunch_Metadata metadata;
 	uint8_t players, capacity;
+	bool got_meta;
 } NutPunch_LobbyInfo;
 
 /// Describes the result of calling `NutPunch_Update`.
@@ -475,6 +476,11 @@ typedef struct {
 } NP_Listing[NUTPUNCH_MAX_SEARCH_RESULTS];
 
 typedef struct {
+	NutPunch_LobbyId id;
+	NutPunch_Metadata metadata;
+} NP_Ligma;
+
+typedef struct {
 	NutPunch_Channel channel;
 	NP_PacketIndex packet;
 } NP_Acky;
@@ -499,16 +505,18 @@ typedef struct {
 #define NP_PING_SIZE (sizeof(NP_Header) + 1 + sizeof(NutPunch_Metadata))
 
 static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
-	NP_HandleListing(NP_Message), NP_HandleAcky(NP_Message), NP_HandleData(NP_Message);
+	NP_HandleListing(NP_Message), NP_HandleLobbyMetadata(NP_Message), NP_HandleAcky(NP_Message),
+	NP_HandleData(NP_Message);
 
 // clang-format off
 static const NP_MessageType NP_MessageTypes[] = {
-	{"PING", 1 + sizeof(NutPunch_Metadata), NP_HandlePing },
-	{"LIST", sizeof(NP_Listing),      NP_HandleListing},
-	{"ACKY", sizeof(NP_Acky),         NP_HandleAcky   },
-	{"DATA", NP_ANY_LEN,              NP_HandleData   },
-	{"GTFO", 1,		          NP_HandleGTFO   },
-	{"BEAT", sizeof(NP_Beating),      NP_HandleBeating},
+	{"PING", 1 + sizeof(NutPunch_Metadata), NP_HandlePing         },
+	{"LIST", sizeof(NP_Listing),            NP_HandleListing      },
+	{"LGMA", sizeof(NP_Ligma),              NP_HandleLobbyMetadata},
+	{"ACKY", sizeof(NP_Acky),               NP_HandleAcky         },
+	{"DATA", NP_ANY_LEN,                    NP_HandleData         },
+	{"GTFO", 1,		                NP_HandleGTFO         },
+	{"BEAT", sizeof(NP_Beating),            NP_HandleBeating      },
 };
 // clang-format on
 
@@ -607,7 +615,7 @@ static void NP_NukeSocket(NP_Socket* sock) {
 }
 
 static void NP_ResetImpl() {
-	NP_LastBeating = clock();
+	NP_LastBeating = clock(); // TODO: replace with the latest advancement...
 	NP_NukeRemote(), NP_NukeLobbyData();
 	NP_NukeSocket(&NP_Sock);
 }
@@ -617,6 +625,7 @@ static void NP_LazyInit() {
 		return;
 	NP_InitDone = true;
 
+	// TODO: replace `clock()` with the latest advancement...
 	srand(clock()); // TODO: abstract `rand` & `srand`
 	for (int i = 0; i < sizeof(NutPunch_PeerId); i++)
 		NP_PeerId[i] = (char)('A' + rand() % 26);
@@ -732,27 +741,6 @@ void NutPunch_SetVar(NutPunch_Field* fields, const char* name, int size, const v
 	}
 }
 
-NutPunch_Field* NutPunch_PeerMetadata0() {
-	return NP_PeerMetadata;
-}
-
-NutPunch_Field* NutPunch_PeerMetadata1(NutPunch_Peer peer) {
-	if (NutPunch_IsOnline() && peer == NutPunch_LocalPeer())
-		return NP_PeerMetadata;
-	else if (peer >= 0 && peer < NUTPUNCH_MAX_PLAYERS)
-		return NP_Peers[peer].metadata;
-	else
-		return NULL;
-}
-
-NutPunch_Field* NutPunch_LobbyMetadata0() {
-	return NP_LobbyMetadata;
-}
-
-NutPunch_Field* NutPunch_LobbyMetadata1(const char* id) {
-	return NULL; // TODO: implement
-}
-
 static bool NP_ResolveNutpuncher() {
 	NP_LazyInit();
 
@@ -856,7 +844,7 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
 		return false;
 	}
 
-	NP_LastBeating = clock();
+	NP_LastBeating = clock(); // TODO: replace with the latest advancement...
 	NP_ResolveNutpuncher();
 
 	NP_Info("Ready to send heartbeats");
@@ -941,7 +929,7 @@ static void NP_HandlePing(NP_Message msg) {
 		return;
 
 	NP_PeerInfo* const peer = &NP_Peers[idx];
-	peer->last_ping = clock();
+	peer->last_ping = clock(); // TODO: replace with the latest advancement...
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		NutPunch_Field* then = &peer->metadata[i];
@@ -1111,12 +1099,9 @@ static void NP_HandleBeating(NP_Message msg) {
 }
 
 static void NP_HandleListing(NP_Message msg) {
-	NP_Trace("RECEIVED A LISTING FROM %s", NP_FormatSockaddr(msg.addr));
-
 	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
-
-	NP_LastBeating = clock();
+	NP_LastBeating = clock(); // TODO: replace with the latest advancement...
 
 	const size_t idlen = sizeof(NutPunch_LobbyId);
 	NP_Memzero(NP_Lobbies);
@@ -1127,6 +1112,21 @@ static void NP_HandleListing(NP_Message msg) {
 
 		NutPunch_Memcpy(NP_Lobbies[i].name, msg.data, idlen);
 		NP_Lobbies[i].name[idlen] = '\0', msg.data += idlen;
+	}
+}
+
+static void NP_HandleLobbyMetadata(NP_Message msg) {
+	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
+		return;
+	NP_LastBeating = clock(); // TODO: replace with the latest advancement...
+
+	for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
+		if (NutPunch_Memcmp(NP_Lobbies[i].name, msg.data, sizeof(NutPunch_LobbyId)))
+			continue;
+		msg.data += sizeof(NutPunch_LobbyId);
+		NutPunch_Memcpy(NP_Lobbies[i].metadata, msg.data, sizeof(NutPunch_Metadata));
+		NP_Lobbies[i].got_meta = true;
+		break;
 	}
 }
 
@@ -1150,7 +1150,7 @@ static void NP_HandleData(NP_Message msg) {
 		return;
 
 	NP_PeerInfo* const peer = &NP_Peers[peer_idx];
-	peer->last_ping = clock();
+	peer->last_ping = clock(); // TODO: replace with the latest advancement...
 
 	const NP_PacketIndex index_as_recv = *(NP_PacketIndex*)msg.data;
 	msg.size -= sizeof(index_as_recv), msg.data += sizeof(index_as_recv);
@@ -1398,6 +1398,7 @@ void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
 }
 
 static void NP_NetworkUpdate() {
+	// TODO: replace with the latest advancement...
 	clock_t now = clock(), server_timeout = NUTPUNCH_SERVER_TIMEOUT_SECS * CLOCKS_PER_SEC,
 		peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
 
@@ -1601,6 +1602,38 @@ bool NutPunch_IsOnline() {
 
 bool NutPunch_IsReady() {
 	return NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS;
+}
+
+NutPunch_Field* NutPunch_PeerMetadata0() {
+	return NP_PeerMetadata;
+}
+
+NutPunch_Field* NutPunch_PeerMetadata1(NutPunch_Peer peer) {
+	if (NutPunch_IsOnline() && peer == NutPunch_LocalPeer())
+		return NP_PeerMetadata;
+	else if (peer >= 0 && peer < NUTPUNCH_MAX_PLAYERS)
+		return NP_Peers[peer].metadata;
+	else
+		return NULL;
+}
+
+NutPunch_Field* NutPunch_LobbyMetadata0() {
+	return NP_LobbyMetadata;
+}
+
+NutPunch_Field* NutPunch_LobbyMetadata1(const char* name) {
+	static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Ligma)] = "LGMA";
+	NutPunch_Memcpy(buf + sizeof(NP_Header), name, sizeof(NutPunch_LobbyId));
+	NP_SendDirectly(NP_PuncherAddr, buf, sizeof(buf));
+
+	for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
+		if (!NP_Lobbies[i].got_meta)
+			continue;
+		if (!NutPunch_Memcmp(NP_Lobbies[i].name, name, sizeof(NutPunch_LobbyId)))
+			return NP_Lobbies[i].metadata;
+	}
+
+	return NULL;
 }
 
 const char* NutPunch_Basename(const char* path) {
