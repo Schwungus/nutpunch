@@ -56,12 +56,12 @@ extern "C" {
 
 #ifndef NUTPUNCH_SERVER_TIMEOUT_SECS
 /// How many seconds to wait for NutPuncher to respond before disconnecting.
-#define NUTPUNCH_SERVER_TIMEOUT_SECS (5)
+#define NUTPUNCH_SERVER_TIMEOUT_SECS ((NutPunch_Clock)5)
 #endif
 
 #ifndef NUTPUNCH_PEER_TIMEOUT_SECS
 /// How many seconds to wait for a peer to respond before timing out.
-#define NUTPUNCH_PEER_TIMEOUT_SECS (5)
+#define NUTPUNCH_PEER_TIMEOUT_SECS ((NutPunch_Clock)5)
 #endif
 
 /// How many bytes to reserve for every network packet.
@@ -93,7 +93,7 @@ extern "C" {
 #include <stdint.h>
 #endif
 
-// we still depend on `time.h` through `clock_t` and `clock()` though.
+// we still depend on `time.h` through `NutPunch_TimeNS()`...
 #include <time.h>
 
 /// The internal unique identifier for your peer. You don't actually interact with it in your code.
@@ -329,6 +329,10 @@ const char* NutPunch_GetLastError();
 /// the default implementation of `NutPunch_Log`.
 const char* NutPunch_Basename(const char* path);
 
+#define NUTPUNCH_NS (1000000000)
+typedef uint64_t NutPunch_Clock;
+NutPunch_Clock NutPunch_TimeNS();
+
 #ifndef NutPunch_Log
 #include <stdio.h>
 #define NutPunch_Log(msg, ...)                                                                     \
@@ -442,7 +446,7 @@ typedef struct NP_Data {
 
 typedef struct {
 	NP_AddrInfo addr;
-	clock_t last_ping, first_ping;
+	NutPunch_Clock last_ping, first_ping;
 
 	NP_PacketIndex recv_counter, send_counter;
 	NP_Data* out_of_order[NUTPUNCH_CHANNEL_COUNT];
@@ -521,7 +525,7 @@ static const NP_MessageType NP_MessageTypes[] = {
 // clang-format on
 
 static char NP_LastError[512] = "";
-static clock_t NP_LastBeating = 0;
+static NutPunch_Clock NP_LastBeating = 0;
 
 static bool NP_InitDone = false, NP_Closing = false;
 static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
@@ -615,7 +619,7 @@ static void NP_NukeSocket(NP_Socket* sock) {
 }
 
 static void NP_ResetImpl() {
-	NP_LastBeating = clock(); // TODO: replace with the latest advancement...
+	NP_LastBeating = NutPunch_TimeNS();
 	NP_NukeRemote(), NP_NukeLobbyData();
 	NP_NukeSocket(&NP_Sock);
 }
@@ -625,8 +629,7 @@ static void NP_LazyInit() {
 		return;
 	NP_InitDone = true;
 
-	// TODO: replace `clock()` with the latest advancement...
-	srand(clock()); // TODO: abstract `rand` & `srand`
+	srand(NutPunch_TimeNS()); // TODO: abstract `rand` & `srand`
 	for (int i = 0; i < sizeof(NutPunch_PeerId); i++)
 		NP_PeerId[i] = (char)('A' + rand() % 26);
 
@@ -844,7 +847,7 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
 		return false;
 	}
 
-	NP_LastBeating = clock(); // TODO: replace with the latest advancement...
+	NP_LastBeating = NutPunch_TimeNS();
 	NP_ResolveNutpuncher();
 
 	NP_Info("Ready to send heartbeats");
@@ -929,7 +932,7 @@ static void NP_HandlePing(NP_Message msg) {
 		return;
 
 	NP_PeerInfo* const peer = &NP_Peers[idx];
-	peer->last_ping = clock(); // TODO: replace with the latest advancement...
+	peer->last_ping = NutPunch_TimeNS();
 
 	for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
 		NutPunch_Field* then = &peer->metadata[i];
@@ -1016,7 +1019,8 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 	}
 
 	NP_PeerInfo* const peer = &NP_Peers[idx];
-	const clock_t now = clock(), timeout_period = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
+	const NutPunch_Clock now = NutPunch_TimeNS(),
+			     timeout_period = NUTPUNCH_PEER_TIMEOUT_SECS * NUTPUNCH_NS;
 
 	const bool overtime = now - peer->first_ping >= timeout_period,
 		   timed_out = peer->first_ping && overtime;
@@ -1047,7 +1051,7 @@ static void NP_HandleBeating(NP_Message msg) {
 
 	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
-	NP_LastBeating = clock();
+	NP_LastBeating = NutPunch_TimeNS();
 
 	const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
 	const NutPunch_Peer old_master = NutPunch_MasterPeer();
@@ -1101,7 +1105,7 @@ static void NP_HandleBeating(NP_Message msg) {
 static void NP_HandleListing(NP_Message msg) {
 	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
-	NP_LastBeating = clock(); // TODO: replace with the latest advancement...
+	NP_LastBeating = NutPunch_TimeNS();
 
 	const size_t idlen = sizeof(NutPunch_LobbyId);
 	NP_Memzero(NP_Lobbies);
@@ -1118,7 +1122,7 @@ static void NP_HandleListing(NP_Message msg) {
 static void NP_HandleLobbyMetadata(NP_Message msg) {
 	if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
 		return;
-	NP_LastBeating = clock(); // TODO: replace with the latest advancement...
+	NP_LastBeating = NutPunch_TimeNS();
 
 	for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
 		if (NutPunch_Memcmp(NP_Lobbies[i].name, msg.data, sizeof(NutPunch_LobbyId)))
@@ -1150,7 +1154,7 @@ static void NP_HandleData(NP_Message msg) {
 		return;
 
 	NP_PeerInfo* const peer = &NP_Peers[peer_idx];
-	peer->last_ping = clock(); // TODO: replace with the latest advancement...
+	peer->last_ping = NutPunch_TimeNS();
 
 	const NP_PacketIndex index_as_recv = *(NP_PacketIndex*)msg.data;
 	msg.size -= sizeof(index_as_recv), msg.data += sizeof(index_as_recv);
@@ -1398,9 +1402,9 @@ void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
 }
 
 static void NP_NetworkUpdate() {
-	// TODO: replace with the latest advancement...
-	clock_t now = clock(), server_timeout = NUTPUNCH_SERVER_TIMEOUT_SECS * CLOCKS_PER_SEC,
-		peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * CLOCKS_PER_SEC;
+	NutPunch_Clock now = NutPunch_TimeNS(),
+		       server_timeout = NUTPUNCH_SERVER_TIMEOUT_SECS * NUTPUNCH_NS,
+		       peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * NUTPUNCH_NS;
 
 	if (now - NP_LastBeating >= server_timeout) {
 		NP_Warn("NutPuncher connection timed out!");
@@ -1408,7 +1412,7 @@ static void NP_NetworkUpdate() {
 	}
 
 	for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-		const clock_t diff = now - NP_Peers[i].last_ping;
+		const NutPunch_Clock diff = now - NP_Peers[i].last_ping;
 		const bool timed_out = diff >= peer_timeout;
 		if (i == NutPunch_LocalPeer())
 			continue;
@@ -1643,6 +1647,12 @@ const char* NutPunch_Basename(const char* path) {
 		if (path[i] == '/' || path[i] == '\\')
 			return &path[i + 1];
 	return path;
+}
+
+NutPunch_Clock NutPunch_TimeNS() {
+	struct timespec ts = {0};
+	timespec_get(&ts, TIME_UTC);
+	return ts.tv_sec * 1000000000 + ts.tv_nsec;
 }
 
 #ifdef NUTPUNCH_WINDOSE

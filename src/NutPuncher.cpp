@@ -32,7 +32,7 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
-constexpr const int64_t BEATS_PER_SECOND = 60, KEEP_ALIVE_SECONDS = 5, MAX_LOBBIES = 512;
+constexpr const uint64_t BEATS_PER_SECOND = 60, KEEP_ALIVE_SECONDS = 5, MAX_LOBBIES = 512;
 
 struct Lobby;
 static NP_Socket sock = NUTPUNCH_INVALID_SOCKET;
@@ -571,12 +571,12 @@ int main(int argc, char*[]) {
 	if (!bind_sock())
 		return EXIT_FAILURE;
 
-	constexpr const int64_t MIN_DELTA = CLOCKS_PER_SEC / BEATS_PER_SECOND;
+	constexpr const NutPunch_Clock MIN_DELTA = NUTPUNCH_NS / BEATS_PER_SECOND;
 	int result = 0;
 
 	NP_Info("Running on port %d", NUTPUNCH_SERVER_PORT);
 	for (;;) {
-		const int64_t start = clock();
+		const NutPunch_Clock start = NutPunch_TimeNS();
 
 		if (sock == NUTPUNCH_INVALID_SOCKET) {
 			NP_Warn("SOCKET DIED!!!");
@@ -600,9 +600,9 @@ int main(int argc, char*[]) {
 			return !lobby;
 		});
 
-		const int64_t delta = clock() - start, diff = MIN_DELTA - delta;
+		const NutPunch_Clock delta = NutPunch_TimeNS() - start, diff = MIN_DELTA - delta;
 		if (diff > 0)
-			NP_SleepMs((diff * 1000) / CLOCKS_PER_SEC);
+			NP_SleepMs((diff * 1000) / NUTPUNCH_NS);
 	}
 
 	return EXIT_SUCCESS;
