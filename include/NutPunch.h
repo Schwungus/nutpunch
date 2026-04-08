@@ -93,7 +93,7 @@ extern "C" {
 #include <stdint.h>
 #endif
 
-// we still depend on `time.h` through `NutPunch_TimeNS()`...
+// we still depend on `time.h` through `NutPunch_TimeNS()` and a few others...
 #include <time.h>
 
 /// The internal unique identifier for your peer. You don't actually interact with it in your code.
@@ -1658,7 +1658,6 @@ NutPunch_Clock NutPunch_TimeNS() {
 #ifdef NUTPUNCH_WINDOSE
 #define NP_SleepMs(ms) Sleep(ms)
 #else
-#include <time.h>
 static void NP_SleepMs(int ms) {
 	// Stolen from: <https://stackoverflow.com/a/1157217>
 	struct timespec ts = {0};

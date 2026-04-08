@@ -23,14 +23,13 @@
 //
 // For more information, please refer to <https://unlicense.org>
 
-#include <cstdint>
-#include <cstring>
-#include <ctime>
-#include <map>
-#include <string>
-
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
+
+#include <cstdint>
+#include <cstring>
+#include <map>
+#include <string>
 
 constexpr const uint64_t BEATS_PER_SECOND = 60, KEEP_ALIVE_SECONDS = 5, MAX_LOBBIES = 512;
 
