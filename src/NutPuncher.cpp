@@ -601,7 +601,7 @@ int main(int argc, char*[]) {
 
 		const NutPunch_Clock delta = NutPunch_TimeNS() - start, diff = MIN_DELTA - delta;
 		if (diff > 0)
-			NP_SleepMs((diff * 1000) / NUTPUNCH_NS);
+			NP_SleepMs(diff / (NUTPUNCH_NS / 1000));
 	}
 
 	return EXIT_SUCCESS;
