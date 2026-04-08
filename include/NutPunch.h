@@ -584,9 +584,8 @@ static void NP_CleanupPackets(NP_Data** queue) {
 static void NP_NukeLobbyData() {
 	NP_Closing = NP_Querying = false;
 	NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
-	NP_Memzero(NP_LobbyMetadata);
-	NP_Memzero(NP_PeerMetadata);
-	NP_Memzero(NP_Peers);
+	NP_Memzero(NP_LobbyMetadata), NP_Memzero(NP_PeerMetadata);
+	NP_Memzero(NP_Lobbies), NP_Memzero(NP_Peers);
 
 	for (int i = 0; i < NUTPUNCH_CHANNEL_COUNT; i++) {
 		NP_CleanupPackets(&NP_QueueIn[i]);
