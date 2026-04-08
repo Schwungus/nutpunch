@@ -559,8 +559,7 @@ struct Soque {
 };
 
 int main(int argc, char*[]) {
-	if (argc == 4) // deploy-script hack to print the server port
-	{
+	if (argc == 4) { // deploy-script hack to print the server port
 		std::printf("%d\n", NUTPUNCH_SERVER_PORT);
 		return EXIT_SUCCESS;
 	}
