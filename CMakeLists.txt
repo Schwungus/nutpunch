@@ -42,7 +42,8 @@ option(NUTPUNCH_BUILD_SERVER "Build NutPuncher?")
 if(NUTPUNCH_BUILD_SERVER)
     add_executable(NutPuncher ${SRC_DIR}/NutPuncher.cpp)
     set_target_properties(NutPuncher PROPERTIES
-        CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
+        CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON
+        C_STANDARD 11 C_STANDARD_REQUIRED ON)
     target_link_libraries(NutPuncher PRIVATE NutPunch)
     target_link_options(NutPuncher PRIVATE -static)
 endif()
