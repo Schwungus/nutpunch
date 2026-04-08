@@ -14,7 +14,7 @@ target_compile_definitions(NutPunch INTERFACE
     _WINSOCK_DEPRECATED_NO_WARNINGS=1)
 if(WIN32)
     target_link_options(NutPunch INTERFACE -static)
-    target_link_libraries(NutPunch INTERFACE ws2_32)
+    target_link_libraries(NutPunch INTERFACE ws2_32 winpthread)
 endif()
 
 option(NUTPUNCH_TRACING "Enable extra debug logging?")
