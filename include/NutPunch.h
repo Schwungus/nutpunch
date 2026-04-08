@@ -1649,6 +1649,15 @@ const char* NutPunch_Basename(const char* path) {
 	return path;
 }
 
+#ifndef TIME_UTC
+#define TIME_UTC 1
+static uint64_t timespec_get(struct timespec* ts, int base) {
+	if (base == TIME_UTC)
+		return clock_gettime(CLOCK_REALTIME, ts) ? 0 : base;
+	return 0;
+}
+#endif
+
 NutPunch_Clock NutPunch_TimeNS() {
 	struct timespec ts = {0};
 	timespec_get(&ts, TIME_UTC);
@@ -1667,10 +1676,10 @@ static void NP_SleepMs(int ms) {
 }
 #endif
 
-#endif
+#endif // NUTPUNCH_IMPLEMENTATION
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif
+#endif // NUTPUNCH_H
