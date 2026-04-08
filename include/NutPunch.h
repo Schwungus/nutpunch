@@ -205,39 +205,31 @@ NutPunch_UpdateStatus NutPunch_Update();
 /// Sends all queued outgoing packets early (before a `NutPunch_Update()`). Useful in niche cases.
 void NutPunch_Flush();
 
-/// Returns a piece of metadata. Obtain a `NutPunch_Metadata` pointer by calling
-/// `NutPunch_PeerMetadata()` or `NutPunch_LobbyMetadata()`
+/// Returns metadata from a lobby. Leave `lobby` as `NULL` to get metadata from the current lobby.
+/// Otherwise, if you used `NutPunch_FindLobbies()`, you can specify a lobby to get metadata from,
+/// as long as it is listed.
 ///
 /// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
 /// squeeze into a field.
-const void* NutPunch_GetVar(const NutPunch_Field* fields, const char* name, int* size);
+const void* NutPunch_GetLobbyData(NutPunch_LobbyId lobby, const char* name, int* size);
 
-/// Sets a piece of metadata. Doesn't do anything unless you're setting it on
-/// `NutPunch_PeerMetadata()` of the local peer, or on `NutPunch_LobbyMetadata()` of the lobby you
-/// are the master of.
+/// Returns metadata from a peer.
 ///
 /// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
 /// squeeze into a field.
-void NutPunch_SetVar(NutPunch_Field* fields, const char* name, int size, const void* data);
+const void* NutPunch_GetPeerData(NutPunch_Peer peer, const char* name, int* size);
 
-NutPunch_Field *NutPunch_PeerMetadata0(), *NutPunch_PeerMetadata1(NutPunch_Peer);
-NutPunch_Field *NutPunch_LobbyMetadata0(), *NutPunch_LobbyMetadata1(const char*);
-
-#define NUTPUNCH_01_ARG(_0, _1, NAME, ...) NAME
-
-/// Returns a peer's metadata table if they are alive, or NULL otherwise. Pass no args to get the
-/// local peer's metadata.
-#define NutPunch_PeerMetadata(...)                                                                 \
-	(NUTPUNCH_01_ARG("ignored", ##__VA_ARGS__, NutPunch_PeerMetadata1,                         \
-		NutPunch_PeerMetadata0)(__VA_ARGS__))
-
-/// Returns the lobby's metadata table if we are connected to one, or NULL otherwise.
+/// Sets metadata in the lobby. Doesn't do anything if you're not the master of the lobby.
 ///
-/// If you are querying lobbies via `NutPunch_FindLobbies()`, pass a lobby ID to request and
-/// retrieve that lobby's metadata.
-#define NutPunch_LobbyMetadata(...)                                                                \
-	(NUTPUNCH_01_ARG("ignored", ##__VA_ARGS__, NutPunch_LobbyMetadata1,                        \
-		NutPunch_LobbyMetadata0)(__VA_ARGS__))
+/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
+/// squeeze into a field.
+void NutPunch_SetLobbyData(const char* name, int size, const void* data);
+
+/// Sets metadata for the local peer.
+///
+/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
+/// squeeze into a field.
+void NutPunch_SetPeerData(const char* name, int size, const void* data);
 
 /// Set the maximum amount of channels this peer can receive from. Packets with an index higher than
 /// or equal to maximum channel count are discarded silently.
@@ -668,7 +660,35 @@ static int NP_FieldNameSize(const char* name) {
 	return NUTPUNCH_FIELD_NAME_MAX;
 }
 
-const void* NutPunch_GetVar(const NutPunch_Field* fields, const char* name, int* size) {
+static NutPunch_Field* NP_GetPeerFields(NutPunch_Peer peer) {
+	if (NutPunch_IsOnline() && peer == NutPunch_LocalPeer())
+		return NP_PeerMetadata;
+	else if (peer >= 0 && peer < NUTPUNCH_MAX_PLAYERS)
+		return NP_Peers[peer].metadata;
+	else
+		return NULL;
+}
+
+static int NP_SendDirectly(NP_AddrInfo, const void*, int);
+static NutPunch_Field* NP_GetLobbyFields(const char* name) {
+	if (name == NULL)
+		return NP_LobbyMetadata;
+
+	static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Ligma)] = "LGMA";
+	NutPunch_Memcpy(buf + sizeof(NP_Header), name, sizeof(NutPunch_LobbyId));
+	NP_SendDirectly(NP_PuncherAddr, buf, sizeof(buf));
+
+	for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
+		if (!NP_Lobbies[i].got_meta)
+			continue;
+		if (!NutPunch_Memcmp(NP_Lobbies[i].name, name, sizeof(NutPunch_LobbyId)))
+			return NP_Lobbies[i].metadata;
+	}
+
+	return NULL;
+}
+
+static const void* NP_GetVar(const NutPunch_Field* fields, const char* name, int* size) {
 	static uint8_t buf[NUTPUNCH_FIELD_DATA_MAX] = {0};
 	NP_Memzero(buf);
 
@@ -698,7 +718,7 @@ none:
 	return NULL;
 }
 
-void NutPunch_SetVar(NutPunch_Field* fields, const char* name, int size, const void* data) {
+static void NP_SetVar(NutPunch_Field* fields, const char* name, int size, const void* data) {
 	if (!fields)
 		return;
 
@@ -742,6 +762,22 @@ void NutPunch_SetVar(NutPunch_Field* fields, const char* name, int size, const v
 		field->size = size;
 		return;
 	}
+}
+
+const void* NutPunch_GetLobbyData(NutPunch_LobbyId lobby, const char* name, int* size) {
+	return NP_GetVar(NP_GetLobbyFields(lobby), name, size);
+}
+
+const void* NutPunch_GetPeerData(NutPunch_Peer peer, const char* name, int* size) {
+	return NP_GetVar(NP_GetPeerFields(peer), name, size);
+}
+
+void NutPunch_SetLobbyData(const char* name, int size, const void* data) {
+	NP_SetVar(NP_LobbyMetadata, name, size, data);
+}
+
+void NutPunch_SetPeerData(const char* name, int size, const void* data) {
+	NP_SetVar(NP_PeerMetadata, name, size, data);
 }
 
 static bool NP_ResolveNutpuncher() {
@@ -1606,38 +1642,6 @@ bool NutPunch_IsOnline() {
 
 bool NutPunch_IsReady() {
 	return NutPunch_LocalPeer() != NUTPUNCH_MAX_PLAYERS;
-}
-
-NutPunch_Field* NutPunch_PeerMetadata0() {
-	return NP_PeerMetadata;
-}
-
-NutPunch_Field* NutPunch_PeerMetadata1(NutPunch_Peer peer) {
-	if (NutPunch_IsOnline() && peer == NutPunch_LocalPeer())
-		return NP_PeerMetadata;
-	else if (peer >= 0 && peer < NUTPUNCH_MAX_PLAYERS)
-		return NP_Peers[peer].metadata;
-	else
-		return NULL;
-}
-
-NutPunch_Field* NutPunch_LobbyMetadata0() {
-	return NP_LobbyMetadata;
-}
-
-NutPunch_Field* NutPunch_LobbyMetadata1(const char* name) {
-	static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Ligma)] = "LGMA";
-	NutPunch_Memcpy(buf + sizeof(NP_Header), name, sizeof(NutPunch_LobbyId));
-	NP_SendDirectly(NP_PuncherAddr, buf, sizeof(buf));
-
-	for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
-		if (!NP_Lobbies[i].got_meta)
-			continue;
-		if (!NutPunch_Memcmp(NP_Lobbies[i].name, name, sizeof(NutPunch_LobbyId)))
-			return NP_Lobbies[i].metadata;
-	}
-
-	return NULL;
 }
 
 const char* NutPunch_Basename(const char* path) {
