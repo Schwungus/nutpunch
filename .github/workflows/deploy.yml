@@ -41,5 +41,6 @@ jobs:
             PORT=$($TMPPATH a b c)
             systemctl stop nutpuncher@$PORT || :
             cp $TMPPATH ${OUTPATH}-$PORT
+            systemctl enable nutpuncher@$PORT || :
             systemctl restart nutpuncher@$PORT
             echo Restarted the NutPuncher service on port $PORT
