@@ -116,8 +116,12 @@ static void send_shit() {
 static void move_our_dot() {
 	if (NutPunch_LocalPeer() == NUTPUNCH_MAX_PLAYERS)
 		return;
+
 	players[NutPunch_LocalPeer()].x += poor_key_down(POOR_D) - poor_key_down(POOR_A);
+	players[NutPunch_LocalPeer()].x += poor_key_down(POOR_KP_6) - poor_key_down(POOR_KP_4);
+
 	players[NutPunch_LocalPeer()].y += poor_key_down(POOR_S) - poor_key_down(POOR_W);
+	players[NutPunch_LocalPeer()].y += poor_key_down(POOR_KP_2) - poor_key_down(POOR_KP_8);
 }
 
 static void draw_debug_bits(int status) {
