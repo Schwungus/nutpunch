@@ -549,6 +549,8 @@ enum {
 	NP_HB_JoinExisting = 1 << 0,
 };
 
+static int NP_SendDirectly(NP_AddrInfo, const void*, int);
+
 static uint16_t* NP_AddrFamily(NP_AddrInfo* addr) {
 	return (uint16_t*)&addr->sin_family;
 }
@@ -669,12 +671,11 @@ static NutPunch_Field* NP_GetPeerFields(NutPunch_Peer peer) {
 		return NULL;
 }
 
-static int NP_SendDirectly(NP_AddrInfo, const void*, int);
 static NutPunch_Field* NP_GetLobbyFields(const char* name) {
 	if (name == NULL)
 		return NP_LobbyMetadata;
 
-	static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Ligma)] = "LGMA";
+	static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "LIST";
 	NutPunch_Memcpy(buf + sizeof(NP_Header), name, sizeof(NutPunch_LobbyId));
 	NP_SendDirectly(NP_PuncherAddr, buf, sizeof(buf));
 
