@@ -387,30 +387,30 @@ typedef int64_t NP_Socket;
 #define NutPunch_SNPrintF snprintf
 #endif
 
-#ifndef NutPunch_Malloc
+#if !defined(NutPunch_Malloc) && !defined(NutPunch_Free)
+
 #include <stdlib.h>
 #define NutPunch_Malloc malloc
-#endif
-
-#ifndef NutPunch_Free
-#include <stdlib.h>
 #define NutPunch_Free free
-#endif
 
-#ifndef NutPunch_Memcpy
+#elif !defined(NutPunch_Malloc) || !defined(NutPunch_Free)
+
+#error Define NutPunch_Malloc and NutPunch_Free together!
+
+#endif // NutPunch_{Malloc,Free}
+
+#if !defined(NutPunch_Memcpy) && !defined(NutPunch_Memset) && !defined(NutPunch_Memcmp)
+
 #include <string.h>
 #define NutPunch_Memcpy memcpy
-#endif
-
-#ifndef NutPunch_Memset
-#include <string.h>
 #define NutPunch_Memset memset
-#endif
-
-#ifndef NutPunch_Memcmp
-#include <string.h>
 #define NutPunch_Memcmp memcmp
-#endif
+
+#elif !defined(NutPunch_Memcpy) || !defined(NutPunch_Memset) || !defined(NutPunch_Memcmp)
+
+#error Define NutPunch_Mem{cpy,set,cmp} together!
+
+#endif // NutPunch_Mem*
 
 #define NP_Memzero(array) NutPunch_Memset(array, 0, sizeof(array))
 #define NP_MemzeroRef(ref) NutPunch_Memset(&(ref), 0, sizeof(ref))
