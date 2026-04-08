@@ -211,7 +211,7 @@ void NutPunch_Flush();
 ///
 /// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
 /// squeeze into a field.
-const void* NutPunch_GetLobbyData(NutPunch_LobbyId lobby, const char* name, int* size);
+const void* NutPunch_GetLobbyData(const NutPunch_LobbyId lobby, const char* name, int* size);
 
 /// Returns metadata from a peer.
 ///
@@ -765,7 +765,7 @@ static void NP_SetVar(NutPunch_Field* fields, const char* name, int size, const 
 	}
 }
 
-const void* NutPunch_GetLobbyData(NutPunch_LobbyId lobby, const char* name, int* size) {
+const void* NutPunch_GetLobbyData(const NutPunch_LobbyId lobby, const char* name, int* size) {
 	return NP_GetVar(NP_GetLobbyFields(lobby), name, size);
 }
 
