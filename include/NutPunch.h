@@ -1144,8 +1144,7 @@ static void NP_HandleListing(NP_Message msg) {
 		return;
 	NP_LastBeating = NutPunch_TimeNS();
 
-	const size_t idlen = sizeof(NutPunch_LobbyId);
-	NP_Memzero(NP_Lobbies);
+	static const size_t idlen = sizeof(NutPunch_LobbyId);
 
 	for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
 		NP_Lobbies[i].players = *(uint8_t*)(msg.data++);
