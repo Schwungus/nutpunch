@@ -1649,6 +1649,7 @@ const char* NutPunch_Basename(const char* path) {
 	return path;
 }
 
+// `TIME_UTC` & `timespec_get` polyfill for picky compilers.
 #ifndef TIME_UTC
 #define TIME_UTC 1
 static uint64_t timespec_get(struct timespec* ts, int base) {
