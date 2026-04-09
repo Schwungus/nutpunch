@@ -8,8 +8,7 @@ trim_trailing_whitespace = true
 indent_style = space
 
 [*.{c,cpp,h}]
-indent_size = 8
-indent_style = tab
+indent_size = 4
 
 [CMakeLists.txt]
 indent_size = 4

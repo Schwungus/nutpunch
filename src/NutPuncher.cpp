@@ -38,578 +38,578 @@ static NP_Socket sock = NUTPUNCH_INVALID_SOCKET;
 static std::map<std::string, Lobby> lobbies;
 
 template <typename T> static bool is_memzero(const T& x) {
-	static constexpr const char zero[sizeof(T)] = {0};
-	return !std::memcmp((char*)&x, zero, sizeof(zero));
+    static constexpr const char zero[sizeof(T)] = {0};
+    return !std::memcmp((char*)&x, zero, sizeof(zero));
 }
 
 static const char* fmt_lobby_id(const char* id) {
-	static char buf[sizeof(NutPunch_LobbyId) + 1] = {0};
+    static char buf[sizeof(NutPunch_LobbyId) + 1] = {0};
 
-	for (int i = 0; i < sizeof(NutPunch_LobbyId); i++) {
-		const char c = id[i];
-		const bool alpha = c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z',
-			   numeric = c >= '0' && c <= '9';
-		if (alpha || numeric || c == '-' || c == '_') {
-			buf[i] = c;
-		} else if (!c) {
-			buf[i] = 0;
-			return buf;
-		} else {
-			buf[i] = ' ';
-		}
-	}
+    for (int i = 0; i < sizeof(NutPunch_LobbyId); i++) {
+        const char c = id[i];
+        const bool alpha = c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z',
+                   numeric = c >= '0' && c <= '9';
+        if (alpha || numeric || c == '-' || c == '_') {
+            buf[i] = c;
+        } else if (!c) {
+            buf[i] = 0;
+            return buf;
+        } else {
+            buf[i] = ' ';
+        }
+    }
 
-	for (int i = sizeof(NutPunch_LobbyId); i > 0; i--) {
-		if (buf[i - 1] != ' ' && buf[i - 1] != 0) {
-			buf[i] = 0;
-			return buf;
-		}
-	}
+    for (int i = sizeof(NutPunch_LobbyId); i > 0; i--) {
+        if (buf[i - 1] != ' ' && buf[i - 1] != 0) {
+            buf[i] = 0;
+            return buf;
+        }
+    }
 
-	return buf;
+    return buf;
 }
 
 struct Field : NutPunch_Field {
-	Field() {
-		reset();
-	}
+    Field() {
+        reset();
+    }
 
-	explicit operator bool() const {
-		return size && !is_memzero(name);
-	}
+    explicit operator bool() const {
+        return size && !is_memzero(name);
+    }
 
-	bool named(const char* name) const {
-		if (!name || !*name || !*this)
-			return false;
+    bool named(const char* name) const {
+        if (!name || !*name || !*this)
+            return false;
 
-		int arg_len = static_cast<int>(std::strlen(name));
-		if (arg_len > NUTPUNCH_FIELD_NAME_MAX)
-			arg_len = NUTPUNCH_FIELD_NAME_MAX;
+        int arg_len = static_cast<int>(std::strlen(name));
+        if (arg_len > NUTPUNCH_FIELD_NAME_MAX)
+            arg_len = NUTPUNCH_FIELD_NAME_MAX;
 
-		int our_len = NUTPUNCH_FIELD_NAME_MAX;
-		for (int i = 1; i < NUTPUNCH_FIELD_NAME_MAX; i++) {
-			if (!this->name[i]) {
-				our_len = i;
-				break;
-			}
-		}
+        int our_len = NUTPUNCH_FIELD_NAME_MAX;
+        for (int i = 1; i < NUTPUNCH_FIELD_NAME_MAX; i++) {
+            if (!this->name[i]) {
+                our_len = i;
+                break;
+            }
+        }
 
-		return our_len == arg_len && !std::memcmp(this->name, name, our_len);
-	}
+        return our_len == arg_len && !std::memcmp(this->name, name, our_len);
+    }
 
-	void reset() {
-		std::memset(name, 0, sizeof(name));
-		std::memset(data, 0, sizeof(data));
-		size = 0;
-	}
+    void reset() {
+        std::memset(name, 0, sizeof(name));
+        std::memset(data, 0, sizeof(data));
+        size = 0;
+    }
 };
 
 struct Metadata {
-	Field fields[NUTPUNCH_MAX_FIELDS];
+    Field fields[NUTPUNCH_MAX_FIELDS];
 
-	Metadata() {
-		reset();
-	}
+    Metadata() {
+        reset();
+    }
 
-	Field* find(const char* name) {
-		const int idx = index_of(name);
-		return NUTPUNCH_MAX_FIELDS == idx ? nullptr : &fields[idx];
-	}
+    Field* find(const char* name) {
+        const int idx = index_of(name);
+        return NUTPUNCH_MAX_FIELDS == idx ? nullptr : &fields[idx];
+    }
 
-	void insert(const Field& field) {
-		if (!field.size)
-			return;
+    void insert(const Field& field) {
+        if (!field.size)
+            return;
 
-		const int idx = index_of(field.name);
-		if (NUTPUNCH_MAX_FIELDS == idx)
-			return;
+        const int idx = index_of(field.name);
+        if (NUTPUNCH_MAX_FIELDS == idx)
+            return;
 
-		int name_size = static_cast<int>(std::strlen(field.name));
-		if (name_size > NUTPUNCH_FIELD_NAME_MAX)
-			name_size = NUTPUNCH_FIELD_NAME_MAX;
+        int name_size = static_cast<int>(std::strlen(field.name));
+        if (name_size > NUTPUNCH_FIELD_NAME_MAX)
+            name_size = NUTPUNCH_FIELD_NAME_MAX;
 
-		int data_size = field.size;
-		if (data_size > NUTPUNCH_FIELD_DATA_MAX)
-			data_size = NUTPUNCH_FIELD_DATA_MAX;
+        int data_size = field.size;
+        if (data_size > NUTPUNCH_FIELD_DATA_MAX)
+            data_size = NUTPUNCH_FIELD_DATA_MAX;
 
-		auto& target = fields[idx];
-		std::memcpy(target.name, field.name, name_size);
-		std::memcpy(target.data, field.data, data_size);
-		target.size = data_size;
-	}
+        auto& target = fields[idx];
+        std::memcpy(target.name, field.name, name_size);
+        std::memcpy(target.data, field.data, data_size);
+        target.size = data_size;
+    }
 
-	void load(const char* ptr) {
-		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
-			insert(reinterpret_cast<const Field*>(ptr)[i]);
-	}
+    void load(const char* ptr) {
+        for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
+            insert(reinterpret_cast<const Field*>(ptr)[i]);
+    }
 
-	void reset() {
-		std::memset(fields, 0, sizeof(fields));
-	}
+    void reset() {
+        std::memset(fields, 0, sizeof(fields));
+    }
 
-private:
-	int index_of(const char* name) {
-		if (!name || !*name)
-			return NUTPUNCH_MAX_FIELDS;
+  private:
+    int index_of(const char* name) {
+        if (!name || !*name)
+            return NUTPUNCH_MAX_FIELDS;
 
-		// first matching
-		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
-			if (fields[i].named(name))
-				return i;
+        // first matching
+        for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
+            if (fields[i].named(name))
+                return i;
 
-		// or first uninitialized
-		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
-			if (!fields[i])
-				return i;
+        // or first uninitialized
+        for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
+            if (!fields[i])
+                return i;
 
-		return NUTPUNCH_MAX_FIELDS; // or bust
-	}
+        return NUTPUNCH_MAX_FIELDS; // or bust
+    }
 };
 
 struct AddrInfo : NP_AddrInfo {
-	AddrInfo() {
-		reset();
-	}
+    AddrInfo() {
+        reset();
+    }
 
-	void reset() {
-		std::memset(this, 0, sizeof(*this));
-	}
+    void reset() {
+        std::memset(this, 0, sizeof(*this));
+    }
 
-	template <typename T, typename Size> int send(const T buf[], Size size) const {
-		const auto* cbuf = reinterpret_cast<const char*>(buf);
-		const auto* csock = reinterpret_cast<const sockaddr*>(this);
-		const auto csize = static_cast<int>(size);
-		return sendto(sock, cbuf, csize, 0, csock, sizeof(*this));
-	}
+    template <typename T, typename Size> int send(const T buf[], Size size) const {
+        const auto* cbuf = reinterpret_cast<const char*>(buf);
+        const auto* csock = reinterpret_cast<const sockaddr*>(this);
+        const auto csize = static_cast<int>(size);
+        return sendto(sock, cbuf, csize, 0, csock, sizeof(*this));
+    }
 
-	void gtfo(uint8_t error) const {
-		static uint8_t buf[sizeof(NP_Header) + 1] = "GTFO";
-		buf[sizeof(NP_Header)] = error;
-		for (int i = 0; i < 5; i++)
-			send(buf, sizeof(buf));
-	}
+    void gtfo(uint8_t error) const {
+        static uint8_t buf[sizeof(NP_Header) + 1] = "GTFO";
+        buf[sizeof(NP_Header)] = error;
+        for (int i = 0; i < 5; i++)
+            send(buf, sizeof(buf));
+    }
 
-	void dump(uint8_t* ptr) const {
-		std::memcpy(ptr, &sin_addr, 4), ptr += 4;
-		std::memcpy(ptr, &sin_port, 2), ptr += 2;
-	}
+    void dump(uint8_t* ptr) const {
+        std::memcpy(ptr, &sin_addr, 4), ptr += 4;
+        std::memcpy(ptr, &sin_port, 2), ptr += 2;
+    }
 
-	void load(uint8_t* ptr) {
-		std::memcpy(&sin_addr, ptr, 4), ptr += 4;
-		std::memcpy(&sin_port, ptr, 2), ptr += 2;
-	}
+    void load(uint8_t* ptr) {
+        std::memcpy(&sin_addr, ptr, 4), ptr += 4;
+        std::memcpy(&sin_port, ptr, 2), ptr += 2;
+    }
 };
 
 static bool operator==(const NP_AddrInfo& a, const NP_AddrInfo& b) {
-	return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port;
+    return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port;
 }
 
 struct Player {
-	NutPunch_PeerId id;
-	AddrInfo pub, internal;
-	std::uint32_t countdown = 0;
+    NutPunch_PeerId id;
+    AddrInfo pub, internal;
+    std::uint32_t countdown = 0;
 
-	Player() {}
+    Player() {}
 
-	explicit operator bool() const {
-		return countdown > 0 && !is_memzero(id);
-	}
+    explicit operator bool() const {
+        return countdown > 0 && !is_memzero(id);
+    }
 
-	void reset() {
-		std::memset(id, 0, sizeof(id));
-		pub.reset(), internal.reset(), countdown = 0;
-	}
+    void reset() {
+        std::memset(id, 0, sizeof(id));
+        pub.reset(), internal.reset(), countdown = 0;
+    }
 };
 
 struct Lobby {
-	NutPunch_LobbyId id = {0};
-	uint8_t capacity = NUTPUNCH_MAX_PLAYERS;
-	Player players[NUTPUNCH_MAX_PLAYERS] = {};
-	Metadata metadata;
+    NutPunch_LobbyId id = {0};
+    uint8_t capacity = NUTPUNCH_MAX_PLAYERS;
+    Player players[NUTPUNCH_MAX_PLAYERS] = {};
+    Metadata metadata;
 
-	Lobby() {}
+    Lobby() {}
 
-	Lobby(const std::string& id) {
-		std::memcpy(this->id, id.c_str(), sizeof(this->id));
-	}
+    Lobby(const std::string& id) {
+        std::memcpy(this->id, id.c_str(), sizeof(this->id));
+    }
 
-	const char* fmt_id() const {
-		return fmt_lobby_id(id);
-	}
+    const char* fmt_id() const {
+        return fmt_lobby_id(id);
+    }
 
-	void update() {
-		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (players[i])
-				tick(i);
-			if (players[i])
-				beat(i);
-		}
-	}
+    void update() {
+        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+            if (players[i])
+                tick(i);
+            if (players[i])
+                beat(i);
+        }
+    }
 
-	explicit operator bool() const {
-		return gamers() > 0;
-	}
+    explicit operator bool() const {
+        return gamers() > 0;
+    }
 
-	NutPunch_Peer index_of(const NutPunch_PeerId id) const {
-		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (players[i] && !std::memcmp(id, players[i].id, sizeof(NutPunch_PeerId)))
-				return i;
-		return NUTPUNCH_MAX_PLAYERS;
-	}
+    NutPunch_Peer index_of(const NutPunch_PeerId id) const {
+        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+            if (players[i] && !std::memcmp(id, players[i].id, sizeof(NutPunch_PeerId)))
+                return i;
+        return NUTPUNCH_MAX_PLAYERS;
+    }
 
-	NutPunch_Peer next_dead() const {
-		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (!players[i])
-				return i;
-		return NUTPUNCH_MAX_PLAYERS;
-	}
+    NutPunch_Peer next_dead() const {
+        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+            if (!players[i])
+                return i;
+        return NUTPUNCH_MAX_PLAYERS;
+    }
 
-	bool has(const NutPunch_PeerId id) const {
-		return index_of(id) != NUTPUNCH_MAX_PLAYERS;
-	}
+    bool has(const NutPunch_PeerId id) const {
+        return index_of(id) != NUTPUNCH_MAX_PLAYERS;
+    }
 
-	NutPunch_Peer gamers() const {
-		NutPunch_Peer count = 0;
-		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-			if (players[i])
-				count++;
-		return count;
-	}
+    NutPunch_Peer gamers() const {
+        NutPunch_Peer count = 0;
+        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+            if (players[i])
+                count++;
+        return count;
+    }
 
-	void accept(const NutPunch_PeerId id, const AddrInfo& pub, const AddrInfo& internal,
-		const NP_HeartbeatFlagsStorage flags, const char* meta) {
-		NutPunch_Peer idx = index_of(id);
-		bool just_joined = false;
+    void accept(const NutPunch_PeerId id, const AddrInfo& pub, const AddrInfo& internal,
+        const NP_HeartbeatFlagsStorage flags, const char* meta) {
+        NutPunch_Peer idx = index_of(id);
+        bool just_joined = false;
 
-		if (idx == NUTPUNCH_MAX_PLAYERS)
-			idx = next_dead(), just_joined = true;
+        if (idx == NUTPUNCH_MAX_PLAYERS)
+            idx = next_dead(), just_joined = true;
 
-		if (idx == NUTPUNCH_MAX_PLAYERS) {
-			pub.gtfo(NPE_LobbyFull);
-			return;
-		}
+        if (idx == NUTPUNCH_MAX_PLAYERS) {
+            pub.gtfo(NPE_LobbyFull);
+            return;
+        }
 
-		if (just_joined)
-			NP_Info("Player %d joined lobby '%s'", idx + 1, fmt_id());
+        if (just_joined)
+            NP_Info("Player %d joined lobby '%s'", idx + 1, fmt_id());
 
-		auto& player = players[idx];
-		std::memcpy(player.id, id, sizeof(NutPunch_PeerId));
-		player.pub = pub, player.internal = internal;
-		player.countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND;
+        auto& player = players[idx];
+        std::memcpy(player.id, id, sizeof(NutPunch_PeerId));
+        player.pub = pub, player.internal = internal;
+        player.countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND;
 
-		if (idx == master()) {
-			capacity = 1 + (flags >> 4);
-			metadata.load(meta);
-		}
-	}
+        if (idx == master()) {
+            capacity = 1 + (flags >> 4);
+            metadata.load(meta);
+        }
+    }
 
-	void tick(const NutPunch_Peer idx) {
-		auto& plr = players[idx];
-		plr.countdown--;
-		if (plr)
-			return;
-		NP_Warn("Player %d timed out", idx + 1);
-		plr.reset();
-	}
+    void tick(const NutPunch_Peer idx) {
+        auto& plr = players[idx];
+        plr.countdown--;
+        if (plr)
+            return;
+        NP_Warn("Player %d timed out", idx + 1);
+        plr.reset();
+    }
 
-	void beat(const NutPunch_Peer idx) {
-		static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)] = "BEAT";
-		uint8_t* ptr = buf + sizeof(NP_Header);
+    void beat(const NutPunch_Peer idx) {
+        static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)] = "BEAT";
+        uint8_t* ptr = buf + sizeof(NP_Header);
 
-		*ptr++ = idx;
-		*ptr++ = master();
-		*ptr++ = capacity;
+        *ptr++ = idx;
+        *ptr++ = master();
+        *ptr++ = capacity;
 
-		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			players[i].pub.dump(ptr);
-			ptr += sizeof(NP_PeerAddr);
+        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+            players[i].pub.dump(ptr);
+            ptr += sizeof(NP_PeerAddr);
 
-			players[i].internal.dump(ptr);
-			ptr += sizeof(NP_PeerAddr);
-		}
+            players[i].internal.dump(ptr);
+            ptr += sizeof(NP_PeerAddr);
+        }
 
-		std::memcpy(ptr, &metadata, sizeof(Metadata));
-		ptr += sizeof(Metadata);
+        std::memcpy(ptr, &metadata, sizeof(Metadata));
+        ptr += sizeof(Metadata);
 
-		auto& player = players[idx];
-		if (player.pub.send(buf, ptr - buf) <= 0) {
-			NP_Warn("Player %d lost connection", idx + 1);
-			player.reset();
-		}
-	}
+        auto& player = players[idx];
+        if (player.pub.send(buf, ptr - buf) <= 0) {
+            NP_Warn("Player %d lost connection", idx + 1);
+            player.reset();
+        }
+    }
 
-	bool kill_bro(const NutPunch_PeerId id) {
-		for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-			if (!players[i] || std::memcmp(players[i].id, id, sizeof(NutPunch_PeerId)))
-				continue;
-			NP_Info("Player %d disconnected gracefully", i + 1);
-			players[i].reset();
-			return true;
-		}
-		return false;
-	}
+    bool kill_bro(const NutPunch_PeerId id) {
+        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+            if (!players[i] || std::memcmp(players[i].id, id, sizeof(NutPunch_PeerId)))
+                continue;
+            NP_Info("Player %d disconnected gracefully", i + 1);
+            players[i].reset();
+            return true;
+        }
+        return false;
+    }
 
-	NutPunch_Peer master() {
-		if (master_idx < NUTPUNCH_MAX_PLAYERS && players[master_idx])
-			return master_idx;
-		for (master_idx = 0; master_idx < NUTPUNCH_MAX_PLAYERS; master_idx++)
-			if (players[master_idx])
-				break;
-		return master_idx;
-	}
+    NutPunch_Peer master() {
+        if (master_idx < NUTPUNCH_MAX_PLAYERS && players[master_idx])
+            return master_idx;
+        for (master_idx = 0; master_idx < NUTPUNCH_MAX_PLAYERS; master_idx++)
+            if (players[master_idx])
+                break;
+        return master_idx;
+    }
 
-private:
-	NutPunch_Peer master_idx = NUTPUNCH_MAX_PLAYERS;
+  private:
+    NutPunch_Peer master_idx = NUTPUNCH_MAX_PLAYERS;
 };
 
 static bool bind_sock() {
-	AddrInfo addr;
+    AddrInfo addr;
 
-	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (sock == NUTPUNCH_INVALID_SOCKET) {
-		const int err = NP_SockError();
-		NP_Warn("Failed to create the underlying UDP socket (%d)", err);
-		return false;
-	}
+    sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock == NUTPUNCH_INVALID_SOCKET) {
+        const int err = NP_SockError();
+        NP_Warn("Failed to create the underlying UDP socket (%d)", err);
+        return false;
+    }
 
-	if (!NP_MakeReuseAddr(sock)) {
-		const int err = NP_SockError();
-		NP_Warn("Failed to set socket reuseaddr option (%d)", err);
-		goto sockfail;
-	}
+    if (!NP_MakeReuseAddr(sock)) {
+        const int err = NP_SockError();
+        NP_Warn("Failed to set socket reuseaddr option (%d)", err);
+        goto sockfail;
+    }
 
-	if (!NP_MakeNonblocking(sock)) {
-		const int err = NP_SockError();
-		NP_Warn("Failed to set socket to non-blocking mode (%d)", err);
-		goto sockfail;
-	}
+    if (!NP_MakeNonblocking(sock)) {
+        const int err = NP_SockError();
+        NP_Warn("Failed to set socket to non-blocking mode (%d)", err);
+        goto sockfail;
+    }
 
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(NUTPUNCH_SERVER_PORT);
-	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(NUTPUNCH_SERVER_PORT);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-	if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
-		NP_Info("Bound to port %d", NUTPUNCH_SERVER_PORT);
-		return true;
-	}
+    if (!bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr))) {
+        NP_Info("Bound to port %d", NUTPUNCH_SERVER_PORT);
+        return true;
+    }
 
-	NP_Warn("Failed to bind an IPv4 socket (%d)", NP_SockError());
+    NP_Warn("Failed to bind an IPv4 socket (%d)", NP_SockError());
 sockfail:
-	NP_NukeSocket(&sock);
-	return false;
+    NP_NukeSocket(&sock);
+    return false;
 }
 
 static bool create_lobby(const char* id, const AddrInfo& pub) {
-	if (lobbies.size() >= MAX_LOBBIES) {
-		pub.gtfo(NPE_NoSuchLobby);
-		NP_Warn("Reached lobby limit");
-		return false;
-	}
+    if (lobbies.size() >= MAX_LOBBIES) {
+        pub.gtfo(NPE_NoSuchLobby);
+        NP_Warn("Reached lobby limit");
+        return false;
+    }
 
-	// Match against existing peers to prevent creating multiple lobbies
-	// with the same master.
-	for (const auto& [lobby_id, lobby] : lobbies) {
-		for (const auto& player : lobby.players)
-			if (player && player.pub == pub)
-				return true; // fuck you...
-	}
+    // Match against existing peers to prevent creating multiple lobbies
+    // with the same master.
+    for (const auto& [lobby_id, lobby] : lobbies) {
+        for (const auto& player : lobby.players)
+            if (player && player.pub == pub)
+                return true; // fuck you...
+    }
 
-	lobbies.insert({id, Lobby(id)});
-	NP_Info("Created lobby '%s'", fmt_lobby_id(id));
-	return true;
+    lobbies.insert({id, Lobby(id)});
+    NP_Info("Created lobby '%s'", fmt_lobby_id(id));
+    return true;
 }
 
 static void send_lobbies(AddrInfo addr, const char* target_id) {
-	static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Ligma)] = "LGMA";
-	std::memcpy(buf + sizeof(NP_Header), target_id, sizeof(NutPunch_LobbyId));
+    static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Ligma)] = "LGMA";
+    std::memcpy(buf + sizeof(NP_Header), target_id, sizeof(NutPunch_LobbyId));
 
-	for (const auto& [id, lobby] : lobbies) {
-		if (id != target_id)
-			continue;
-		std::memcpy(buf + sizeof(NP_Header) + sizeof(NutPunch_LobbyId),
-			lobby.metadata.fields, sizeof(NutPunch_Metadata));
-		addr.send(buf, sizeof(buf));
-		break;
-	}
+    for (const auto& [id, lobby] : lobbies) {
+        if (id != target_id)
+            continue;
+        std::memcpy(buf + sizeof(NP_Header) + sizeof(NutPunch_LobbyId), lobby.metadata.fields,
+            sizeof(NutPunch_Metadata));
+        addr.send(buf, sizeof(buf));
+        break;
+    }
 }
 
 static void send_lobbies(AddrInfo addr) {
-	static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Listing)] = "LIST";
-	uint8_t* ptr = buf + sizeof(NP_Header);
+    static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Listing)] = "LIST";
+    uint8_t* ptr = buf + sizeof(NP_Header);
 
-	std::memset(ptr, 0, sizeof(NP_Listing));
-	size_t count = 0;
+    std::memset(ptr, 0, sizeof(NP_Listing));
+    size_t count = 0;
 
-	for (const auto& [id, lobby] : lobbies) {
-		*ptr++ = lobby.gamers(), *ptr++ = lobby.capacity;
-		std::memset(ptr, 0, sizeof(NutPunch_LobbyId));
-		std::memcpy(ptr, id.data(), std::strlen(lobby.fmt_id()));
-		ptr += sizeof(NutPunch_LobbyId);
+    for (const auto& [id, lobby] : lobbies) {
+        *ptr++ = lobby.gamers(), *ptr++ = lobby.capacity;
+        std::memset(ptr, 0, sizeof(NutPunch_LobbyId));
+        std::memcpy(ptr, id.data(), std::strlen(lobby.fmt_id()));
+        ptr += sizeof(NutPunch_LobbyId);
 
-		if (++count >= NUTPUNCH_MAX_SEARCH_RESULTS)
-			break;
-	}
+        if (++count >= NUTPUNCH_MAX_SEARCH_RESULTS)
+            break;
+    }
 
-	for (int i = 0; i < 5; i++)
-		addr.send(buf, sizeof(buf));
+    for (int i = 0; i < 5; i++)
+        addr.send(buf, sizeof(buf));
 }
 
 static void kill_bro(const NutPunch_PeerId bro) {
-	for (auto& [id, lobby] : lobbies)
-		if (lobby.kill_bro(bro))
-			break;
+    for (auto& [id, lobby] : lobbies)
+        if (lobby.kill_bro(bro))
+            break;
 }
 
 constexpr const int RecvKeepGoing = 0, RecvDone = -1;
 
 static int receive() {
-	if (sock == NUTPUNCH_INVALID_SOCKET)
-		return RecvDone;
+    if (sock == NUTPUNCH_INVALID_SOCKET)
+        return RecvDone;
 
-	char heartbeat[NUTPUNCH_BUFFER_SIZE] = {0};
+    char heartbeat[NUTPUNCH_BUFFER_SIZE] = {0};
 
-	AddrInfo pub;
-	auto* c_addr = reinterpret_cast<sockaddr*>(&pub);
-	socklen_t addr_size = sizeof(pub);
+    AddrInfo pub;
+    auto* c_addr = reinterpret_cast<sockaddr*>(&pub);
+    socklen_t addr_size = sizeof(pub);
 
-	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, c_addr, &addr_size);
-	if (rcv < 0) {
-		switch (NP_SockError()) {
-		case NP_TooFat:
-			NP_Trace("FAT PACKET");
-		case NP_ConnReset:
-			return RecvKeepGoing;
-		case NP_WouldBlock:
-			return RecvDone;
-		default:
-			const int err = NP_SockError();
-			NP_Trace("RECV ERROR %d", err);
-			return err;
-		}
-	}
+    int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, c_addr, &addr_size);
+    if (rcv < 0) {
+        switch (NP_SockError()) {
+        case NP_TooFat:
+            NP_Trace("FAT PACKET");
+        case NP_ConnReset:
+            return RecvKeepGoing;
+        case NP_WouldBlock:
+            return RecvDone;
+        default:
+            const int err = NP_SockError();
+            NP_Trace("RECV ERROR %d", err);
+            return err;
+        }
+    }
 
-	rcv -= sizeof(NP_Header);
-	if (rcv < 0)
-		return RecvKeepGoing; // junk...
+    rcv -= sizeof(NP_Header);
+    if (rcv < 0)
+        return RecvKeepGoing; // junk...
 
-	const char* ptr = heartbeat + sizeof(NP_Header);
+    const char* ptr = heartbeat + sizeof(NP_Header);
 
-	if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header))) {
-		if (rcv == sizeof(NutPunch_LobbyId)) {
-			send_lobbies(pub, ptr);
-		} else if (rcv == 0) {
-			send_lobbies(pub);
-		} else {
-			// junk...
-		}
+    if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header))) {
+        if (rcv == sizeof(NutPunch_LobbyId)) {
+            send_lobbies(pub, ptr);
+        } else if (rcv == 0) {
+            send_lobbies(pub);
+        } else {
+            // junk...
+        }
 
-		return RecvKeepGoing;
-	}
+        return RecvKeepGoing;
+    }
 
-	if (rcv >= sizeof(NutPunch_PeerId) && !std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {
-		kill_bro(ptr);
-		return RecvKeepGoing;
-	}
+    if (rcv >= sizeof(NutPunch_PeerId) && !std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {
+        kill_bro(ptr);
+        return RecvKeepGoing;
+    }
 
-	if (rcv != sizeof(NP_Heartbeat))
-		return RecvKeepGoing; // most likely junk...
-	if (std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
-		return RecvKeepGoing;
+    if (rcv != sizeof(NP_Heartbeat))
+        return RecvKeepGoing; // most likely junk...
+    if (std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
+        return RecvKeepGoing;
 
-	static NutPunch_PeerId peer_id = {0};
-	std::memcpy(peer_id, ptr, sizeof(NutPunch_PeerId));
-	ptr += sizeof(NutPunch_PeerId);
+    static NutPunch_PeerId peer_id = {0};
+    std::memcpy(peer_id, ptr, sizeof(NutPunch_PeerId));
+    ptr += sizeof(NutPunch_PeerId);
 
-	static char lobby_id[sizeof(NutPunch_LobbyId) + 1] = {0};
-	std::memcpy(lobby_id, ptr, sizeof(NutPunch_LobbyId));
-	ptr += sizeof(NutPunch_LobbyId);
+    static char lobby_id[sizeof(NutPunch_LobbyId) + 1] = {0};
+    std::memcpy(lobby_id, ptr, sizeof(NutPunch_LobbyId));
+    ptr += sizeof(NutPunch_LobbyId);
 
-	AddrInfo internal;
-	internal.load((uint8_t*)ptr);
-	ptr += sizeof(NP_PeerAddr);
+    AddrInfo internal;
+    internal.load((uint8_t*)ptr);
+    ptr += sizeof(NP_PeerAddr);
 
-	auto flags = *(const NP_HeartbeatFlagsStorage*)ptr;
-	ptr += sizeof(flags);
+    auto flags = *(const NP_HeartbeatFlagsStorage*)ptr;
+    ptr += sizeof(flags);
 
-	NutPunch_ErrorCode err = NPE_Ok;
+    NutPunch_ErrorCode err = NPE_Ok;
 
-	if (lobbies.count(lobby_id)) {
-		if (!(flags & NP_HB_JoinExisting) && !lobbies[lobby_id].has(peer_id))
-			err = NPE_LobbyExists;
-	} else if (flags & NP_HB_JoinExisting) {
-		err = NPE_NoSuchLobby;
-	} else if (!create_lobby(lobby_id, pub)) {
-		return RecvKeepGoing;
-	}
+    if (lobbies.count(lobby_id)) {
+        if (!(flags & NP_HB_JoinExisting) && !lobbies[lobby_id].has(peer_id))
+            err = NPE_LobbyExists;
+    } else if (flags & NP_HB_JoinExisting) {
+        err = NPE_NoSuchLobby;
+    } else if (!create_lobby(lobby_id, pub)) {
+        return RecvKeepGoing;
+    }
 
-	if (err == NPE_Ok)
-		lobbies[lobby_id].accept(peer_id, pub, internal, flags, ptr);
-	else
-		pub.gtfo(err);
+    if (err == NPE_Ok)
+        lobbies[lobby_id].accept(peer_id, pub, internal, flags, ptr);
+    else
+        pub.gtfo(err);
 
-	return RecvKeepGoing;
+    return RecvKeepGoing;
 }
 
 struct Soque {
-	Soque() {
+    Soque() {
 #ifdef NUTPUNCH_WINDOSE
-		WSADATA _bitch = {0};
-		WSAStartup(MAKEWORD(2, 2), &_bitch);
+        WSADATA _bitch = {0};
+        WSAStartup(MAKEWORD(2, 2), &_bitch);
 #endif
-	}
+    }
 
-	~Soque() {
-		NP_NukeSocket(&sock);
+    ~Soque() {
+        NP_NukeSocket(&sock);
 #ifdef NUTPUNCH_WINDOSE
-		WSACleanup();
+        WSACleanup();
 #endif
-	}
+    }
 };
 
 int main(int argc, char*[]) {
-	if (argc == 4) { // deploy-script hack to print the server port
-		std::printf("%d\n", NUTPUNCH_SERVER_PORT);
-		return EXIT_SUCCESS;
-	}
+    if (argc == 4) { // deploy-script hack to print the server port
+        std::printf("%d\n", NUTPUNCH_SERVER_PORT);
+        return EXIT_SUCCESS;
+    }
 
-	Soque _init;
+    Soque _init;
 
-	if (!bind_sock())
-		return EXIT_FAILURE;
+    if (!bind_sock())
+        return EXIT_FAILURE;
 
-	constexpr const NutPunch_Clock MIN_DELTA = NUTPUNCH_NS / BEATS_PER_SECOND;
-	int result = 0;
+    constexpr const NutPunch_Clock MIN_DELTA = NUTPUNCH_NS / BEATS_PER_SECOND;
+    int result = 0;
 
-	NP_Info("Running on port %d", NUTPUNCH_SERVER_PORT);
-	for (;;) {
-		const NutPunch_Clock start = NutPunch_TimeNS();
+    NP_Info("Running on port %d", NUTPUNCH_SERVER_PORT);
+    for (;;) {
+        const NutPunch_Clock start = NutPunch_TimeNS();
 
-		if (sock == NUTPUNCH_INVALID_SOCKET) {
-			NP_Warn("SOCKET DIED!!!");
-			return EXIT_FAILURE;
-		}
+        if (sock == NUTPUNCH_INVALID_SOCKET) {
+            NP_Warn("SOCKET DIED!!!");
+            return EXIT_FAILURE;
+        }
 
-		do { result = receive(); } while (result == RecvKeepGoing);
+        do { result = receive(); } while (result == RecvKeepGoing);
 
-		if (result > 0) {
-			NP_Warn("Failed to receive data (code %d)", result);
-			sock = NUTPUNCH_INVALID_SOCKET;
-		}
+        if (result > 0) {
+            NP_Warn("Failed to receive data (code %d)", result);
+            sock = NUTPUNCH_INVALID_SOCKET;
+        }
 
-		for (auto& [id, lobby] : lobbies)
-			lobby.update();
+        for (auto& [id, lobby] : lobbies)
+            lobby.update();
 
-		std::erase_if(lobbies, [](const auto& kv) {
-			const auto& lobby = kv.second;
-			if (!lobby)
-				NP_Info("Deleting lobby '%s'", lobby.fmt_id());
-			return !lobby;
-		});
+        std::erase_if(lobbies, [](const auto& kv) {
+            const auto& lobby = kv.second;
+            if (!lobby)
+                NP_Info("Deleting lobby '%s'", lobby.fmt_id());
+            return !lobby;
+        });
 
-		const NutPunch_Clock delta = NutPunch_TimeNS() - start, diff = MIN_DELTA - delta;
-		if (diff > 0)
-			NP_SleepMs(diff / (NUTPUNCH_NS / (NutPunch_Clock)1000));
-	}
+        const NutPunch_Clock delta = NutPunch_TimeNS() - start, diff = MIN_DELTA - delta;
+        if (diff > 0)
+            NP_SleepMs(diff / (NUTPUNCH_NS / (NutPunch_Clock)1000));
+    }
 
-	return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }
