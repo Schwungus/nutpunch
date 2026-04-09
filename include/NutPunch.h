@@ -49,7 +49,7 @@ extern "C" {
 /// Increment this every time you break the communications format between the peer and the
 /// NutPuncher, to make it use a different port and retain compatibility with the previous versions
 /// by keeping the old NutPunchers running.
-#define NUTPUNCH_API_VERSION (2)
+#define NUTPUNCH_API_VERSION (3)
 
 /// The UDP port used by the nutpunching mediator server.
 #define NUTPUNCH_SERVER_PORT (30000 + NUTPUNCH_API_VERSION)
