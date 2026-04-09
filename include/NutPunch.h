@@ -49,7 +49,7 @@ extern "C" {
 /// Increment this every time you break the communications format between the peer and the
 /// NutPuncher, to make it use a different port and retain compatibility with the previous versions
 /// by keeping the old NutPunchers running.
-#define NUTPUNCH_API_VERSION (3)
+#define NUTPUNCH_API_VERSION (2)
 
 /// The UDP port used by the nutpunching mediator server.
 #define NUTPUNCH_SERVER_PORT (30000 + NUTPUNCH_API_VERSION)
@@ -178,18 +178,18 @@ void NutPunch_SetServerAddr(const char* hostname);
 /// immediately here.
 bool NutPunch_Join(const char* lobby_id);
 
-/// Host a lobby with the specified ID and maximum player count. Return `false` if a network error
+/// Host a lobby with the specified ID. Return `false` if a network error
 /// occurs and `true` otherwise.
 ///
 /// If the lobby with the same ID exists, an error status spits out of `NutPunch_Update()` rather
 /// than immediately here.
-bool NutPunch_Host(const char* lobby_id, bool unlisted, int players);
+bool NutPunch_Host(const char* lobby_id);
 
 /// Unlist the lobby after calling `NutPunch_Host`.
 void NutPunch_SetUnlisted(bool);
 
 /// Return `true` if the current lobby is unlisted.
-bool NutPunch_GetUnlisted();
+bool NutPunch_IsUnlisted();
 
 /// Change the maximum player count after calling `NutPunch_Host`.
 void NutPunch_SetMaxPlayers(int players);
@@ -904,11 +904,9 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
     return true;
 }
 
-bool NutPunch_Host(const char* lobby_id, bool unlisted, int players) {
+bool NutPunch_Host(const char* lobby_id) {
     NP_LazyInit();
     NP_HeartbeatFlags = 0;
-    NutPunch_SetUnlisted(unlisted);
-    NutPunch_SetMaxPlayers(players);
     return NutPunch_Connect(lobby_id, true);
 }
 
@@ -925,7 +923,7 @@ void NutPunch_SetUnlisted(bool unlisted) {
         NP_HeartbeatFlags &= ~NP_HB_Unlisted;
 }
 
-bool NutPunch_GetUnlisted() {
+bool NutPunch_IsUnlisted() {
     return NP_Unlisted;
 }
 

@@ -46,12 +46,14 @@ static void maybe_join_netgame() {
     if (NutPunch_IsOnline())
         return;
 
-    if (poor_key_pressed(POOR_J))
+    if (poor_key_pressed(POOR_J)) {
         NutPunch_Join(lobbyName);
-    else if (poor_key_pressed(POOR_H))
-        NutPunch_Host(lobbyName, false, targetPlayerCount);
-    else
+    } else if (poor_key_pressed(POOR_H)) {
+        NutPunch_Host(lobbyName);
+        NutPunch_SetMaxPlayers(targetPlayerCount);
+    } else {
         return;
+    }
 
     NutPunch_SetLobbyData(magicKey, sizeof(magicValue), &magicValue);
 
