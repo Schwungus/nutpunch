@@ -49,7 +49,7 @@ static void maybe_join_netgame() {
     if (poor_key_pressed(POOR_J))
         NutPunch_Join(lobbyName);
     else if (poor_key_pressed(POOR_H))
-        NutPunch_Host(lobbyName, targetPlayerCount);
+        NutPunch_Host(lobbyName, false, targetPlayerCount);
     else
         return;
 

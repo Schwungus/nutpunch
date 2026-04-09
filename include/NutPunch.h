@@ -183,7 +183,13 @@ bool NutPunch_Join(const char* lobby_id);
 ///
 /// If the lobby with the same ID exists, an error status spits out of `NutPunch_Update()` rather
 /// than immediately here.
-bool NutPunch_Host(const char* lobby_id, int players);
+bool NutPunch_Host(const char* lobby_id, bool unlisted, int players);
+
+/// Make the lobby private (unlisted) after calling `NutPunch_Host`.
+void NutPunch_SetPrivateLobby(bool);
+
+/// Return `true` if the current lobby is private (unlisted).
+bool NutPunch_GetPrivateLobby();
 
 /// Change the maximum player count after calling `NutPunch_Host`.
 void NutPunch_SetMaxPlayers(int players);
@@ -271,7 +277,7 @@ void NutPunch_SendReliably(NutPunch_Channel, NutPunch_Peer, const void* data, in
 /// `NUTPUNCH_MAX_PLAYERS` and check each peer individually with `NutPunch_PeerAlive`.
 int NutPunch_PeerCount();
 
-/// Return true if you are connected to the peer with the specified index.
+/// Return `true` if you are connected to the peer with the specified index.
 ///
 /// Use `NUTPUNCH_MAX_PLAYERS` as the upper bound for iterating, and check each peer's status
 /// individually using this function.
@@ -461,6 +467,7 @@ typedef struct {
 } NP_PeerAddr;
 
 typedef struct {
+    uint8_t unlisted;
     NutPunch_Peer local, master, capacity;
     NP_PeerAddr peers[2][NUTPUNCH_MAX_PLAYERS];
     NutPunch_Metadata metadata;
@@ -547,7 +554,10 @@ static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_MAX_SEARCH_RESULTS] = {0};
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
     NP_HB_JoinExisting = 1 << 0,
+    NP_HB_PrivateLobby = 1 << 1,
 };
+
+static bool NP_PrivateLobby = false;
 
 static int NP_SendDirectly(NP_AddrInfo, const void*, int);
 
@@ -582,7 +592,7 @@ static void NP_CleanupPackets(NP_Data** queue) {
 }
 
 static void NP_NukeLobbyData() {
-    NP_Closing = NP_Querying = false;
+    NP_Closing = NP_Querying = NP_PrivateLobby = false;
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
     NP_Memzero(NP_LobbyMetadata), NP_Memzero(NP_PeerMetadata);
     NP_Memzero(NP_Lobbies), NP_Memzero(NP_Peers);
@@ -894,9 +904,10 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
     return true;
 }
 
-bool NutPunch_Host(const char* lobby_id, int players) {
+bool NutPunch_Host(const char* lobby_id, bool unlisted, int players) {
     NP_LazyInit();
     NP_HeartbeatFlags = 0;
+    NutPunch_SetPrivateLobby(unlisted);
     NutPunch_SetMaxPlayers(players);
     return NutPunch_Connect(lobby_id, true);
 }
@@ -905,6 +916,17 @@ bool NutPunch_Join(const char* lobby_id) {
     NP_LazyInit();
     NP_HeartbeatFlags = NP_HB_JoinExisting;
     return NutPunch_Connect(lobby_id, true);
+}
+
+void NutPunch_SetPrivateLobby(bool unlisted) {
+    if (unlisted)
+        NP_HeartbeatFlags |= NP_HB_PrivateLobby;
+    else
+        NP_HeartbeatFlags &= ~NP_HB_PrivateLobby;
+}
+
+bool NutPunch_GetPrivateLobby() {
+    return NP_PrivateLobby;
 }
 
 void NutPunch_SetMaxPlayers(int players) {
@@ -1091,6 +1113,7 @@ static void NP_HandleBeating(NP_Message msg) {
     const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
     const NutPunch_Peer old_master = NutPunch_MasterPeer();
 
+    NP_PrivateLobby = *msg.data++;
     NP_LocalPeer = *msg.data++;
     NP_Master = *msg.data++;
     NP_MaxPlayers = *msg.data++;

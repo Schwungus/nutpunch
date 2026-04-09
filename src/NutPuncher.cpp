@@ -223,6 +223,7 @@ struct Player {
 
 struct Lobby {
     NutPunch_LobbyId id = {0};
+    bool unlisted = false;
     uint8_t capacity = NUTPUNCH_MAX_PLAYERS;
     Player players[NUTPUNCH_MAX_PLAYERS] = {};
     Metadata metadata;
@@ -298,6 +299,7 @@ struct Lobby {
         player.countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND;
 
         if (idx == master()) {
+            unlisted = flags & NP_HB_PrivateLobby;
             capacity = 1 + (flags >> 4);
             metadata.load(meta);
         }
@@ -316,6 +318,7 @@ struct Lobby {
         static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)] = "BEAT";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
+        *ptr++ = unlisted;
         *ptr++ = idx;
         *ptr++ = master();
         *ptr++ = capacity;
@@ -424,7 +427,7 @@ static void send_lobbies(AddrInfo addr, const char* target_id) {
     std::memcpy(buf + sizeof(NP_Header), target_id, sizeof(NutPunch_LobbyId));
 
     for (const auto& [id, lobby] : lobbies) {
-        if (id != target_id)
+        if (id != target_id || lobby.unlisted)
             continue;
         std::memcpy(buf + sizeof(NP_Header) + sizeof(NutPunch_LobbyId), lobby.metadata.fields,
             sizeof(NutPunch_Metadata));
@@ -441,6 +444,9 @@ static void send_lobbies(AddrInfo addr) {
     size_t count = 0;
 
     for (const auto& [id, lobby] : lobbies) {
+        if (lobby.unlisted)
+            continue;
+
         *ptr++ = lobby.gamers(), *ptr++ = lobby.capacity;
         std::memset(ptr, 0, sizeof(NutPunch_LobbyId));
         std::memcpy(ptr, id.data(), std::strlen(lobby.fmt_id()));
