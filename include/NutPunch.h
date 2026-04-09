@@ -321,7 +321,7 @@ const char* NutPunch_GetLastError();
 /// the default implementation of `NutPunch_Log`.
 const char* NutPunch_Basename(const char* path);
 
-#define NUTPUNCH_NS (1000000000)
+#define NUTPUNCH_NS ((NutPunch_Clock)1000000000)
 typedef uint64_t NutPunch_Clock;
 NutPunch_Clock NutPunch_TimeNS();
 
@@ -422,7 +422,7 @@ typedef int64_t NP_Socket;
 
 typedef uint32_t NP_PacketIndex;
 typedef struct sockaddr_in NP_AddrInfo;
-typedef uint8_t NP_HeartbeatFlagsStorage, NP_ResponseFlagsStorage;
+typedef uint8_t NP_HeartbeatFlagsStorage;
 
 typedef uint8_t NP_Header[4];
 
@@ -1241,11 +1241,12 @@ static void NP_HandleData(NP_Message msg) {
 static void NP_HandleAcky(NP_Message msg) {
 	const NutPunch_Channel channel = *(NutPunch_Channel*)msg.data++;
 	const NP_PacketIndex index = ntohl(*(NP_PacketIndex*)msg.data++);
-	for (NP_Data* ptr = NP_QueueOut[channel]; ptr; ptr = ptr->next)
+	for (NP_Data* ptr = NP_QueueOut[channel]; ptr; ptr = ptr->next) {
 		if (ptr->index == index) {
 			ptr->f_delete = true;
 			return;
 		}
+	}
 }
 
 static bool NP_SendHeartbeat() {
@@ -1316,7 +1317,9 @@ static int NP_UglyRecvfrom(NP_AddrInfo* addr, uint8_t* buf, int size) {
 static NP_ReceiveStatus NP_ReceiveShit() {
 	if (NP_LastStatus == NPS_Error // happens after handling a GTFO
 		|| NP_Sock == NUTPUNCH_INVALID_SOCKET)
+	{
 		return NP_RS_Done;
+	}
 
 	static uint8_t buf[NUTPUNCH_BUFFER_SIZE] = {0};
 	NP_AddrInfo addr = {0};
@@ -1387,12 +1390,13 @@ static void NP_FlushChannelOutQueue(const NutPunch_Channel channel) {
 		}
 
 		// Send & pop normally since a bounce of -1 makes it an unreliable packet.
-		if (cur->bounce < 0)
+		if (cur->bounce < 0) {
 			cur->f_delete = true;
-		// Otherwise, check if it's about to bounce, to resend it.
-		else if (cur->bounce > 0)
+		} else if (cur->bounce > 0) {
+			// otherwise, check if it's about to bounce, to resend it.
 			if (--cur->bounce > 0)
 				continue;
+		}
 		cur->bounce = NUTPUNCH_BOUNCE_TICKS;
 
 		if (NP_Sock == NUTPUNCH_INVALID_SOCKET) {
@@ -1406,7 +1410,9 @@ static void NP_FlushChannelOutQueue(const NutPunch_Channel channel) {
 			NP_KillPeer(cur->destination);
 		if (result >= 0 || NP_SockError() == NP_WouldBlock
 			|| NP_SockError() == NP_ConnReset)
+		{
 			continue;
+		}
 		NP_Warn("Failed to send data to peer #%d (%d)", cur->destination + 1,
 			NP_SockError());
 		NP_NukeLobbyData();
@@ -1654,31 +1660,38 @@ const char* NutPunch_Basename(const char* path) {
 
 // `TIME_UTC` & `timespec_get` polyfill for picky compilers.
 #ifndef TIME_UTC
+
 #define TIME_UTC 1
-static uint64_t timespec_get(struct timespec* ts, int base) {
+
+static int timespec_get(struct timespec* ts, int base) {
 	if (base == TIME_UTC)
 		return clock_gettime(CLOCK_REALTIME, ts) ? 0 : base;
 	return 0;
 }
-#endif
+
+#endif // TIME_UTC
 
 NutPunch_Clock NutPunch_TimeNS() {
 	struct timespec ts = {0};
 	timespec_get(&ts, TIME_UTC);
-	return ts.tv_sec * 1000000000 + ts.tv_nsec;
+	return (NutPunch_Clock)ts.tv_sec * NUTPUNCH_NS + (NutPunch_Clock)ts.tv_nsec;
 }
 
 #ifdef NUTPUNCH_WINDOSE
+
 #define NP_SleepMs(ms) Sleep(ms)
+
 #else
+
 static void NP_SleepMs(int ms) {
 	// Stolen from: <https://stackoverflow.com/a/1157217>
 	struct timespec ts = {0};
-	ts.tv_sec = ms / 1000, ts.tv_nsec = (ms % 1000) * 1000000;
+	ts.tv_sec = ms / 1000, ts.tv_nsec = (ms % 1000) * (NUTPUNCH_NS / 1000);
 	int res = 0;
 	do { res = nanosleep(&ts, &ts); } while (res && errno == EINTR);
 }
-#endif
+
+#endif // NUTPUNCH_WINDOSE
 
 #endif // NUTPUNCH_IMPLEMENTATION
 

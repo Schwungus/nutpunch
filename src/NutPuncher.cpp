@@ -44,6 +44,7 @@ template <typename T> static bool is_memzero(const T& x) {
 
 static const char* fmt_lobby_id(const char* id) {
 	static char buf[sizeof(NutPunch_LobbyId) + 1] = {0};
+
 	for (int i = 0; i < sizeof(NutPunch_LobbyId); i++) {
 		const char c = id[i];
 		const bool alpha = c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z',
@@ -57,11 +58,14 @@ static const char* fmt_lobby_id(const char* id) {
 			buf[i] = ' ';
 		}
 	}
-	for (int i = sizeof(NutPunch_LobbyId); i > 0; i--)
+
+	for (int i = sizeof(NutPunch_LobbyId); i > 0; i--) {
 		if (buf[i - 1] != ' ' && buf[i - 1] != 0) {
 			buf[i] = 0;
 			return buf;
 		}
+	}
+
 	return buf;
 }
 
@@ -83,11 +87,12 @@ struct Field : NutPunch_Field {
 			arg_len = NUTPUNCH_FIELD_NAME_MAX;
 
 		int our_len = NUTPUNCH_FIELD_NAME_MAX;
-		for (int i = 1; i < NUTPUNCH_FIELD_NAME_MAX; i++)
+		for (int i = 1; i < NUTPUNCH_FIELD_NAME_MAX; i++) {
 			if (!this->name[i]) {
 				our_len = i;
 				break;
 			}
+		}
 
 		return our_len == arg_len && !std::memcmp(this->name, name, our_len);
 	}
@@ -146,14 +151,17 @@ private:
 	int index_of(const char* name) {
 		if (!name || !*name)
 			return NUTPUNCH_MAX_FIELDS;
+
+		// first matching
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
-			// first matching
 			if (fields[i].named(name))
 				return i;
+
+		// or first uninitialized
 		for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
-			// or first uninitialized
 			if (!fields[i])
 				return i;
+
 		return NUTPUNCH_MAX_FIELDS; // or bust
 	}
 };
@@ -344,11 +352,9 @@ struct Lobby {
 	NutPunch_Peer master() {
 		if (master_idx < NUTPUNCH_MAX_PLAYERS && players[master_idx])
 			return master_idx;
-		for (master_idx = 0; master_idx < NUTPUNCH_MAX_PLAYERS;)
+		for (master_idx = 0; master_idx < NUTPUNCH_MAX_PLAYERS; master_idx++)
 			if (players[master_idx])
 				break;
-			else
-				master_idx++;
 		return master_idx;
 	}
 
@@ -402,10 +408,11 @@ static bool create_lobby(const char* id, const AddrInfo& pub) {
 
 	// Match against existing peers to prevent creating multiple lobbies
 	// with the same master.
-	for (const auto& [lobby_id, lobby] : lobbies)
+	for (const auto& [lobby_id, lobby] : lobbies) {
 		for (const auto& player : lobby.players)
 			if (player && player.pub == pub)
 				return true; // fuck you...
+	}
 
 	lobbies.insert({id, Lobby(id)});
 	NP_Info("Created lobby '%s'", fmt_lobby_id(id));
@@ -466,7 +473,7 @@ static int receive() {
 	socklen_t addr_size = sizeof(pub);
 
 	int rcv = recvfrom(sock, heartbeat, sizeof(heartbeat), 0, c_addr, &addr_size);
-	if (rcv < 0)
+	if (rcv < 0) {
 		switch (NP_SockError()) {
 		case NP_TooFat:
 			NP_Trace("FAT PACKET");
@@ -479,6 +486,7 @@ static int receive() {
 			NP_Trace("RECV ERROR %d", err);
 			return err;
 		}
+	}
 
 	rcv -= sizeof(NP_Header);
 	if (rcv < 0)
@@ -600,7 +608,7 @@ int main(int argc, char*[]) {
 
 		const NutPunch_Clock delta = NutPunch_TimeNS() - start, diff = MIN_DELTA - delta;
 		if (diff > 0)
-			NP_SleepMs(diff / (NUTPUNCH_NS / 1000));
+			NP_SleepMs(diff / (NUTPUNCH_NS / (NutPunch_Clock)1000));
 	}
 
 	return EXIT_SUCCESS;

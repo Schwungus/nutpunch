@@ -1,5 +1,4 @@
 Checks: [
-    clang-analyzer-*,
     bugprone-*,
     -bugprone-suspicious-string-compare, # complains at `if (memcmp(...))` without explicit `!= 0`
     -bugprone-suspicious-memory-comparison, # complains at `memcmp` against C++ structs
@@ -9,7 +8,7 @@ Checks: [
     portability-*,
     misc-*,
     -misc-definitions-in-headers, # false positives all over
-    -misc-use-anonymous-namespace,
-    -misc-non-private-member-variables-in-classes,
+    -misc-use-anonymous-namespace, # i like `static`
+    -misc-non-private-member-variables-in-classes, # i hate the encapsulation requirement
     cppcoreguidelines-init-variables,
   ]

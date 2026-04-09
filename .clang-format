@@ -25,3 +25,4 @@ AccessModifierOffset: -8
 IndentCaseBlocks: false
 IndentCaseLabels: false
 RemoveBracesLLVM: true
+InsertBraces: true

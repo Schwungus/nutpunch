@@ -7,13 +7,12 @@ set(BUILD_SHARED_LIBS OFF)
 
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-add_library(NutPunch INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include/NutPunch.h)
+add_library(NutPunch INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/NutPunch.h)
 target_include_directories(NutPunch INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_definitions(NutPunch INTERFACE
-    _WINSOCK_DEPRECATED_NO_WARNINGS=1)
+
 if(WIN32)
-    target_link_options(NutPunch INTERFACE -static)
     target_link_libraries(NutPunch INTERFACE
         ws2_32 winpthread) # pthreads required for the `timespec_get` polyfill
 endif()
@@ -57,6 +56,6 @@ endif()
 
 option(NUTPUNCH_BUILD_ZALOOPER "Build zalooper test binary?")
 if(NUTPUNCH_BUILD_ZALOOPER)
-    add_executable(Zalooper ${SRC_DIR}/Zalooper.c)
-    target_link_libraries(Zalooper PRIVATE NutPunch)
+    add_executable(NutPunchZalooper ${SRC_DIR}/Zalooper.c)
+    target_link_libraries(NutPunchZalooper PRIVATE NutPunch)
 endif()
