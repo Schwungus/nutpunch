@@ -185,11 +185,11 @@ bool NutPunch_Join(const char* lobby_id);
 /// than immediately here.
 bool NutPunch_Host(const char* lobby_id, bool unlisted, int players);
 
-/// Make the lobby private (unlisted) after calling `NutPunch_Host`.
-void NutPunch_SetPrivateLobby(bool);
+/// Unlist the lobby after calling `NutPunch_Host`.
+void NutPunch_SetUnlisted(bool);
 
-/// Return `true` if the current lobby is private (unlisted).
-bool NutPunch_GetPrivateLobby();
+/// Return `true` if the current lobby is unlisted.
+bool NutPunch_GetUnlisted();
 
 /// Change the maximum player count after calling `NutPunch_Host`.
 void NutPunch_SetMaxPlayers(int players);
@@ -554,10 +554,10 @@ static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_MAX_SEARCH_RESULTS] = {0};
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
     NP_HB_JoinExisting = 1 << 0,
-    NP_HB_PrivateLobby = 1 << 1,
+    NP_HB_Unlisted = 1 << 1,
 };
 
-static bool NP_PrivateLobby = false;
+static bool NP_Unlisted = false;
 
 static int NP_SendDirectly(NP_AddrInfo, const void*, int);
 
@@ -592,7 +592,7 @@ static void NP_CleanupPackets(NP_Data** queue) {
 }
 
 static void NP_NukeLobbyData() {
-    NP_Closing = NP_Querying = NP_PrivateLobby = false;
+    NP_Closing = NP_Querying = NP_Unlisted = false;
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
     NP_Memzero(NP_LobbyMetadata), NP_Memzero(NP_PeerMetadata);
     NP_Memzero(NP_Lobbies), NP_Memzero(NP_Peers);
@@ -907,7 +907,7 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
 bool NutPunch_Host(const char* lobby_id, bool unlisted, int players) {
     NP_LazyInit();
     NP_HeartbeatFlags = 0;
-    NutPunch_SetPrivateLobby(unlisted);
+    NutPunch_SetUnlisted(unlisted);
     NutPunch_SetMaxPlayers(players);
     return NutPunch_Connect(lobby_id, true);
 }
@@ -918,15 +918,15 @@ bool NutPunch_Join(const char* lobby_id) {
     return NutPunch_Connect(lobby_id, true);
 }
 
-void NutPunch_SetPrivateLobby(bool unlisted) {
+void NutPunch_SetUnlisted(bool unlisted) {
     if (unlisted)
-        NP_HeartbeatFlags |= NP_HB_PrivateLobby;
+        NP_HeartbeatFlags |= NP_HB_Unlisted;
     else
-        NP_HeartbeatFlags &= ~NP_HB_PrivateLobby;
+        NP_HeartbeatFlags &= ~NP_HB_Unlisted;
 }
 
-bool NutPunch_GetPrivateLobby() {
-    return NP_PrivateLobby;
+bool NutPunch_GetUnlisted() {
+    return NP_Unlisted;
 }
 
 void NutPunch_SetMaxPlayers(int players) {
@@ -1113,7 +1113,7 @@ static void NP_HandleBeating(NP_Message msg) {
     const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
     const NutPunch_Peer old_master = NutPunch_MasterPeer();
 
-    NP_PrivateLobby = *msg.data++;
+    NP_Unlisted = *msg.data++;
     NP_LocalPeer = *msg.data++;
     NP_Master = *msg.data++;
     NP_MaxPlayers = *msg.data++;
