@@ -299,7 +299,7 @@ struct Lobby {
         player.countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND;
 
         if (idx == master()) {
-            unlisted = flags & NP_HB_PrivateLobby;
+            unlisted = flags & NP_HB_Unlisted;
             capacity = 1 + (flags >> 4);
             metadata.load(meta);
         }
