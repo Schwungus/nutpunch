@@ -125,6 +125,30 @@ typedef struct {
     NutPunch_Peer peer;
 } NutPunch_PeerFieldDiff;
 
+/// Special fields you can query inside `NutPunch_Filter`s.
+typedef enum {
+    /// Lobby player count.
+    NPSF_Players = 1,
+    /// Lobby max players.
+    NPSF_Capacity,
+} NutPunch_SpecialField;
+
+/// A filter for use with `NutPunch_FindLobbies`.
+typedef struct {
+    union {
+        struct {
+            uint8_t alwayszero;
+            char name[NUTPUNCH_FIELD_NAME_MAX];
+            char value[NUTPUNCH_FIELD_DATA_MAX];
+        } field;
+        struct {
+            uint8_t index;
+            int8_t value;
+        } special;
+    };
+    uint8_t comparison;
+} NutPunch_Filter;
+
 /// About as much data as you are allowed to see from lobbies you aren't part of.
 typedef struct {
     char name[sizeof(NutPunch_LobbyId) + 1];
@@ -132,6 +156,14 @@ typedef struct {
     uint8_t players, capacity;
     bool got_meta;
 } NutPunch_LobbyInfo;
+
+/// Comparison operators used in `NutPunch_Filter`s.
+typedef enum {
+    NPF_Not = 1 << 0,
+    NPF_Eq = 1 << 1,
+    NPF_Less = 1 << 2,
+    NPF_Greater = 1 << 3,
+} NutPunch_Operator;
 
 /// Describes the result of calling `NutPunch_Update`.
 typedef enum {
@@ -304,9 +336,41 @@ void NutPunch_Disconnect();
 
 /// Query the lobbies list. Use `NutPunch_GetLobby()` to retrieve the results.
 ///
+/// The list of lobbies will update after a few ticks of `NutPunch_Update`; don't expect immediate
+/// results.
+///
+/// You can optionally pass an array of filters. Each filter consists of either a special or a named
+/// metadata field, with a corresponding value to compare it to. All filters must match in order for
+/// a lobby to be listed.
+///
+/// Bitwise-or the `NPF_*` constants to set a filter's comparison flags.
+///
+/// To query "special" fields such as lobby current or max player count, pass one of the `NPSF_*`
+/// constants with an `int8_t` value to compare against. For example, to query lobbies for exactly a
+/// 2-player duo to play:
+///
+/// ```c
+/// NutPunch_Filter filters[2] = {0};
+///
+/// // exactly 2 players capacity:
+/// filters[0].special.index = NPSF_Capacity;
+/// filters[0].special.value = 2;
+/// filters[0].comparison = NPF_Eq;
+///
+/// // less than two players in the lobby so we can join:
+/// filters[1].special.index = NPSF_Players;
+/// filters[1].special.value = 2;
+/// filters[1].comparison = NPF_Less;
+///
+/// NutPunch_FindLobbies(2, &filters);
+/// ```
+///
+/// To query metadata fields, `memcpy` their names and values into the filter's `field` property.
+/// The comparison will be performed bytewise in a fashion similar to `memcmp`.
+///
 /// Request and retrieve lobby metadata by calling `NutPunch_LobbyMetadata()` with a lobby
 /// identifier.
-void NutPunch_FindLobbies();
+void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters);
 
 /// Extract lobby info after a call to `NutPunch_FindLobbies`. Updates every call to
 /// `NutPunch_Update`; don't expect an immediate response.
@@ -549,6 +613,7 @@ static NP_Data* NP_QueueIn[NUTPUNCH_CHANNEL_COUNT] = {0};
 static NutPunch_Metadata NP_LobbyMetadata = {0}, NP_PeerMetadata = {0};
 
 static bool NP_Querying = false;
+static NutPunch_Filter NP_Filters[NUTPUNCH_MAX_SEARCH_FILTERS] = {0};
 static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_MAX_SEARCH_RESULTS] = {0};
 
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
@@ -596,6 +661,7 @@ static void NP_NukeLobbyData() {
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
     NP_Memzero(NP_LobbyMetadata), NP_Memzero(NP_PeerMetadata);
     NP_Memzero(NP_Lobbies), NP_Memzero(NP_Peers);
+    NP_Memzero(NP_Filters);
 
     for (int i = 0; i < NUTPUNCH_CHANNEL_COUNT; i++) {
         NP_CleanupPackets(&NP_QueueIn[i]);
@@ -606,7 +672,7 @@ static void NP_NukeLobbyData() {
 static void NP_NukeRemote() {
     NP_LobbyId[0] = 0, NP_HeartbeatFlags = 0;
     NP_MemzeroRef(NP_PuncherAddr), NP_Memzero(NP_Peers);
-    NP_LastStatus = NPS_Idle;
+    NP_Memzero(NP_Filters), NP_LastStatus = NPS_Idle;
 }
 
 static void NP_NukeSocket(NP_Socket* sock) {
@@ -945,9 +1011,17 @@ int NutPunch_GetMaxPlayers() {
     return NP_MaxPlayers;
 }
 
-void NutPunch_FindLobbies() {
+void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
+    if (filter_count > NUTPUNCH_MAX_SEARCH_FILTERS) {
+        NP_Warn("Filter count exceeded in `NutPunch_FindLobbies`; truncating the input");
+        filter_count = NUTPUNCH_MAX_SEARCH_FILTERS;
+    }
+
     NP_LazyInit();
     NP_Querying = NutPunch_Connect(NULL, false);
+
+    if (filter_count > 0 && filters != NULL)
+        NutPunch_Memcpy(NP_Filters, filters, filter_count * sizeof(*filters));
 }
 
 void NutPunch_Cleanup() {
@@ -1280,6 +1354,9 @@ static bool NP_SendHeartbeat() {
     if (NP_Querying) {
         NutPunch_Memcpy(ptr, "LIST", sizeof(NP_Header));
         ptr += sizeof(NP_Header);
+
+        NutPunch_Memcpy(ptr, NP_Filters, sizeof(NP_Filters));
+        ptr += sizeof(NP_Filters);
     } else {
         NutPunch_Memcpy(ptr, "JOIN", sizeof(NP_Header));
         ptr += sizeof(NP_Header);

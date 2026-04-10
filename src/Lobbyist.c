@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) {
         NutPunch_SetServerAddr(argv[1]);
     }
 
-    NutPunch_FindLobbies();
+    NutPunch_FindLobbies(0, NULL);
 
     static const int rate = 20, ms = 1000;
     for (int t = 0; t < ms / rate; t++) {
