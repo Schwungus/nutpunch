@@ -73,9 +73,9 @@ static bool match_field_value(const int diff, const int flags) {
     bool result = false;
 
     if (flags & NPF_Greater)
-        result |= diff > 0;
-    else if (flags & NPF_Less)
         result |= diff < 0;
+    else if (flags & NPF_Less)
+        result |= diff > 0;
 
     if (flags & NPF_Eq)
         result |= diff == 0;
