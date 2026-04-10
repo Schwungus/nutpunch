@@ -245,7 +245,7 @@ void NutPunch_Flush();
 
 /// Returns metadata from a lobby. Leave `lobby` as `NULL` to get metadata from the current lobby.
 /// Otherwise, if you used `NutPunch_FindLobbies()`, you can specify a lobby to get metadata from,
-/// as long as it is listed.
+/// as long as it is listed. Listed lobbies' metadata are not updated in real-time.
 ///
 /// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
 /// squeeze into a field.
@@ -750,15 +750,17 @@ static NutPunch_Field* NP_GetLobbyFields(const char* name) {
     if (name == NULL)
         return NP_LobbyMetadata;
 
-    static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "LIST";
-    NutPunch_Memcpy(buf + sizeof(NP_Header), name, sizeof(NutPunch_LobbyId));
-    NP_SendDirectly(NP_PuncherAddr, buf, sizeof(buf));
-
     for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
-        if (!NP_Lobbies[i].got_meta)
+        if (NutPunch_Memcmp(NP_Lobbies[i].name, name, sizeof(NutPunch_LobbyId)))
             continue;
-        if (!NutPunch_Memcmp(NP_Lobbies[i].name, name, sizeof(NutPunch_LobbyId)))
+
+        if (NP_Lobbies[i].got_meta)
             return NP_Lobbies[i].metadata;
+
+        static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "LIST";
+        NutPunch_Memcpy(buf + sizeof(NP_Header), name, sizeof(NutPunch_LobbyId));
+        NP_SendDirectly(NP_PuncherAddr, buf, sizeof(buf));
+        break;
     }
 
     return NULL;
