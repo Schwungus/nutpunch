@@ -70,21 +70,16 @@ static const char* fmt_lobby_id(const char* id) {
 }
 
 static bool match_field_value(const int diff, const int flags) {
-    const int eq = !diff;
-    bool result = true;
-    if (flags & NPF_Greater) {
-        result &= diff > 0;
-        if (flags & NPF_Eq)
-            result |= eq;
-    } else if (flags & NPF_Less) {
-        result &= diff < 0;
-        if (flags & NPF_Eq)
-            result |= eq;
-    } else if (flags & NPF_Eq) {
-        result &= eq;
-    } else { // junk
-        return false;
-    }
+    bool result = false;
+
+    if (flags & NPF_Greater)
+        result |= diff > 0;
+    else if (flags & NPF_Less)
+        result |= diff < 0;
+
+    if (flags & NPF_Eq)
+        result |= diff == 0;
+
     return (flags & NPF_Not) ? !result : result;
 }
 
