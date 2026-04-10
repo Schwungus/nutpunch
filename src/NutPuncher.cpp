@@ -500,9 +500,6 @@ static void send_lobbies(AddrInfo addr, const NutPunch_Filter* filters) {
         if (is_memzero(filters[filter_count]))
             break;
 
-    if (!filter_count)
-        return;
-
     std::memset(ptr, 0, sizeof(NP_Listing));
     size_t count = 0;
 
@@ -519,8 +516,7 @@ static void send_lobbies(AddrInfo addr, const NutPunch_Filter* filters) {
             break;
     }
 
-    for (int i = 0; i < 5; i++)
-        addr.send(buf, sizeof(buf));
+    addr.send(buf, sizeof(buf));
 }
 
 static void kill_bro(const NutPunch_PeerId bro) {
@@ -566,7 +562,7 @@ static int receive() {
     if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header))) {
         if (rcv == sizeof(NutPunch_LobbyId)) {
             send_lobbies(pub, ptr);
-        } else if (rcv == sizeof(NP_Filters)) {
+        } else if (rcv == NUTPUNCH_MAX_SEARCH_FILTERS * sizeof(NutPunch_Filter)) {
             send_lobbies(pub, reinterpret_cast<const NutPunch_Filter*>(ptr));
         } else {
             // junk...
