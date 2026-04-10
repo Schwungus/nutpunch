@@ -151,11 +151,21 @@ typedef struct {
 
 /// About as much data as you are allowed to see from lobbies you aren't part of.
 typedef struct {
-    char name[sizeof(NutPunch_LobbyId) + 1];
-    NutPunch_Metadata metadata;
+    NutPunch_LobbyId name;
     uint8_t players, capacity;
-    bool got_meta;
 } NutPunch_LobbyInfo;
+
+/// A list of lobbies returned by the NutPuncher.
+typedef struct {
+    uint8_t count;
+    NutPunch_LobbyInfo lobbies[NUTPUNCH_MAX_SEARCH_RESULTS];
+} NutPunch_LobbyList;
+
+/// A snapshot of a lobby's metadata returned by the nutpuncher.
+typedef struct {
+    NutPunch_LobbyId lobby;
+    NutPunch_Metadata metadata;
+} NutPunch_LobbyMetadata;
 
 /// Comparison operators used in `NutPunch_Filter`s.
 typedef enum {
@@ -195,6 +205,10 @@ typedef enum {
     NPCB_LobbyMetadataChanged,
     /// Callback data: see `NutPunch_PeerFieldChanged`.
     NPCB_PeerMetadataChanged,
+    /// Callback data: see `NutPunch_LobbyList`.
+    NPCB_LobbyList,
+    /// Callback data: see `NutPunch_LobbyMetadata`.
+    NPCB_LobbyMetadata,
     /// Total callback-event count. Do not pass this to `NutPunch_Register`.
     NPCB_Count,
 } NutPunch_CallbackEvent;
@@ -203,6 +217,10 @@ typedef void (*NutPunch_Callback)(const void*);
 
 /// Set a custom NutPuncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
+
+/// Connect to NutPuncher without joining a lobby, mainly for lobby queries. Return `false` if a
+/// network error occurs and `true` otherwise.
+bool NutPunch_Query();
 
 /// Join a lobby by its ID. Return `false` if a network error occurs and `true` otherwise.
 ///
@@ -243,17 +261,16 @@ NutPunch_UpdateStatus NutPunch_Update();
 /// Sends all queued outgoing packets early (before a `NutPunch_Update()`). Useful in niche cases.
 void NutPunch_Flush();
 
-/// Requests metadata from a lobby found with `NutPunch_FindLobbies()`. This works as long as the
-/// lobby stays listed.
-void NutPunch_RequestLobbyMetadata(const NutPunch_LobbyId lobby);
+/// Requests metadata from a lobby. If you aren't connected to the NutPuncher, call
+/// `NutPunch_Query()` first.
+/// Triggers a `NPCB_LobbyMetadata` callback if successful.
+void NutPunch_RequestLobbyData(const NutPunch_LobbyId lobby);
 
-/// Returns metadata from a lobby. Leave `lobby` as `NULL` to get metadata from the current lobby.
-/// Otherwise, if you used `NutPunch_RequestLobbyMetadata()`, you can specify a lobby to get
-/// metadata from, as long as it is listed.
+/// Returns metadata from a lobby.
 ///
 /// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
 /// squeeze into a field.
-const void* NutPunch_GetLobbyData(const NutPunch_LobbyId lobby, const char* name, int* size);
+const void* NutPunch_GetLobbyData(const char* name, int* size);
 
 /// Returns metadata from a peer.
 ///
@@ -338,10 +355,9 @@ bool NutPunch_IsReady();
 /// Call this to gracefully disconnect from a lobby.
 void NutPunch_Disconnect();
 
-/// Query the lobbies list. Use `NutPunch_GetLobby()` to retrieve the results.
+/// Search for lobbies. If you aren't connected to the NutPuncher, call `NutPunch_Query()` first.
 ///
-/// The list of lobbies will update after a few ticks of `NutPunch_Update`; don't expect immediate
-/// results.
+/// The list of lobbies will be retrieved through the `NutPunch_LobbyList` callback.
 ///
 /// You can optionally pass an array of filters. Each filter consists of either a special or a named
 /// metadata field, with a corresponding value to compare it to. All filters must match in order for
@@ -375,14 +391,6 @@ void NutPunch_Disconnect();
 /// Request and retrieve lobby metadata by calling `NutPunch_LobbyMetadata()` with a lobby
 /// identifier.
 void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters);
-
-/// Extract lobby info after a call to `NutPunch_FindLobbies`. Updates every call to
-/// `NutPunch_Update`; don't expect an immediate response.
-const NutPunch_LobbyInfo* NutPunch_GetLobby(int index);
-
-/// Count how many lobbies were found after the call to `NutPunch_FindLobbies`. Updates every call
-/// to `NutPunch_Update`; don't expect an immediate response.
-int NutPunch_LobbyCount();
 
 /// Call this to reset the underlying socket in case of an inexplicable error.
 void NutPunch_Reset();
@@ -617,8 +625,6 @@ static NP_Data* NP_QueueIn[NUTPUNCH_CHANNEL_COUNT] = {0};
 static NutPunch_Metadata NP_LobbyMetadata = {0}, NP_PeerMetadata = {0};
 
 static bool NP_Querying = false;
-static NutPunch_Filter NP_Filters[NUTPUNCH_MAX_SEARCH_FILTERS] = {0};
-static NutPunch_LobbyInfo NP_Lobbies[NUTPUNCH_MAX_SEARCH_RESULTS] = {0};
 
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
@@ -664,8 +670,7 @@ static void NP_NukeLobbyData() {
     NP_Closing = NP_Querying = NP_Unlisted = false;
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
     NP_Memzero(NP_LobbyMetadata), NP_Memzero(NP_PeerMetadata);
-    NP_Memzero(NP_Lobbies), NP_Memzero(NP_Peers);
-    NP_Memzero(NP_Filters);
+    NP_Memzero(NP_Peers);
 
     for (int i = 0; i < NUTPUNCH_CHANNEL_COUNT; i++) {
         NP_CleanupPackets(&NP_QueueIn[i]);
@@ -676,7 +681,7 @@ static void NP_NukeLobbyData() {
 static void NP_NukeRemote() {
     NP_LobbyId[0] = 0, NP_HeartbeatFlags = 0;
     NP_MemzeroRef(NP_PuncherAddr), NP_Memzero(NP_Peers);
-    NP_Memzero(NP_Filters), NP_LastStatus = NPS_Idle;
+    NP_LastStatus = NPS_Idle;
 }
 
 static void NP_NukeSocket(NP_Socket* sock) {
@@ -748,20 +753,6 @@ static NutPunch_Field* NP_GetPeerFields(NutPunch_Peer peer) {
         return NP_Peers[peer].metadata;
     else
         return NULL;
-}
-
-static NutPunch_Field* NP_GetLobbyFields(const char* name) {
-    if (name == NULL)
-        return NP_LobbyMetadata;
-
-    for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
-        if (!NP_Lobbies[i].got_meta)
-            continue;
-        if (!NutPunch_Memcmp(NP_Lobbies[i].name, name, sizeof(NutPunch_LobbyId)))
-            return NP_Lobbies[i].metadata;
-    }
-
-    return NULL;
 }
 
 static const void* NP_GetVar(const NutPunch_Field* fields, const char* name, int* size) {
@@ -845,8 +836,8 @@ void NutPunch_RequestLobbyData(const NutPunch_LobbyId lobby) {
     NP_SendDirectly(NP_PuncherAddr, buf, sizeof(buf));
 }
 
-const void* NutPunch_GetLobbyData(const NutPunch_LobbyId lobby, const char* name, int* size) {
-    return NP_GetVar(NP_GetLobbyFields(lobby), name, size);
+const void* NutPunch_GetLobbyData(const char* name, int* size) {
+    return NP_GetVar(NP_LobbyMetadata, name, size);
 }
 
 const void* NutPunch_GetPeerData(NutPunch_Peer peer, const char* name, int* size) {
@@ -948,7 +939,7 @@ sockfail:
     return false;
 }
 
-static bool NutPunch_Connect(const char* lobby_id, bool sane) {
+static bool NP_Connect(const char* lobby_id, bool sane) {
     NP_LazyInit();
     NP_NukeLobbyData();
 
@@ -976,16 +967,21 @@ static bool NutPunch_Connect(const char* lobby_id, bool sane) {
     return true;
 }
 
+bool NutPunch_Query() {
+    NP_LazyInit();
+    return NP_Querying = NP_Connect(NULL, false);
+}
+
 bool NutPunch_Host(const char* lobby_id) {
     NP_LazyInit();
     NP_HeartbeatFlags = 0;
-    return NutPunch_Connect(lobby_id, true);
+    return NP_Connect(lobby_id, true);
 }
 
 bool NutPunch_Join(const char* lobby_id) {
     NP_LazyInit();
     NP_HeartbeatFlags = NP_HB_JoinExisting;
-    return NutPunch_Connect(lobby_id, true);
+    return NP_Connect(lobby_id, true);
 }
 
 void NutPunch_SetUnlisted(bool unlisted) {
@@ -1023,11 +1019,17 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
         filter_count = NUTPUNCH_MAX_SEARCH_FILTERS;
     }
 
-    NP_LazyInit();
-    NP_Querying = NutPunch_Connect(NULL, false);
+    static uint8_t
+        query[sizeof(NP_Header) + (NUTPUNCH_MAX_SEARCH_FILTERS * sizeof(NutPunch_Filter))] = {0};
+    uint8_t* ptr = query;
+
+    NutPunch_Memcpy(ptr, "LIST", sizeof(NP_Header));
+    ptr += sizeof(NP_Header);
 
     if (filter_count > 0 && filters != NULL)
-        NutPunch_Memcpy(NP_Filters, filters, filter_count * sizeof(*filters));
+        NutPunch_Memcpy(ptr, filters, filter_count * sizeof(NutPunch_Filter));
+
+    NP_SendDirectly(NP_PuncherAddr, query, sizeof(query));
 }
 
 void NutPunch_Cleanup() {
@@ -1243,15 +1245,19 @@ static void NP_HandleListing(NP_Message msg) {
         return;
     NP_LastBeating = NutPunch_TimeNS();
 
-    static const size_t idlen = sizeof(NutPunch_LobbyId);
-
+    NutPunch_LobbyList list = {0};
     for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
-        NP_Lobbies[i].players = *(uint8_t*)(msg.data++);
-        NP_Lobbies[i].capacity = *(uint8_t*)(msg.data++);
+        list.lobbies[i].players = *(uint8_t*)(msg.data++);
+        list.lobbies[i].capacity = *(uint8_t*)(msg.data++);
 
-        NutPunch_Memcpy(NP_Lobbies[i].name, msg.data, idlen);
-        NP_Lobbies[i].name[idlen] = '\0', msg.data += idlen;
+        NutPunch_Memcpy(list.lobbies[i].name, msg.data, sizeof(NutPunch_LobbyId));
+        msg.data += sizeof(NutPunch_LobbyId);
+
+        if (NutPunch_Memcmp(list.lobbies[i].name, (NutPunch_LobbyId){0}, sizeof(NutPunch_LobbyId)))
+            ++list.count;
     }
+
+    NP_HandleEventCb(NPCB_LobbyList, &list);
 }
 
 static void NP_HandleLobbyMetadata(NP_Message msg) {
@@ -1259,14 +1265,13 @@ static void NP_HandleLobbyMetadata(NP_Message msg) {
         return;
     NP_LastBeating = NutPunch_TimeNS();
 
-    for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
-        if (NutPunch_Memcmp(NP_Lobbies[i].name, msg.data, sizeof(NutPunch_LobbyId)))
-            continue;
-        msg.data += sizeof(NutPunch_LobbyId);
-        NutPunch_Memcpy(NP_Lobbies[i].metadata, msg.data, sizeof(NutPunch_Metadata));
-        NP_Lobbies[i].got_meta = true;
-        break;
-    }
+    NutPunch_LobbyMetadata info = {0};
+
+    NutPunch_Memcpy(info.lobby, msg.data, sizeof(NutPunch_LobbyId));
+    msg.data += sizeof(NutPunch_LobbyId);
+    NutPunch_Memcpy(info.metadata, msg.data, sizeof(NutPunch_Metadata));
+
+    NP_HandleEventCb(NPCB_LobbyMetadata, &info);
 }
 
 static void NP_HandleData(NP_Message msg) {
@@ -1356,14 +1361,9 @@ static bool NP_SendHeartbeat() {
     static uint8_t heartbeat[sizeof(NP_Header) + sizeof(NP_Heartbeat)] = {0};
     NP_Memzero(heartbeat);
 
-    uint8_t* ptr = heartbeat;
-    if (NP_Querying) {
-        NutPunch_Memcpy(ptr, "LIST", sizeof(NP_Header));
-        ptr += sizeof(NP_Header);
+    if (!NP_Querying) {
+        uint8_t* ptr = heartbeat;
 
-        NutPunch_Memcpy(ptr, NP_Filters, sizeof(NP_Filters));
-        ptr += sizeof(NP_Filters);
-    } else {
         NutPunch_Memcpy(ptr, "JOIN", sizeof(NP_Header));
         ptr += sizeof(NP_Header);
 
@@ -1388,21 +1388,26 @@ static bool NP_SendHeartbeat() {
 
         NutPunch_Memcpy(ptr, NP_LobbyMetadata, sizeof(NutPunch_Metadata));
         ptr += sizeof(NutPunch_Metadata);
-    }
 
-    const int len = (int)(ptr - heartbeat);
-    if (0 <= NP_SendDirectly(NP_PuncherAddr, heartbeat, len))
-        return true;
+        const int len = (int)(ptr - heartbeat);
+        if (0 <= NP_SendDirectly(NP_PuncherAddr, heartbeat, len))
+            return true;
+    }
 
     const int err = NP_SockError();
     switch (err) {
     case NP_WouldBlock:
     case NP_ConnReset:
-        return true;
+        break;
+
     default:
+        if (NP_Querying)
+            break;
         NP_Warn("Failed to send heartbeat to NutPuncher (%d)", err);
         return false;
     }
+
+    return true;
 }
 
 typedef enum {
@@ -1544,7 +1549,7 @@ static void NP_NetworkUpdate() {
                    server_timeout = NUTPUNCH_SERVER_TIMEOUT_SECS * NUTPUNCH_NS,
                    peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * NUTPUNCH_NS;
 
-    if (now - NP_LastBeating >= server_timeout) {
+    if (!NP_Querying && now - NP_LastBeating >= server_timeout) {
         NP_Warn("NutPuncher connection timed out!");
         goto error;
     }
@@ -1693,22 +1698,6 @@ void NutPunch_Send(NutPunch_Channel channel, NutPunch_Peer peer, const void* dat
 void
 NutPunch_SendReliably(NutPunch_Channel channel, NutPunch_Peer peer, const void* data, int size) {
     NP_SendPro(peer, channel, data, size, true);
-}
-
-const NutPunch_LobbyInfo* NutPunch_GetLobby(int index) {
-    NP_LazyInit();
-    if (index >= 0 && index < NutPunch_LobbyCount())
-        return &NP_Lobbies[index];
-    return NULL;
-}
-
-int NutPunch_LobbyCount() {
-    NP_LazyInit();
-    static const NutPunch_LobbyId nully = {0};
-    for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++)
-        if (!NutPunch_Memcmp(NP_Lobbies[i].name, nully, sizeof(nully)))
-            return i;
-    return NUTPUNCH_MAX_SEARCH_RESULTS;
 }
 
 int NutPunch_PeerCount() {

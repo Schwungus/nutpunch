@@ -17,7 +17,8 @@ int main(int argc, char* argv[]) {
 
     if (argc > 2) {
         int players = strtol(argv[2], NULL, 10);
-        NutPunch_Host(LOBBY, players);
+        NutPunch_Host(LOBBY);
+        NutPunch_SetMaxPlayers(players);
         NP_Info("HOSTANING>..... for %d", players);
     } else {
         NutPunch_Join(LOBBY);
