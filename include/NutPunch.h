@@ -158,7 +158,7 @@ typedef struct {
 /// A list of lobbies returned by the NutPuncher.
 typedef struct {
     uint8_t count;
-    NutPunch_LobbyInfo lobbies[NUTPUNCH_MAX_SEARCH_RESULTS];
+    const NutPunch_LobbyInfo* lobbies;
 } NutPunch_LobbyList;
 
 /// A snapshot of a lobby's metadata returned by the nutpuncher.
@@ -550,11 +550,6 @@ typedef struct {
 } NP_Beating;
 
 typedef struct {
-    NutPunch_Peer players, capacity;
-    NutPunch_LobbyId id;
-} NP_Listing[NUTPUNCH_MAX_SEARCH_RESULTS];
-
-typedef struct {
     NutPunch_LobbyId id;
     NutPunch_Metadata metadata;
 } NP_Ligma;
@@ -590,11 +585,11 @@ static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeati
 // clang-format off
 static const NP_MessageType NP_MessageTypes[] = {
 	{"PING", 1 + sizeof(NutPunch_Metadata), NP_HandlePing         },
-	{"LIST", sizeof(NP_Listing),            NP_HandleListing      },
+	{"LIST", NP_ANY_LEN,                    NP_HandleListing      },
 	{"LGMA", sizeof(NP_Ligma),              NP_HandleLobbyMetadata},
 	{"ACKY", sizeof(NP_Acky),               NP_HandleAcky         },
 	{"DATA", NP_ANY_LEN,                    NP_HandleData         },
-	{"GTFO", 1,		                NP_HandleGTFO         },
+	{"GTFO", 1,		                        NP_HandleGTFO         },
 	{"BEAT", sizeof(NP_Beating),            NP_HandleBeating      },
 };
 // clang-format on
@@ -1014,7 +1009,7 @@ int NutPunch_GetMaxPlayers() {
 }
 
 void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
-    if (filter_count > NUTPUNCH_MAX_SEARCH_FILTERS) {
+    if (filters != NULL && filter_count > NUTPUNCH_MAX_SEARCH_FILTERS) {
         NP_Warn("Filter count exceeded in `NutPunch_FindLobbies`; truncating the input");
         filter_count = NUTPUNCH_MAX_SEARCH_FILTERS;
     }
@@ -1026,10 +1021,13 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
     NutPunch_Memcpy(ptr, "LIST", sizeof(NP_Header));
     ptr += sizeof(NP_Header);
 
-    if (filter_count > 0 && filters != NULL)
+    if (filter_count > 0 && filters != NULL) {
         NutPunch_Memcpy(ptr, filters, filter_count * sizeof(NutPunch_Filter));
+        ptr += filter_count * sizeof(NutPunch_Filter);
+    }
 
-    NP_SendDirectly(NP_PuncherAddr, query, sizeof(query));
+    const int len = (int)(ptr - query);
+    NP_SendDirectly(NP_PuncherAddr, query, len);
 }
 
 void NutPunch_Cleanup() {
@@ -1246,16 +1244,8 @@ static void NP_HandleListing(NP_Message msg) {
     NP_LastBeating = NutPunch_TimeNS();
 
     NutPunch_LobbyList list = {0};
-    for (int i = 0; i < NUTPUNCH_MAX_SEARCH_RESULTS; i++) {
-        list.lobbies[i].players = *(uint8_t*)(msg.data++);
-        list.lobbies[i].capacity = *(uint8_t*)(msg.data++);
-
-        NutPunch_Memcpy(list.lobbies[i].name, msg.data, sizeof(NutPunch_LobbyId));
-        msg.data += sizeof(NutPunch_LobbyId);
-
-        if (NutPunch_Memcmp(list.lobbies[i].name, (NutPunch_LobbyId){0}, sizeof(NutPunch_LobbyId)))
-            ++list.count;
-    }
+    list.count = msg.size / sizeof(NutPunch_LobbyInfo);
+    list.lobbies = list.count ? (NutPunch_LobbyInfo*)msg.data : NULL;
 
     NP_HandleEventCb(NPCB_LobbyList, &list);
 }
