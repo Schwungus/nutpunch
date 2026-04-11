@@ -1054,6 +1054,8 @@ static const char* NP_FormatSockaddr(NP_AddrInfo addr) {
 }
 
 static void NP_KillPeer(NutPunch_Peer peer) {
+    if (NutPunch_PeerAlive(peer))
+        NP_HandleEventCb(NPCB_PeerLeft, &peer);
     NP_MemzeroRef(NP_Peers[peer]);
 }
 
@@ -1143,8 +1145,6 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
     *NP_AddrPort(&internal) = *(uint16_t*)data, data += 2;
 
     if (NP_AddrNull(pub) && NP_AddrNull(internal)) { // dead on the NutPuncher's side
-        if (NutPunch_PeerAlive(idx))
-            NP_HandleEventCb(NPCB_PeerLeft, &idx);
         NP_KillPeer(idx);
         return;
     }
@@ -1544,12 +1544,14 @@ static void NP_NetworkUpdate() {
     for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
         const NutPunch_Clock diff = now - NP_Peers[i].last_ping;
         const bool timed_out = diff >= peer_timeout;
+
         if (i == NutPunch_LocalPeer())
             continue;
+
         if (!timed_out || !NutPunch_PeerAlive(i))
             continue;
+
         NP_Info("Peer %d timed out", i + 1);
-        NP_HandleEventCb(NPCB_PeerLeft, &i);
         NP_KillPeer(i);
     }
 
