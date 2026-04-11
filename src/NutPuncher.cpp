@@ -478,15 +478,25 @@ static bool create_lobby(const char* id, const AddrInfo& pub) {
 }
 
 static void send_lobbies(AddrInfo addr, const char* target_id) {
-    static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Ligma)] = "LGMA";
-    std::memcpy(buf + sizeof(NP_Header), target_id, sizeof(NutPunch_LobbyId));
+    static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId) + sizeof(NutPunch_Metadata)]
+        = "LGMA";
+    uint8_t* ptr = buf + sizeof(NP_Header);
+
+    std::memcpy(ptr, target_id, sizeof(NutPunch_LobbyId));
+    ptr += sizeof(NutPunch_LobbyId);
 
     for (const auto& [id, lobby] : lobbies) {
         if (id != target_id || lobby.unlisted)
             continue;
-        std::memcpy(buf + sizeof(NP_Header) + sizeof(NutPunch_LobbyId), lobby.metadata.fields,
-            sizeof(NutPunch_Metadata));
-        addr.send(buf, sizeof(buf));
+
+        for (const auto& field : lobby.metadata.fields) {
+            if (is_memzero(field))
+                continue;
+            std::memcpy(ptr, &field, sizeof(NutPunch_Field));
+            ptr += sizeof(NutPunch_Field);
+        }
+
+        addr.send(buf, ptr - buf);
         break;
     }
 }
