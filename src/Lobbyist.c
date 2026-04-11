@@ -69,8 +69,10 @@ int main(int argc, char* argv[]) {
         }
 
 #ifdef NUTPUNCH_WINDOSE
-        if (kbhit())
+        if (kbhit()) {
+            (void)getch();
             break;
+        }
 #endif
 
         if (++refresh >= 150) {
