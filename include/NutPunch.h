@@ -1010,12 +1010,9 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
         filter_count = NUTPUNCH_MAX_SEARCH_FILTERS;
     }
 
-    static uint8_t
-        query[sizeof(NP_Header) + (NUTPUNCH_MAX_SEARCH_FILTERS * sizeof(NutPunch_Filter))] = {0};
-    uint8_t* ptr = query;
-
-    NutPunch_Memcpy(ptr, "LIST", sizeof(NP_Header));
-    ptr += sizeof(NP_Header);
+    static uint8_t query[sizeof(NP_Header) + NUTPUNCH_MAX_SEARCH_FILTERS * sizeof(NutPunch_Filter)]
+        = "LIST";
+    uint8_t* ptr = query + sizeof(NP_Header);
 
     if (filter_count > 0 && filters != NULL) {
         NutPunch_Memcpy(ptr, filters, filter_count * sizeof(NutPunch_Filter));
