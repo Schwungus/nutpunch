@@ -491,32 +491,26 @@ static void send_lobbies(AddrInfo addr, const char* target_id) {
     }
 }
 
-static void send_lobbies(AddrInfo addr, const NutPunch_Filter* filters) {
-    static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Listing)] = "LIST";
+static void send_lobbies(AddrInfo addr, size_t filter_count, const NutPunch_Filter* filters) {
+    static uint8_t buf[sizeof(NP_Header)
+                       + (NUTPUNCH_MAX_SEARCH_RESULTS * sizeof(NutPunch_LobbyInfo))] = "LIST";
     uint8_t* ptr = buf + sizeof(NP_Header);
-    size_t filter_count = 0;
 
-    for (; filter_count < NUTPUNCH_MAX_SEARCH_FILTERS; filter_count++)
-        if (is_memzero(filters[filter_count]))
-            break;
-
-    std::memset(ptr, 0, sizeof(NP_Listing));
     size_t count = 0;
 
     for (const auto& [id, lobby] : lobbies) {
         if (lobby.unlisted || !lobby.match_against(filters, filter_count))
             continue;
 
-        *ptr++ = lobby.gamers(), *ptr++ = lobby.capacity;
-        std::memset(ptr, 0, sizeof(NutPunch_LobbyId));
         std::memcpy(ptr, id.data(), std::strlen(lobby.fmt_id()));
         ptr += sizeof(NutPunch_LobbyId);
+        *ptr++ = lobby.gamers(), *ptr++ = lobby.capacity;
 
         if (++count >= NUTPUNCH_MAX_SEARCH_RESULTS)
             break;
     }
 
-    addr.send(buf, sizeof(buf));
+    addr.send(buf, ptr - buf);
 }
 
 static void kill_bro(const NutPunch_PeerId bro) {
@@ -562,8 +556,9 @@ static int receive() {
     if (!std::memcmp(heartbeat, "LIST", sizeof(NP_Header))) {
         if (rcv == sizeof(NutPunch_LobbyId)) {
             send_lobbies(pub, ptr);
-        } else if (rcv == NUTPUNCH_MAX_SEARCH_FILTERS * sizeof(NutPunch_Filter)) {
-            send_lobbies(pub, reinterpret_cast<const NutPunch_Filter*>(ptr));
+        } else if (!(rcv % sizeof(NutPunch_Filter))) {
+            send_lobbies(
+                pub, rcv / sizeof(NutPunch_Filter), reinterpret_cast<const NutPunch_Filter*>(ptr));
         } else {
             // junk...
         }
