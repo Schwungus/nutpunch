@@ -1,8 +1,13 @@
 name: Deploy the public instance
 
 on:
+  # redeploy only on direct modifications of the NutPuncher code
   push:
     branches: [master]
+    paths: [src/NutPuncher.cpp]
+
+  # OR trigger deployment manually in case the modifications in NutPunch.h matter to the server since it reuses some of its funcs
+  workflow_dispatch:
 
 jobs:
   deploy:
