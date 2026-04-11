@@ -52,11 +52,13 @@ int main(int argc, char* argv[]) {
 
     NutPunch_Register(NPCB_LobbyList, handle_lobby_list);
     NutPunch_Register(NPCB_LobbyMetadata, handle_lobby_data);
+
     NutPunch_Query();
     NutPunch_FindLobbies(0, NULL);
 
-    static int refresh = 0;
-    while (true) {
+    int refresh = 0;
+
+    for (;;) {
         if (NPS_Error == NutPunch_Update()) {
             printf("failed to connect or smth\n");
             return EXIT_FAILURE;
@@ -70,7 +72,6 @@ int main(int argc, char* argv[]) {
         NP_SleepMs(1000 / 30);
     }
 
-    NutPunch_Disconnect();
-
+    NutPunch_Cleanup();
     return EXIT_SUCCESS;
 }
