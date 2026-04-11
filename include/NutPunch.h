@@ -164,7 +164,8 @@ typedef struct {
 /// A snapshot of a lobby's metadata returned by the nutpuncher.
 typedef struct {
     NutPunch_LobbyId lobby;
-    NutPunch_Metadata metadata;
+    uint8_t count;
+    const NutPunch_Field* metadata;
 } NutPunch_LobbyMetadata;
 
 /// Comparison operators used in `NutPunch_Filter`s.
@@ -550,11 +551,6 @@ typedef struct {
 } NP_Beating;
 
 typedef struct {
-    NutPunch_LobbyId id;
-    NutPunch_Metadata metadata;
-} NP_Ligma;
-
-typedef struct {
     NutPunch_Channel channel;
     NP_PacketIndex packet;
 } NP_Acky;
@@ -586,7 +582,7 @@ static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeati
 static const NP_MessageType NP_MessageTypes[] = {
 	{"PING", 1 + sizeof(NutPunch_Metadata), NP_HandlePing         },
 	{"LIST", NP_ANY_LEN,                    NP_HandleListing      },
-	{"LGMA", sizeof(NP_Ligma),              NP_HandleLobbyMetadata},
+	{"LGMA", NP_ANY_LEN,                    NP_HandleLobbyMetadata},
 	{"ACKY", sizeof(NP_Acky),               NP_HandleAcky         },
 	{"DATA", NP_ANY_LEN,                    NP_HandleData         },
 	{"GTFO", 1,		                        NP_HandleGTFO         },
@@ -1259,7 +1255,8 @@ static void NP_HandleLobbyMetadata(NP_Message msg) {
 
     NutPunch_Memcpy(info.lobby, msg.data, sizeof(NutPunch_LobbyId));
     msg.data += sizeof(NutPunch_LobbyId);
-    NutPunch_Memcpy(info.metadata, msg.data, sizeof(NutPunch_Metadata));
+    info.count = (msg.size - sizeof(NutPunch_LobbyId)) / sizeof(NutPunch_Field);
+    info.metadata = (NutPunch_Field*)msg.data;
 
     NP_HandleEventCb(NPCB_LobbyMetadata, &info);
 }
