@@ -1079,9 +1079,9 @@ static void NP_HandlePing(NP_Message msg) {
         NP_HandleEventCb(NPCB_PeerMetadataChanged, &changed);
     }
 
-    peer->addr = msg.addr;
     if (NP_AddrNull(peer->addr))
         NP_HandleEventCb(NPCB_PeerJoined, &idx);
+    peer->addr = msg.addr;
 
     NP_Trace("PING FROM %d = %s", idx, NP_FormatSockaddr(msg.addr));
 }
