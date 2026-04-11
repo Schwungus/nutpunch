@@ -4,6 +4,10 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
+#ifdef NUTPUNCH_WINDOSE
+#include <conio.h>
+#endif
+
 static void handle_lobby_list(const void* raw) {
     const NutPunch_LobbyList* list = raw;
 
@@ -63,6 +67,11 @@ int main(int argc, char* argv[]) {
             printf("failed to connect or smth\n");
             return EXIT_FAILURE;
         }
+
+#ifdef NUTPUNCH_WINDOSE
+        if (kbhit())
+            break;
+#endif
 
         if (++refresh >= 150) {
             NutPunch_FindLobbies(0, NULL);
