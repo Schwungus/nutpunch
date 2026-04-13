@@ -1246,7 +1246,7 @@ static void NP_HandleListing(NP_Message msg) {
 }
 
 static void NP_HandleLobbyMetadata(NP_Message msg) {
-    if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
+    if (!NP_AddrEq(msg.addr, NP_PuncherAddr) || msg.size < sizeof(NutPunch_LobbyId))
         return;
     NP_LastBeating = NutPunch_TimeNS();
 
@@ -1255,7 +1255,7 @@ static void NP_HandleLobbyMetadata(NP_Message msg) {
     NutPunch_Memcpy(info.lobby, msg.data, sizeof(NutPunch_LobbyId));
     msg.data += sizeof(NutPunch_LobbyId);
     info.count = (msg.size - sizeof(NutPunch_LobbyId)) / sizeof(NutPunch_Field);
-    info.metadata = (NutPunch_Field*)msg.data;
+    info.metadata = info.count ? (NutPunch_Field*)msg.data : NULL;
 
     NP_HandleEventCb(NPCB_LobbyMetadata, &info);
 }
