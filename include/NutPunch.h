@@ -102,6 +102,9 @@ typedef char NutPunch_PeerId[8];
 /// A string uniquely identifying a NutPunch lobby.
 typedef char NutPunch_LobbyId[32];
 
+/// A magic string used for matchmaking.
+typedef char NutPunch_MagicId[32];
+
 typedef uint8_t NutPunch_Channel, NutPunch_Peer;
 
 /// A singular entry of lobby/peer metadata.
@@ -235,6 +238,10 @@ bool NutPunch_Join(const char* lobby_id);
 /// If the lobby with the same ID exists, an error status spits out of `NutPunch_Update()` rather
 /// than immediately here.
 bool NutPunch_Host(const char* lobby_id);
+
+/// Join the queue for matchmaking. The magic ID will be used to find matching peers. Return `false`
+/// if a network error occurs and `true` otherwise.
+bool NutPunch_Queue(const char* magic_id);
 
 /// Unlist the lobby after calling `NutPunch_Host`.
 void NutPunch_SetUnlisted(bool);
@@ -505,6 +512,13 @@ typedef int64_t NP_Socket;
 #define NP_Trace(...) do {} while (0)
 #endif // clang-format on
 
+typedef uint8_t NP_NetMode;
+enum {
+    NPNM_Normal,
+    NPNM_Query,
+    NPNM_Matchmaking,
+};
+
 typedef uint32_t NP_PacketIndex;
 typedef struct sockaddr_in NP_AddrInfo;
 typedef uint8_t NP_HeartbeatFlagsStorage;
@@ -600,6 +614,7 @@ static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
 static char NP_LobbyId[sizeof(NutPunch_LobbyId) + 1] = {0};
 static NutPunch_PeerId NP_PeerId = {0};
+static NutPunch_MagicId NP_MagicId = {0};
 
 static NP_PeerInfo NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static NutPunch_Peer NP_LocalPeer = NUTPUNCH_MAX_PLAYERS, NP_Master = NUTPUNCH_MAX_PLAYERS,
@@ -615,17 +630,16 @@ static NutPunch_Channel NP_MaxChannel = 0;
 static NP_Data* NP_QueueOut[NUTPUNCH_CHANNEL_COUNT] = {0};
 static NP_Data* NP_QueueIn[NUTPUNCH_CHANNEL_COUNT] = {0};
 
+static bool NP_Unlisted = false;
 static NutPunch_Metadata NP_LobbyMetadata = {0}, NP_PeerMetadata = {0};
 
-static bool NP_Querying = false;
+static NP_NetMode NP_Current = NPNM_Normal;
 
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
     NP_HB_JoinExisting = 1 << 0,
     NP_HB_Unlisted = 1 << 1,
 };
-
-static bool NP_Unlisted = false;
 
 static int NP_SendDirectly(NP_AddrInfo, const void*, int);
 
@@ -660,7 +674,8 @@ static void NP_CleanupPackets(NP_Data** queue) {
 }
 
 static void NP_NukeLobbyData() {
-    NP_Closing = NP_Querying = NP_Unlisted = false;
+    NP_Current = NPNM_Normal;
+    NP_Closing = NP_Unlisted = false;
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
     NP_Memzero(NP_LobbyMetadata), NP_Memzero(NP_PeerMetadata);
     NP_Memzero(NP_Peers);
@@ -962,7 +977,12 @@ static bool NP_Connect(const char* lobby_id, bool sane) {
 
 bool NutPunch_Query() {
     NP_LazyInit();
-    return NP_Querying = NP_Connect(NULL, false);
+
+    if (!NP_Connect(NULL, false))
+        return false;
+
+    NP_Current = NPNM_Query;
+    return true;
 }
 
 bool NutPunch_Host(const char* lobby_id) {
@@ -975,6 +995,21 @@ bool NutPunch_Join(const char* lobby_id) {
     NP_LazyInit();
     NP_HeartbeatFlags = NP_HB_JoinExisting;
     return NP_Connect(lobby_id, true);
+}
+
+bool NutPunch_Queue(const char* magic_id) {
+    NP_LazyInit();
+
+    if (!NP_Connect(NULL, false))
+        return false;
+
+    NP_Current = NPNM_Matchmaking;
+    if (magic_id)
+        NutPunch_SNPrintF(NP_MagicId, sizeof(NP_MagicId), "%s", magic_id);
+    else
+        NP_Memzero(NP_MagicId);
+
+    return true;
 }
 
 void NutPunch_SetUnlisted(bool unlisted) {
@@ -1347,7 +1382,7 @@ static bool NP_SendHeartbeat() {
     static uint8_t heartbeat[sizeof(NP_Header) + sizeof(NP_Heartbeat)] = {0};
     NP_Memzero(heartbeat);
 
-    if (!NP_Querying) {
+    if (NP_Current == NPNM_Normal) {
         uint8_t* ptr = heartbeat;
 
         NutPunch_Memcpy(ptr, "JOIN", sizeof(NP_Header));
@@ -1387,7 +1422,7 @@ static bool NP_SendHeartbeat() {
         break;
 
     default:
-        if (NP_Querying)
+        if (NP_Current == NPNM_Query)
             break;
         NP_Warn("Failed to send heartbeat to NutPuncher (%d)", err);
         return false;
@@ -1536,7 +1571,7 @@ static void NP_NetworkUpdate() {
                    server_timeout = NUTPUNCH_SERVER_TIMEOUT_INTERVAL * NUTPUNCH_MS,
                    peer_timeout = NUTPUNCH_PEER_TIMEOUT_INTERVAL * NUTPUNCH_MS;
 
-    if (!NP_Querying && now - NP_LastBeating >= server_timeout) {
+    if (NP_Current != NPNM_Query && (now - NP_LastBeating) >= server_timeout) {
         NP_Warn("NutPuncher connection timed out!");
         goto error;
     }
