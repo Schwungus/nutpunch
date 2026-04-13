@@ -44,7 +44,7 @@ extern "C" {
 #define NUTPUNCH_DEFAULT_SERVER "nutpunch.schwung.us"
 
 /// Maximum amount of players in a lobby. Not intended to be customizable.
-#define NUTPUNCH_MAX_PLAYERS (16)
+#define NUTPUNCH_MAX_PLAYERS (8)
 
 /// Increment this every time you break the communications format between the peer and the
 /// NutPuncher, to make it use a different port and retain compatibility with the previous versions
@@ -80,10 +80,10 @@ extern "C" {
 #define NUTPUNCH_FIELD_DATA_MAX (16)
 
 /// Maximum amount of metadata fields per lobby/player.
-#define NUTPUNCH_MAX_FIELDS (12)
+#define NUTPUNCH_MAX_FIELDS (8)
 
 /// How many milliseconds to wait before resending a reliable packet.
-#define NUTPUNCH_BOUNCE_INTERVAL ((NutPunch_Clock)1000)
+#define NUTPUNCH_BOUNCE_INTERVAL ((NutPunch_Clock)250)
 
 #define NUTPUNCH_CHANNEL_COUNT (1 << (8 * sizeof(NutPunch_Channel)))
 
