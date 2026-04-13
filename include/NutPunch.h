@@ -405,7 +405,7 @@ const char* NutPunch_GetLastError();
 const char* NutPunch_Basename(const char* path);
 
 #define NUTPUNCH_NS ((NutPunch_Clock)1000000000)
-#define NUTPUNCH_MS (NUTPUNCH_NS / (NutPunch_Clock)1000)
+#define NUTPUNCH_MS (NUTPUNCH_NS / ((NutPunch_Clock)1000))
 
 typedef uint64_t NutPunch_Clock;
 NutPunch_Clock NutPunch_TimeNS();
