@@ -502,9 +502,8 @@ static void send_lobbies(AddrInfo addr, const char* target_id) {
 }
 
 static void send_lobbies(AddrInfo addr, size_t filter_count, const NutPunch_Filter* filters) {
-    static uint8_t
-        buf[sizeof(NP_Header) + (NUTPUNCH_MAX_SEARCH_RESULTS * sizeof(NutPunch_LobbyInfo))]
-        = "LIST";
+    constexpr const size_t fuckyou = NUTPUNCH_MAX_SEARCH_RESULTS * sizeof(NutPunch_LobbyInfo);
+    static uint8_t buf[sizeof(NP_Header) + fuckyou] = "LIST"; // BITCH REFORMATS EVERY COMMIT
     uint8_t* ptr = buf + sizeof(NP_Header);
 
     size_t count = 0;
