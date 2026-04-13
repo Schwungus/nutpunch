@@ -1380,19 +1380,21 @@ static bool NP_SendHeartbeat() {
         return true;
 
     static uint8_t heartbeat[sizeof(NP_Header) + sizeof(NP_Heartbeat)] = {0};
-    NP_Memzero(heartbeat);
 
-    if (NP_Current == NPNM_Normal) {
+    switch (NP_Current) {
+    default:
+        break;
+
+    case NPNM_Normal: {
+        NP_Memzero(heartbeat);
         uint8_t* ptr = heartbeat;
 
         NutPunch_Memcpy(ptr, "JOIN", sizeof(NP_Header));
         ptr += sizeof(NP_Header);
 
-        NutPunch_Memset(ptr, 0, sizeof(NutPunch_PeerId));
         NutPunch_Memcpy(ptr, NP_PeerId, sizeof(NutPunch_PeerId));
         ptr += sizeof(NutPunch_PeerId);
 
-        NutPunch_Memset(ptr, 0, sizeof(NutPunch_LobbyId));
         NutPunch_Memcpy(ptr, NP_LobbyId, sizeof(NutPunch_LobbyId));
         ptr += sizeof(NutPunch_LobbyId);
 
@@ -1413,6 +1415,27 @@ static bool NP_SendHeartbeat() {
         const int len = (int)(ptr - heartbeat);
         if (0 <= NP_SendDirectly(NP_PuncherAddr, heartbeat, len))
             return true;
+        break;
+    }
+
+    case NPNM_Matchmaking: {
+        NP_Memzero(heartbeat);
+        uint8_t* ptr = heartbeat;
+
+        NutPunch_Memcpy(ptr, "FIND", sizeof(NP_Header));
+        ptr += sizeof(NP_Header);
+
+        NutPunch_Memcpy(ptr, NP_PeerId, sizeof(NutPunch_PeerId));
+        ptr += sizeof(NutPunch_PeerId);
+
+        NutPunch_Memcpy(ptr, NP_MagicId, sizeof(NutPunch_MagicId));
+        ptr += sizeof(NutPunch_MagicId);
+
+        const int len = (int)(ptr - heartbeat);
+        if (0 <= NP_SendDirectly(NP_PuncherAddr, heartbeat, len))
+            return true;
+        break;
+    }
     }
 
     const int err = NP_SockError();
@@ -1550,6 +1573,9 @@ static void NP_FlushOutQueue() {
 }
 
 static void NP_SendGoodbyes() {
+    if (NP_Current == NPNM_Query)
+        return;
+
     static uint8_t bye[sizeof(NP_Header) + sizeof(NutPunch_PeerId)] = "DISC";
     NutPunch_Memcpy(bye + sizeof(NP_Header), NP_PeerId, sizeof(NutPunch_PeerId));
     NP_SendTimesDirectly(10, NP_PuncherAddr, bye, sizeof(bye));

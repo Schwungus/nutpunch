@@ -586,6 +586,14 @@ static int receive() {
     if (std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
         return RecvKeepGoing;
 
+    if (!std::memcmp(heartbeat, "FIND", sizeof(NP_Header))) {
+        if (rcv < sizeof(NutPunch_PeerId) + sizeof(NutPunch_MagicId))
+            return RecvKeepGoing;
+
+        // TODO: place bro in a queue...
+        return RecvKeepGoing;
+    }
+
     static NutPunch_PeerId peer_id = {0};
     std::memcpy(peer_id, ptr, sizeof(NutPunch_PeerId));
     ptr += sizeof(NutPunch_PeerId);
