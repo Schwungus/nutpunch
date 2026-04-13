@@ -1111,7 +1111,7 @@ static void NP_HandlePing(NP_Message msg) {
 
         NutPunch_PeerFieldDiff changed = {0};
         changed.peer = idx, changed.then = *then, changed.now = *now;
-        NutPunch_Memcpy(then, now, sizeof(NutPunch_Metadata));
+        *then = *now;
         NP_HandleEventCb(NPCB_PeerMetadataChanged, &changed);
     }
 
@@ -1256,7 +1256,7 @@ static void NP_HandleBeating(NP_Message msg) {
 
         NutPunch_FieldDiff diff = {0};
         diff.then = *then, diff.now = *now;
-        NutPunch_Memcpy(then, now, sizeof(NutPunch_Metadata));
+        *then = *now;
         NP_HandleEventCb(NPCB_LobbyMetadataChanged, &diff);
     }
 
