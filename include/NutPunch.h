@@ -54,14 +54,14 @@ extern "C" {
 /// The UDP port used by the nutpunching mediator server.
 #define NUTPUNCH_SERVER_PORT (30000 + NUTPUNCH_API_VERSION)
 
-#ifndef NUTPUNCH_SERVER_TIMEOUT_SECS
-/// How many seconds to wait for NutPuncher to respond before disconnecting.
-#define NUTPUNCH_SERVER_TIMEOUT_SECS ((NutPunch_Clock)5)
+#ifndef NUTPUNCH_SERVER_TIMEOUT_INTERVAL
+/// How many milliseconds to wait for NutPuncher to respond before disconnecting.
+#define NUTPUNCH_SERVER_TIMEOUT_INTERVAL ((NutPunch_Clock)5000)
 #endif
 
-#ifndef NUTPUNCH_PEER_TIMEOUT_SECS
-/// How many seconds to wait for a peer to respond before timing out.
-#define NUTPUNCH_PEER_TIMEOUT_SECS ((NutPunch_Clock)5)
+#ifndef NUTPUNCH_PEER_TIMEOUT_INTERVAL
+/// How many milliseconds to wait for a peer to respond before timing out.
+#define NUTPUNCH_PEER_TIMEOUT_INTERVAL ((NutPunch_Clock)5000)
 #endif
 
 /// How many bytes to reserve for every network packet.
@@ -82,8 +82,8 @@ extern "C" {
 /// Maximum amount of metadata fields per lobby/player.
 #define NUTPUNCH_MAX_FIELDS (12)
 
-/// How many updates to wait before resending a reliable packet.
-#define NUTPUNCH_BOUNCE_TICKS (20)
+/// How many milliseconds to wait before resending a reliable packet.
+#define NUTPUNCH_BOUNCE_INTERVAL ((NutPunch_Clock)1000)
 
 #define NUTPUNCH_CHANNEL_COUNT (1 << (8 * sizeof(NutPunch_Channel)))
 
@@ -405,6 +405,8 @@ const char* NutPunch_GetLastError();
 const char* NutPunch_Basename(const char* path);
 
 #define NUTPUNCH_NS ((NutPunch_Clock)1000000000)
+#define NUTPUNCH_MS (NUTPUNCH_NS / (NutPunch_Clock)1000)
+
 typedef uint64_t NutPunch_Clock;
 NutPunch_Clock NutPunch_TimeNS();
 
@@ -515,8 +517,8 @@ typedef struct NP_Data {
     NP_PacketIndex index;
     uint32_t size;
     NutPunch_Peer destination;
+    NutPunch_Clock sent_at;
     uint8_t f_delete;
-    int16_t bounce;
 } NP_Data;
 
 typedef struct {
@@ -1148,7 +1150,7 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 
     NP_PeerInfo* const peer = &NP_Peers[idx];
     const NutPunch_Clock now = NutPunch_TimeNS(),
-                         timeout_period = NUTPUNCH_PEER_TIMEOUT_SECS * NUTPUNCH_NS;
+                         timeout_period = NUTPUNCH_PEER_TIMEOUT_INTERVAL * NUTPUNCH_MS;
 
     const bool overtime = now - peer->first_ping >= timeout_period,
                timed_out = peer->first_ping && overtime;
@@ -1473,33 +1475,34 @@ static void NP_PruneOutQueue() {
 }
 
 static void NP_FlushChannelOutQueue(const NutPunch_Channel channel) {
+    const NutPunch_Clock now = NutPunch_TimeNS(),
+                         bounce_interval = NUTPUNCH_BOUNCE_INTERVAL * NUTPUNCH_MS;
+
     for (NP_Data* cur = NP_QueueOut[channel]; cur; cur = cur->next) {
         if (!NutPunch_PeerAlive(cur->destination)) {
             cur->f_delete = true;
             continue;
         }
 
-        // Send & pop normally since a bounce of -1 makes it an unreliable packet.
-        if (cur->bounce < 0) {
-            cur->f_delete = true;
-        } else if (cur->bounce > 0) {
-            // otherwise, check if it's about to bounce, to resend it.
-            if (--cur->bounce > 0)
-                continue;
-        }
-        cur->bounce = NUTPUNCH_BOUNCE_TICKS;
+        if (cur->index && cur->sent_at && now - cur->sent_at < bounce_interval)
+            continue;
+
+        cur->sent_at = now;
+        cur->f_delete = !cur->index;
 
         if (NP_Sock == NUTPUNCH_INVALID_SOCKET) {
             cur->f_delete = true;
             continue;
         }
 
-        NP_AddrInfo addr = NP_Peers[cur->destination].addr;
-        int result = NP_SendDirectly(addr, cur->data, (int)cur->size);
+        const int result
+            = NP_SendDirectly(NP_Peers[cur->destination].addr, cur->data, (int)cur->size);
         if (!result)
             NP_KillPeer(cur->destination);
+
         if (result >= 0 || NP_SockError() == NP_WouldBlock || NP_SockError() == NP_ConnReset)
             continue;
+
         NP_Warn("Failed to send data to peer #%d (%d)", cur->destination + 1, NP_SockError());
         NP_NukeLobbyData();
         return;
@@ -1530,8 +1533,8 @@ void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
 
 static void NP_NetworkUpdate() {
     NutPunch_Clock now = NutPunch_TimeNS(),
-                   server_timeout = NUTPUNCH_SERVER_TIMEOUT_SECS * NUTPUNCH_NS,
-                   peer_timeout = NUTPUNCH_PEER_TIMEOUT_SECS * NUTPUNCH_NS;
+                   server_timeout = NUTPUNCH_SERVER_TIMEOUT_INTERVAL * NUTPUNCH_MS,
+                   peer_timeout = NUTPUNCH_PEER_TIMEOUT_INTERVAL * NUTPUNCH_MS;
 
     if (!NP_Querying && now - NP_LastBeating >= server_timeout) {
         NP_Warn("NutPuncher connection timed out!");
@@ -1671,8 +1674,7 @@ static void NP_SendPro(const NutPunch_Peer destination, const NutPunch_Channel c
 
     NP_Data* const cur = NP_QueueOut[channel];
     cur->next = next, cur->destination = destination;
-    cur->size = ptr - buf, cur->bounce = index ? 0 : -1;
-    cur->index = index, cur->f_delete = false;
+    cur->size = ptr - buf, cur->index = index, cur->f_delete = false;
     cur->data = (uint8_t*)NutPunch_Malloc(cur->size);
     NutPunch_Memcpy(cur->data, buf, cur->size);
 }

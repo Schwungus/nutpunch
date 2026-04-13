@@ -502,8 +502,9 @@ static void send_lobbies(AddrInfo addr, const char* target_id) {
 }
 
 static void send_lobbies(AddrInfo addr, size_t filter_count, const NutPunch_Filter* filters) {
-    static uint8_t buf[sizeof(NP_Header)
-                       + (NUTPUNCH_MAX_SEARCH_RESULTS * sizeof(NutPunch_LobbyInfo))] = "LIST";
+    static uint8_t
+        buf[sizeof(NP_Header) + (NUTPUNCH_MAX_SEARCH_RESULTS * sizeof(NutPunch_LobbyInfo))]
+        = "LIST";
     uint8_t* ptr = buf + sizeof(NP_Header);
 
     size_t count = 0;
@@ -678,7 +679,7 @@ int main(int argc, char*[]) {
 
         const NutPunch_Clock delta = NutPunch_TimeNS() - start, diff = MIN_DELTA - delta;
         if (diff > 0)
-            NP_SleepMs(diff / (NUTPUNCH_NS / (NutPunch_Clock)1000));
+            NP_SleepMs(diff / NUTPUNCH_MS);
     }
 
     return EXIT_SUCCESS;
