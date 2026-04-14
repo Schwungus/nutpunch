@@ -627,8 +627,8 @@ static int receive() {
     }
 
     if (!std::memcmp(heartbeat, "FIND", sizeof(NP_Header))) {
-        if (rcv < sizeof(NutPunch_PeerId) + sizeof(NutPunch_QueueId))
-            return RecvKeepGoing;
+        if (rcv < (sizeof(NutPunch_PeerId) + sizeof(NutPunch_QueueId)))
+            return RecvKeepGoing; // junk...
 
         NutPunch_PeerId peer_id = {0};
         std::memcpy(peer_id, ptr, sizeof(peer_id));
@@ -649,6 +649,7 @@ static int receive() {
         queue.emplace_back(peer_id, queue_id, pub);
         NP_Info("QUEUE: Added peer '%.*s' (%.*s)", (int)sizeof(peer_id), peer_id,
             (int)sizeof(queue_id), queue_id);
+
         return RecvKeepGoing;
     }
 
