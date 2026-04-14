@@ -587,7 +587,7 @@ static int receive() {
         return RecvKeepGoing;
 
     if (!std::memcmp(heartbeat, "FIND", sizeof(NP_Header))) {
-        if (rcv < sizeof(NutPunch_PeerId) + sizeof(NutPunch_MagicId))
+        if (rcv < sizeof(NutPunch_PeerId) + sizeof(NutPunch_QueueId))
             return RecvKeepGoing;
 
         // TODO: place bro in a queue...

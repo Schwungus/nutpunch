@@ -103,7 +103,7 @@ typedef char NutPunch_PeerId[8];
 typedef char NutPunch_LobbyId[32];
 
 /// A magic string used for matchmaking.
-typedef char NutPunch_MagicId[32];
+typedef char NutPunch_QueueId[32];
 
 typedef uint8_t NutPunch_Channel, NutPunch_Peer;
 
@@ -239,9 +239,9 @@ bool NutPunch_Join(const char* lobby_id);
 /// than immediately here.
 bool NutPunch_Host(const char* lobby_id);
 
-/// Join the queue for matchmaking. The magic ID will be used to find matching peers. Return `false`
-/// if a network error occurs and `true` otherwise.
-bool NutPunch_Queue(const char* magic_id);
+/// Join the queue for matchmaking. The queue ID is used to find similar peers. Return `false` if a
+/// network error occurs and `true` otherwise.
+bool NutPunch_Queue(const char* queue_id);
 
 /// Unlist the lobby after calling `NutPunch_Host`.
 void NutPunch_SetUnlisted(bool);
@@ -614,7 +614,7 @@ static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
 static char NP_LobbyId[sizeof(NutPunch_LobbyId) + 1] = {0};
 static NutPunch_PeerId NP_PeerId = {0};
-static NutPunch_MagicId NP_MagicId = {0};
+static NutPunch_QueueId NP_QueueId = {0};
 
 static NP_PeerInfo NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static NutPunch_Peer NP_LocalPeer = NUTPUNCH_MAX_PLAYERS, NP_Master = NUTPUNCH_MAX_PLAYERS,
@@ -997,17 +997,17 @@ bool NutPunch_Join(const char* lobby_id) {
     return NP_Connect(lobby_id, true);
 }
 
-bool NutPunch_Queue(const char* magic_id) {
+bool NutPunch_Queue(const char* queue_id) {
     NP_LazyInit();
 
     if (!NP_Connect(NULL, false))
         return false;
 
     NP_Current = NPNM_Matchmaking;
-    if (magic_id)
-        NutPunch_SNPrintF(NP_MagicId, sizeof(NP_MagicId), "%s", magic_id);
+    if (queue_id)
+        NutPunch_SNPrintF(NP_QueueId, sizeof(NP_QueueId), "%s", queue_id);
     else
-        NP_Memzero(NP_MagicId);
+        NP_Memzero(NP_QueueId);
 
     return true;
 }
@@ -1428,8 +1428,8 @@ static bool NP_SendHeartbeat() {
         NutPunch_Memcpy(ptr, NP_PeerId, sizeof(NutPunch_PeerId));
         ptr += sizeof(NutPunch_PeerId);
 
-        NutPunch_Memcpy(ptr, NP_MagicId, sizeof(NutPunch_MagicId));
-        ptr += sizeof(NutPunch_MagicId);
+        NutPunch_Memcpy(ptr, NP_QueueId, sizeof(NutPunch_QueueId));
+        ptr += sizeof(NutPunch_QueueId);
 
         const int len = (int)(ptr - heartbeat);
         if (0 <= NP_SendDirectly(NP_PuncherAddr, heartbeat, len))
