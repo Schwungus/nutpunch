@@ -626,16 +626,6 @@ static int receive() {
         return RecvKeepGoing;
     }
 
-    if (rcv >= sizeof(NutPunch_PeerId) && !std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {
-        kill_bro(ptr);
-        return RecvKeepGoing;
-    }
-
-    if (rcv != sizeof(NP_Heartbeat))
-        return RecvKeepGoing; // most likely junk...
-    if (std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
-        return RecvKeepGoing;
-
     if (!std::memcmp(heartbeat, "FIND", sizeof(NP_Header))) {
         if (rcv < sizeof(NutPunch_PeerId) + sizeof(NutPunch_QueueId))
             return RecvKeepGoing;
@@ -661,6 +651,16 @@ static int receive() {
             (int)sizeof(queue_id), queue_id);
         return RecvKeepGoing;
     }
+
+    if (rcv >= sizeof(NutPunch_PeerId) && !std::memcmp(heartbeat, "DISC", sizeof(NP_Header))) {
+        kill_bro(ptr);
+        return RecvKeepGoing;
+    }
+
+    if (rcv != sizeof(NP_Heartbeat))
+        return RecvKeepGoing; // most likely junk...
+    if (std::memcmp(heartbeat, "JOIN", sizeof(NP_Header)))
+        return RecvKeepGoing;
 
     static NutPunch_PeerId peer_id = {0};
     std::memcpy(peer_id, ptr, sizeof(NutPunch_PeerId));
