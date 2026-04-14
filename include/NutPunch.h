@@ -595,8 +595,7 @@ typedef struct {
 
 static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
     NP_HandleListing(NP_Message), NP_HandleLobbyMetadata(NP_Message), NP_HandleAcky(NP_Message),
-    NP_HandleData(NP_Message), NP_HandlePong(NP_Message), NP_HandleQueueHost(NP_Message),
-    NP_HandleQueueJoin(NP_Message);
+    NP_HandleData(NP_Message), NP_HandlePong(NP_Message), NP_HandleDate(NP_Message);
 
 // clang-format off
 static const NP_MessageType NP_MessageTypes[] = {
@@ -608,8 +607,7 @@ static const NP_MessageType NP_MessageTypes[] = {
 	{"GTFO", 1,		                        NP_HandleGTFO         },
 	{"BEAT", sizeof(NP_Beating),            NP_HandleBeating      },
     {"PONG", 0,		                        NP_HandlePong         },
-    {"QMST", sizeof(NutPunch_LobbyId),      NP_HandleQueueHost    },
-    {"QSLV", sizeof(NutPunch_LobbyId),      NP_HandleQueueJoin    },
+    {"DATE", sizeof(NutPunch_LobbyId),      NP_HandleDate         },
 };
 // clang-format on
 
@@ -1382,15 +1380,7 @@ static void NP_HandlePong(NP_Message /*msg*/) {
     NP_LastBeating = NutPunch_TimeNS();
 }
 
-static void NP_HandleQueueHost(NP_Message msg) {
-    if (NP_Current != NPNM_Matchmaking)
-        return;
-
-    NutPunch_Host((char*)msg.data);
-    NP_HandleEventCb(NPCB_QueueCompleted, msg.data);
-}
-
-static void NP_HandleQueueJoin(NP_Message msg) {
+static void NP_HandleDate(NP_Message msg) {
     if (NP_Current != NPNM_Matchmaking)
         return;
 

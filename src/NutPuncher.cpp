@@ -685,7 +685,7 @@ static int receive() {
             err = NPE_LobbyExists;
     } else if (flags & NP_HB_JoinExisting) {
         err = NPE_NoSuchLobby;
-    } else if (!(flags & NP_HB_Join) && !create_lobby(lobby_id, pub)) {
+    } else if (!create_lobby(lobby_id, pub)) {
         return RecvKeepGoing;
     }
 
@@ -775,10 +775,9 @@ int main(int argc, char*[]) {
                 std::memcpy(queued.lobby_id, lobby_id, sizeof(lobby_id));
                 std::memcpy(matched.lobby_id, lobby_id, sizeof(lobby_id));
 
-                uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "QMST";
+                uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "DATE";
                 std::memcpy(buf + sizeof(NP_Header), lobby_id, sizeof(NutPunch_LobbyId));
                 queued.pub.send(buf, sizeof(buf));
-                std::memcpy(buf, "QSLV", sizeof(NP_Header));
                 matched.pub.send(buf, sizeof(buf));
 
                 NP_Info("QUEUE: Matched peers '%.*s' and '%.*s' to lobby '%s'",
