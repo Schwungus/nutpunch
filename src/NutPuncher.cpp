@@ -30,8 +30,10 @@
 #include <cstring>
 #include <map>
 #include <string>
+#include <vector>
 
-constexpr const uint64_t BEATS_PER_SECOND = 60, KEEP_ALIVE_SECONDS = 5, MAX_LOBBIES = 512;
+constexpr const uint64_t BEATS_PER_SECOND = 60, KEEP_ALIVE_SECONDS = 5, KEEP_QUEUED_SECONDS = 20,
+                         MAX_LOBBIES = 512;
 
 struct Lobby;
 static NP_Socket sock = NUTPUNCH_INVALID_SOCKET;
@@ -420,6 +422,45 @@ struct Lobby {
     NutPunch_Peer master_idx = NUTPUNCH_MAX_PLAYERS;
 };
 
+struct QueuePlayer {
+    NutPunch_PeerId id = {0};
+    NutPunch_QueueId queue_id = {0};
+    NutPunch_LobbyId lobby_id = {0};
+    AddrInfo pub;
+    std::uint32_t countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND,
+                  queue_countdown = KEEP_QUEUED_SECONDS * BEATS_PER_SECOND;
+
+    QueuePlayer(NutPunch_PeerId _id, NutPunch_QueueId _queue_id, AddrInfo _pub) {
+        std::memcpy(id, _id, sizeof(id));
+        std::memcpy(queue_id, _queue_id, sizeof(queue_id));
+        pub = _pub;
+    }
+
+    ~QueuePlayer() {}
+
+    explicit operator bool() const {
+        return countdown > 0 && queue_countdown > 0 && !is_memzero(id) && is_memzero(lobby_id);
+    }
+
+    bool update() {
+        if (--countdown <= 0) {
+            NP_Info("QUEUE: Peer '%.*s' timed out", (int)sizeof(id), id);
+            return false;
+        }
+
+        if (--queue_countdown <= 0) {
+            NP_Info("QUEUE: No matches found for peer '%.*s'", (int)sizeof(id), id);
+            pub.gtfo(NPE_QueueEmpty);
+            return false;
+        }
+
+        pub.send("PONG", sizeof(NP_Header));
+        return true;
+    }
+};
+
+static std::vector<QueuePlayer> queue;
+
 static bool bind_sock() {
     AddrInfo addr;
 
@@ -527,6 +568,15 @@ static void kill_bro(const NutPunch_PeerId bro) {
     for (auto& [id, lobby] : lobbies)
         if (lobby.kill_bro(bro))
             break;
+
+    for (auto& queued : queue) {
+        if (!std::memcmp(queued.id, bro, sizeof(queued.id))) {
+            NP_Info(
+                "QUEUE: Peer '%.*s' disconnected gracefully", (int)sizeof(queued.id), queued.id);
+            queued.countdown = 0;
+            break;
+        }
+    }
 }
 
 constexpr const int RecvKeepGoing = 0, RecvDone = -1;
@@ -590,7 +640,25 @@ static int receive() {
         if (rcv < sizeof(NutPunch_PeerId) + sizeof(NutPunch_QueueId))
             return RecvKeepGoing;
 
-        // TODO: place bro in a queue...
+        NutPunch_PeerId peer_id = {0};
+        std::memcpy(peer_id, ptr, sizeof(peer_id));
+        ptr += sizeof(NutPunch_PeerId);
+
+        NutPunch_QueueId queue_id = {0};
+        std::memcpy(queue_id, ptr, sizeof(queue_id));
+
+        for (auto& queued : queue) {
+            if (std::memcmp(queued.id, peer_id, sizeof(queued.id)))
+                continue;
+
+            std::memcpy(queued.queue_id, ptr, sizeof(queue_id));
+            queued.countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND;
+            return RecvKeepGoing;
+        }
+
+        queue.emplace_back(peer_id, queue_id, pub);
+        NP_Info("QUEUE: Added peer '%.*s' (%.*s)", (int)sizeof(peer_id), peer_id,
+            (int)sizeof(queue_id), queue_id);
         return RecvKeepGoing;
     }
 
@@ -612,11 +680,11 @@ static int receive() {
     NutPunch_ErrorCode err = NPE_Ok;
 
     if (lobbies.count(lobby_id)) {
-        if (!(flags & NP_HB_JoinExisting) && !lobbies[lobby_id].has(peer_id))
+        if (!(flags & (NP_HB_JoinExisting | NP_HB_Join)) && !lobbies[lobby_id].has(peer_id))
             err = NPE_LobbyExists;
     } else if (flags & NP_HB_JoinExisting) {
         err = NPE_NoSuchLobby;
-    } else if (!create_lobby(lobby_id, pub)) {
+    } else if (!(flags & NP_HB_Join) && !create_lobby(lobby_id, pub)) {
         return RecvKeepGoing;
     }
 
@@ -673,6 +741,59 @@ int main(int argc, char*[]) {
             NP_Warn("Failed to receive data (code %d)", result);
             sock = NUTPUNCH_INVALID_SOCKET;
         }
+
+        for (auto& queued : queue) {
+            if (queued && !queued.update())
+                continue;
+
+            for (auto& matched : queue) {
+                if (!matched || !std::memcmp(queued.id, matched.id, sizeof(queued.id))
+                    || std::memcmp(queued.queue_id, matched.queue_id, sizeof(queued.queue_id)))
+                {
+                    continue;
+                }
+
+                NutPunch_LobbyId lobby_id = {0};
+                std::srand(NutPunch_TimeNS());
+                for (int i = 0; i < sizeof(lobby_id); i++) {
+                    switch (std::rand() % 3) {
+                    default:
+                        lobby_id[i] = (char)('0' + (std::rand() % 10));
+                        break;
+
+                    case 1:
+                        lobby_id[i] = (char)('a' + (std::rand() % 26));
+                        break;
+
+                    case 2:
+                        lobby_id[i] = (char)('A' + (std::rand() % 26));
+                        break;
+                    }
+                }
+
+                std::memcpy(queued.lobby_id, lobby_id, sizeof(lobby_id));
+                std::memcpy(matched.lobby_id, lobby_id, sizeof(lobby_id));
+
+                uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "QMST";
+                std::memcpy(buf + sizeof(NP_Header), lobby_id, sizeof(NutPunch_LobbyId));
+                queued.pub.send(buf, sizeof(buf));
+                std::memcpy(buf, "QSLV", sizeof(NP_Header));
+                matched.pub.send(buf, sizeof(buf));
+
+                NP_Info("QUEUE: Matched peers '%.*s' and '%.*s' to lobby '%s'",
+                    (int)sizeof(queued.id), queued.id, (int)sizeof(matched.id), matched.id,
+                    fmt_lobby_id(lobby_id));
+                break;
+            }
+        }
+
+        std::erase_if(queue, [](const auto& queued) {
+            if (!queued) {
+                NP_Info("QUEUE: Deleting peer '%.*s'", (int)sizeof(queued.id), queued.id);
+                return true;
+            }
+            return false;
+        });
 
         for (auto& [id, lobby] : lobbies)
             lobby.update();
