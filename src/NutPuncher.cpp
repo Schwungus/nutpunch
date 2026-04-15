@@ -226,7 +226,7 @@ static bool operator==(const NP_AddrInfo& a, const NP_AddrInfo& b) {
 }
 
 struct BasicAhhPeer {
-    NutPunch_PeerId id;
+    NutPunch_PeerId id = {0};
     AddrInfo pub;
 
     BasicAhhPeer() {}
