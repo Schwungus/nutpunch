@@ -243,8 +243,7 @@ struct Player {
     Player() {}
 
     Player(const char* id, const AddrInfo& pub) : pub(pub) {
-        if (id)
-            std::memcpy(this->peer_id, id, sizeof(this->peer_id));
+        std::memcpy(this->peer_id, id, sizeof(this->peer_id));
     }
 
     explicit operator bool() const {
@@ -680,11 +679,10 @@ static int receive() {
         if (q.players.contains(peer_id)) {
             auto& p = q.players.at(peer_id);
             p.last_beat = NutPunch_TimeNS();
-            return RecvKeepGoing;
+        } else {
+            q.players.emplace(peer_id, Player(peer_id.data(), pub));
+            NP_Info("GRINDR: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
         }
-
-        q.players.emplace(peer_id, Player(nullptr, pub));
-        NP_Info("GRINDR: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
 
         return RecvKeepGoing;
     }
