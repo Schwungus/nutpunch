@@ -47,7 +47,7 @@ static void maybe_join_netgame() {
         return;
 
     if (poor_key_pressed(POOR_M)) {
-        NutPunch_Grindr("NutPunch Test");
+        NutPunch_Queue("NutPunch Test");
     } else if (poor_key_pressed(POOR_J)) {
         NutPunch_Join(lobbyName);
     } else if (poor_key_pressed(POOR_H)) {

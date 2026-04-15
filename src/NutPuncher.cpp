@@ -466,7 +466,7 @@ struct Grindr {
             const auto& [id, peer] = pair;
             if (peer)
                 return false;
-            NP_Info("GRINDR: Peer '%s' timed out", id.c_str());
+            NP_Info("QUEUE: Peer '%s' timed out", id.c_str());
             return true;
         });
 
@@ -493,7 +493,7 @@ struct Grindr {
             pair2.second.pub.send(buf, sizeof(buf));
         }
 
-        NP_Info("GRINDR: Matched peers '%s' and '%s' to lobby '%s'", pair1.first.c_str(),
+        NP_Info("QUEUE: Matched peers '%s' and '%s' to lobby '%s'", pair1.first.c_str(),
             pair2.first.c_str(), fmt_lobby_id(lobby_id));
     }
 };
@@ -612,7 +612,7 @@ static void kill_bro(const NutPunch_PeerId bro) {
             const auto& [id, peer] = pair;
             if (std::memcmp(id.data(), bro, sizeof(NutPunch_PeerId)))
                 return false;
-            NP_Info("GRINDR: Peer '%s' disconnected gracefully", id.c_str());
+            NP_Info("QUEUE: Peer '%s' disconnected gracefully", id.c_str());
             return true;
         });
     }
@@ -684,7 +684,7 @@ static int receive() {
             p.last_beat = NutPunch_TimeNS();
         } else {
             q.players.emplace(peer_id, Player(peer_id.data(), pub));
-            NP_Info("GRINDR: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
+            NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
         }
 
         return RecvKeepGoing;
@@ -718,7 +718,7 @@ static int receive() {
     NutPunch_ErrorCode err = NPE_Ok;
 
     if (lobbies.count(lobby_id)) {
-        if (!(flags & (NP_HB_JoinExisting | NP_HB_Grindr)) && !lobbies[lobby_id].has(peer_id))
+        if (!(flags & (NP_HB_JoinExisting | NP_HB_Queue)) && !lobbies[lobby_id].has(peer_id))
             err = NPE_LobbyExists;
     } else if (flags & NP_HB_JoinExisting) {
         err = NPE_NoSuchLobby;
@@ -755,7 +755,7 @@ static void update_grindr() {
         const auto& [id, queue] = pair;
         if (queue)
             return false;
-        NP_Info("GRINDR: Deleting queue '%s'", id.c_str());
+        NP_Info("QUEUE: Deleting queue '%s'", id.c_str());
         return true;
     });
 }

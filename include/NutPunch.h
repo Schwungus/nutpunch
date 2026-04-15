@@ -244,7 +244,7 @@ bool NutPunch_Host(const char* lobby_id);
 
 /// Join the queue for matchmaking. The queue ID is used to find similar peers. Return `false` if a
 /// network error occurs and `true` otherwise.
-bool NutPunch_Grindr(const char* queue_id);
+bool NutPunch_Queue(const char* queue_id);
 
 /// Unlist the lobby after calling `NutPunch_Host`.
 void NutPunch_SetUnlisted(bool);
@@ -644,7 +644,7 @@ static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
     NP_HB_JoinExisting = 1 << 0,
     NP_HB_Unlisted = 1 << 1,
-    NP_HB_Grindr = 1 << 2,
+    NP_HB_Queue = 1 << 2,
 };
 
 static int NP_SendDirectly(NP_AddrInfo, const void*, int);
@@ -998,7 +998,7 @@ bool NutPunch_Join(const char* lobby_id) {
     return NP_Connect(lobby_id, true, NP_HB_JoinExisting);
 }
 
-bool NutPunch_Grindr(const char* queue_id) {
+bool NutPunch_Queue(const char* queue_id) {
     NP_LazyInit();
 
     if (!NP_Connect(NULL, false, 0))
@@ -1390,7 +1390,7 @@ static void NP_HandleDate(NP_Message msg) {
     if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
         return;
 
-    NP_Connect((char*)msg.data, true, NP_HB_Grindr);
+    NP_Connect((char*)msg.data, true, NP_HB_Queue);
     NP_HandleEventCb(NPCB_QueueCompleted, msg.data);
 }
 
