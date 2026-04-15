@@ -1376,12 +1376,17 @@ static void NP_HandleAcky(NP_Message msg) {
     }
 }
 
-static void NP_HandlePong(NP_Message /*msg*/) {
-    NP_LastBeating = NutPunch_TimeNS();
+static void NP_HandlePong(NP_Message msg) {
+    (void)msg;
+    if (NP_AddrEq(msg.addr, NP_PuncherAddr))
+        NP_LastBeating = NutPunch_TimeNS();
 }
 
 static void NP_HandleDate(NP_Message msg) {
     if (NP_Current != NPNM_Matchmaking)
+        return;
+
+    if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
         return;
 
     NP_Connect((char*)msg.data, true, NP_HB_Join);
