@@ -681,7 +681,7 @@ static int receive() {
     NutPunch_ErrorCode err = NPE_Ok;
 
     if (lobbies.count(lobby_id)) {
-        if (!(flags & (NP_HB_JoinExisting | NP_HB_Join)) && !lobbies[lobby_id].has(peer_id))
+        if (!(flags & (NP_HB_JoinExisting | NP_HB_Flirt)) && !lobbies[lobby_id].has(peer_id))
             err = NPE_LobbyExists;
     } else if (flags & NP_HB_JoinExisting) {
         err = NPE_NoSuchLobby;

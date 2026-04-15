@@ -644,7 +644,7 @@ static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 enum {
     NP_HB_JoinExisting = 1 << 0,
     NP_HB_Unlisted = 1 << 1,
-    NP_HB_Join = 1 << 2,
+    NP_HB_Flirt = 1 << 2,
 };
 
 static int NP_SendDirectly(NP_AddrInfo, const void*, int);
@@ -1389,7 +1389,7 @@ static void NP_HandleDate(NP_Message msg) {
     if (!NP_AddrEq(msg.addr, NP_PuncherAddr))
         return;
 
-    NP_Connect((char*)msg.data, true, NP_HB_Join);
+    NP_Connect((char*)msg.data, true, NP_HB_Flirt);
     NP_HandleEventCb(NPCB_QueueCompleted, msg.data);
 }
 
