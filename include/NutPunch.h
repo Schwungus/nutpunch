@@ -100,10 +100,10 @@ extern "C" {
 typedef char NutPunch_PeerId[8];
 
 /// A string uniquely identifying a NutPunch lobby.
-typedef char NutPunch_LobbyId[32];
+typedef char NutPunch_LobbyId[16];
 
 /// A magic string used for matchmaking.
-typedef char NutPunch_QueueId[32];
+typedef char NutPunch_QueueId[16];
 
 typedef uint8_t NutPunch_Channel, NutPunch_Peer;
 

@@ -30,7 +30,6 @@
 #include <cstring>
 #include <map>
 #include <string>
-#include <vector>
 
 static constexpr const NutPunch_Clock KEEP_ALIVE_FOR = 5 * NUTPUNCH_SEC,
                                       KEEP_QUEUED_FOR = 20 * NUTPUNCH_SEC;
@@ -230,21 +229,23 @@ static bool operator==(const NP_AddrInfo& a, const NP_AddrInfo& b) {
     return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port;
 }
 
-struct BasicAhhPeer {
+struct Player {
+    // HACK: only used in the static array inside `Lobby`.
     NutPunch_PeerId peer_id = {0};
-    AddrInfo pub;
 
-    BasicAhhPeer() {}
-    BasicAhhPeer(const AddrInfo& pub) : pub(pub) {}
-};
-
-struct Player : BasicAhhPeer {
     NutPunch_Clock last_beat = 0;
+
+    AddrInfo pub;
 
     // NOTE: filled in later after heartbeating for a bit.
     AddrInfo internal;
 
     Player() {}
+
+    Player(const char* id, const AddrInfo& pub) : pub(pub) {
+        if (id)
+            std::memcpy(this->peer_id, id, sizeof(this->peer_id));
+    }
 
     explicit operator bool() const {
         return elapsed(last_beat) <= KEEP_ALIVE_FOR && !is_memzero(peer_id);
@@ -274,12 +275,8 @@ struct Lobby {
     }
 
     void update() {
-        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-            if (players[i])
-                tick(i);
-            if (players[i])
-                beat(i);
-        }
+        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+            beat(i);
     }
 
     int special(uint8_t idx) const {
@@ -351,15 +348,18 @@ struct Lobby {
         }
     }
 
-    void tick(const NutPunch_Peer idx) {
-        auto& plr = players[idx];
-        if (!plr) {
-            NP_Warn("Player %d timed out", idx + 1);
-            plr.reset();
-        }
-    }
-
     void beat(const NutPunch_Peer idx) {
+        auto& player = players[idx];
+
+        if (is_memzero(player.peer_id))
+            return;
+
+        if (elapsed(player.last_beat) > KEEP_ALIVE_FOR) {
+            NP_Warn("Player %d timed out", idx + 1);
+            player.reset();
+            return;
+        }
+
         static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)] = "BEAT";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
@@ -379,7 +379,6 @@ struct Lobby {
         std::memcpy(ptr, &metadata, sizeof(Metadata));
         ptr += sizeof(Metadata);
 
-        auto& player = players[idx];
         if (player.pub.send(buf, ptr - buf) <= 0) {
             NP_Warn("Player %d lost connection", idx + 1);
             player.reset();
@@ -435,43 +434,69 @@ struct Lobby {
     NutPunch_Peer master_idx = NUTPUNCH_MAX_PLAYERS;
 };
 
-struct Grindr : BasicAhhPeer {
-    NutPunch_QueueId queue_id = {0};
+struct Grindr {
     NutPunch_LobbyId lobby_id = {0};
-    NutPunch_Clock last_beat = 0, queued_at = 0;
+    NutPunch_Clock queued_at = 0;
+    std::map<std::string, Player> players;
 
-    Grindr(const NutPunch_PeerId& id, const NutPunch_QueueId& queue_id, const AddrInfo& pub)
-        : BasicAhhPeer(pub) {
-        std::memcpy(this->peer_id, id, sizeof(this->peer_id));
-        std::memcpy(this->queue_id, queue_id, sizeof(this->queue_id));
-        last_beat = queued_at = NutPunch_TimeNS();
+    Grindr() {
+        queued_at = NutPunch_TimeNS();
     }
-
-    ~Grindr() = default;
 
     explicit operator bool() const {
-        return elapsed(last_beat) <= KEEP_ALIVE_FOR && elapsed(queued_at) <= KEEP_QUEUED_FOR
-               && !is_memzero(peer_id) && is_memzero(lobby_id);
+        return elapsed(queued_at) <= KEEP_QUEUED_FOR && !players.empty();
     }
 
-    bool update() {
-        if (elapsed(last_beat) > KEEP_ALIVE_FOR) {
-            NP_Info("GRINDR: Peer '%.*s' timed out", (int)sizeof(peer_id), peer_id);
-            return false;
+    void update() {
+        if (elapsed(queued_at) > KEEP_QUEUED_FOR) {
+            NP_Info("GRINDR: No matches found");
+            for (const auto& [id, p] : players)
+                p.pub.gtfo(NPE_QueueNoMatch);
+            return;
         }
 
-        if (elapsed(last_beat) > KEEP_QUEUED_FOR) {
-            NP_Info("GRINDR: No matches found for peer '%.*s'", (int)sizeof(peer_id), peer_id);
-            pub.gtfo(NPE_QueueNoMatch);
-            return false;
+        if (players.size() >= 2) {
+            LETSGOO();
+            return;
         }
 
-        pub.send("PONG", sizeof(NP_Header));
-        return true;
+        std::erase_if(players, [](const auto& pair) {
+            const auto& [id, peer] = pair;
+            if (peer)
+                return false;
+            NP_Info("GRINDR: Peer '%.*s' timed out", (int)sizeof(id), id);
+            return true;
+        });
+
+        for (const auto& [id, p] : players)
+            p.pub.send("PONG", sizeof(NP_Header));
+    }
+
+    void LETSGOO() {
+        auto pair1 = *players.begin();
+        players.erase(players.begin()); // TODO: erase from the end?
+
+        auto pair2 = *players.begin();
+        players.erase(players.begin());
+
+        NutPunch_LobbyId lobby_id = {0};
+        for (int i = 0; i < sizeof(lobby_id); i++)
+            lobby_id[i] = (char)('A' + (std::rand() % 26));
+
+        uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "DATE";
+        std::memcpy(buf + sizeof(NP_Header), lobby_id, sizeof(NutPunch_LobbyId));
+
+        for (int i = 0; i < 10; i++) {
+            pair1.second.pub.send(buf, sizeof(buf));
+            pair2.second.pub.send(buf, sizeof(buf));
+        }
+
+        NP_Info("GRINDR: Matched peers '%s' and '%s' to lobby '%s'", pair1.first.c_str(),
+            pair2.first.c_str(), fmt_lobby_id(lobby_id));
     }
 };
 
-static std::vector<Grindr> queue;
+static std::map<std::string, Grindr> matchmaking;
 
 static bool bind_sock() {
     AddrInfo addr;
@@ -580,12 +605,15 @@ static void kill_bro(const NutPunch_PeerId bro) {
         if (lobby.kill_bro(bro))
             break;
 
-    std::erase_if(queue, [bro](const auto& q) {
-        if (std::memcmp(q.peer_id, bro, sizeof(q.peer_id)))
-            return false;
-        NP_Info("GRINDR: Peer '%.*s' disconnected gracefully", (int)sizeof(q.peer_id), q.peer_id);
-        return true;
-    });
+    for (auto& [id, queue] : matchmaking) {
+        std::erase_if(queue.players, [bro](const auto& pair) {
+            const auto& [id, peer] = pair;
+            if (std::memcmp(id.data(), bro, sizeof(NutPunch_PeerId)))
+                return false;
+            NP_Info("GRINDR: Peer '%.*s' disconnected gracefully", (int)sizeof(id), id);
+            return true;
+        });
+    }
 }
 
 constexpr const int RecvKeepGoing = 0, RecvDone = -1;
@@ -639,24 +667,24 @@ static int receive() {
         if (rcv < (sizeof(NutPunch_PeerId) + sizeof(NutPunch_QueueId)))
             return RecvKeepGoing; // junk...
 
-        NutPunch_PeerId peer_id = {0};
-        std::memcpy(peer_id, ptr, sizeof(peer_id));
+        std::string peer_id(ptr, sizeof(NutPunch_PeerId));
         ptr += sizeof(NutPunch_PeerId);
 
-        NutPunch_QueueId queue_id = {0};
-        std::memcpy(queue_id, ptr, sizeof(queue_id));
+        std::string queue_id(ptr, sizeof(NutPunch_QueueId));
 
-        for (auto& queued : queue) {
-            if (std::memcmp(queued.peer_id, peer_id, sizeof(queued.peer_id)))
-                continue;
-            std::memcpy(queued.queue_id, ptr, sizeof(queue_id));
-            queued.last_beat = NutPunch_TimeNS();
+        if (!matchmaking.contains(queue_id))
+            matchmaking.emplace(queue_id, Grindr());
+
+        auto& q = matchmaking.at(queue_id);
+
+        if (q.players.contains(peer_id)) {
+            auto& p = q.players.at(peer_id);
+            p.last_beat = NutPunch_TimeNS();
             return RecvKeepGoing;
         }
 
-        queue.emplace_back(peer_id, queue_id, pub);
-        NP_Info("GRINDR: Added peer '%.*s' (%.*s)", (int)sizeof(peer_id), peer_id,
-            (int)sizeof(queue_id), queue_id);
+        q.players.emplace(peer_id, Player(nullptr, pub));
+        NP_Info("GRINDR: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
 
         return RecvKeepGoing;
     }
@@ -718,40 +746,14 @@ static void update_lobbies() {
 }
 
 static void update_grindr() {
-    for (auto& queued : queue) {
-        if (queued && !queued.update())
-            continue;
+    for (auto& [id, queue] : matchmaking)
+        queue.update();
 
-        for (auto& matched : queue) {
-            if (!matched || !std::memcmp(queued.peer_id, matched.peer_id, sizeof(queued.peer_id))
-                || std::memcmp(queued.queue_id, matched.queue_id, sizeof(queued.queue_id)))
-            {
-                continue;
-            }
-
-            NutPunch_LobbyId lobby_id = {0};
-            for (int i = 0; i < sizeof(lobby_id); i++)
-                lobby_id[i] = (char)('A' + (std::rand() % 26));
-
-            std::memcpy(queued.lobby_id, lobby_id, sizeof(lobby_id));
-            std::memcpy(matched.lobby_id, lobby_id, sizeof(lobby_id));
-
-            uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "DATE";
-            std::memcpy(buf + sizeof(NP_Header), lobby_id, sizeof(NutPunch_LobbyId));
-            queued.pub.send(buf, sizeof(buf));
-            matched.pub.send(buf, sizeof(buf));
-
-            NP_Info("GRINDR: Matched peers '%.*s' and '%.*s' to lobby '%s'",
-                (int)sizeof(queued.peer_id), queued.peer_id, (int)sizeof(matched.peer_id),
-                matched.peer_id, fmt_lobby_id(lobby_id));
-            break;
-        }
-    }
-
-    std::erase_if(queue, [](const auto& q) {
-        if (q)
+    std::erase_if(matchmaking, [](const auto& pair) {
+        const auto& [id, queue] = pair;
+        if (queue)
             return false;
-        NP_Info("GRINDR: Deleting peer '%.*s'", (int)sizeof(q.peer_id), q.peer_id);
+        NP_Info("GRINDR: Deleting peer '%.*s'", (int)sizeof(id), id);
         return true;
     });
 }
