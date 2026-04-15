@@ -234,7 +234,7 @@ struct BasicAhhPeer {
 };
 
 struct Player : BasicAhhPeer {
-    std::uint32_t countdown = 0;
+    std::int32_t countdown = 0;
 
     // NOTE: filled in later after heartbeating for a bit.
     AddrInfo internal;
@@ -435,8 +435,8 @@ struct Grindr : BasicAhhPeer {
     NutPunch_QueueId queue_id = {0};
     NutPunch_LobbyId lobby_id = {0};
 
-    std::uint32_t countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND,
-                  queue_countdown = KEEP_QUEUED_SECONDS * BEATS_PER_SECOND;
+    std::int32_t countdown = KEEP_ALIVE_SECONDS * BEATS_PER_SECOND,
+                 queue_countdown = KEEP_QUEUED_SECONDS * BEATS_PER_SECOND;
 
     Grindr(const NutPunch_PeerId& id, const NutPunch_QueueId& queue_id, const AddrInfo& pub)
         : BasicAhhPeer(pub) {
