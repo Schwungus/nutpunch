@@ -33,6 +33,10 @@
 
 static constexpr const NutPunch_Clock KEEP_ALIVE_FOR = 5 * NUTPUNCH_SEC,
                                       KEEP_QUEUED_FOR = 20 * NUTPUNCH_SEC;
+
+/// A little debouncing delay to prevent recreating a grindr queue right after timing it out.
+static constexpr const NutPunch_Clock GRINDR_DEBOUNCE = 3 * NUTPUNCH_SEC;
+
 static constexpr const size_t MAX_LOBBIES = 512;
 
 static NutPunch_Clock elapsed(NutPunch_Clock start) {
@@ -447,8 +451,7 @@ struct Grindr {
     }
 
     void update() {
-        if (elapsed(queued_at) > KEEP_QUEUED_FOR) {
-            NP_Info("GRINDR: No matches found");
+        if (elapsed(queued_at) > KEEP_QUEUED_FOR - GRINDR_DEBOUNCE) {
             for (const auto& [id, p] : players)
                 p.pub.gtfo(NPE_QueueNoMatch);
             return;
@@ -463,7 +466,7 @@ struct Grindr {
             const auto& [id, peer] = pair;
             if (peer)
                 return false;
-            NP_Info("GRINDR: Peer '%.*s' timed out", (int)sizeof(id), id);
+            NP_Info("GRINDR: Peer '%s' timed out", id.c_str());
             return true;
         });
 
@@ -609,7 +612,7 @@ static void kill_bro(const NutPunch_PeerId bro) {
             const auto& [id, peer] = pair;
             if (std::memcmp(id.data(), bro, sizeof(NutPunch_PeerId)))
                 return false;
-            NP_Info("GRINDR: Peer '%.*s' disconnected gracefully", (int)sizeof(id), id);
+            NP_Info("GRINDR: Peer '%s' disconnected gracefully", id.c_str());
             return true;
         });
     }
@@ -663,7 +666,7 @@ static int receive() {
     }
 
     if (!std::memcmp(heartbeat, "FIND", sizeof(NP_Header))) {
-        if (rcv < (sizeof(NutPunch_PeerId) + sizeof(NutPunch_QueueId)))
+        if (rcv != sizeof(NutPunch_PeerId) + sizeof(NutPunch_QueueId))
             return RecvKeepGoing; // junk...
 
         std::string peer_id(ptr, sizeof(NutPunch_PeerId));
@@ -737,9 +740,10 @@ static void update_lobbies() {
 
     std::erase_if(lobbies, [](const auto& kv) {
         const auto& lobby = kv.second;
-        if (!lobby)
-            NP_Info("Deleting lobby '%s'", lobby.fmt_id());
-        return !lobby;
+        if (lobby)
+            return false;
+        NP_Info("Deleting lobby '%s'", lobby.fmt_id());
+        return true;
     });
 }
 
@@ -751,7 +755,7 @@ static void update_grindr() {
         const auto& [id, queue] = pair;
         if (queue)
             return false;
-        NP_Info("GRINDR: Deleting peer '%.*s'", (int)sizeof(id), id);
+        NP_Info("GRINDR: Deleting queue '%s'", id.c_str());
         return true;
     });
 }

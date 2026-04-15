@@ -1006,6 +1006,7 @@ bool NutPunch_Grindr(const char* queue_id) {
 
     NP_Mode = NPNM_Matchmaking;
     NP_Memzero(NP_QueueId);
+
     if (queue_id)
         NutPunch_SNPrintF(NP_QueueId, sizeof(NP_QueueId), "%s", queue_id);
 
