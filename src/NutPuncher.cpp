@@ -452,12 +452,12 @@ struct Grindr : BasicAhhPeer {
 
     bool update() {
         if (--countdown <= 0) {
-            NP_Info("QUEUE: Peer '%.*s' timed out", (int)sizeof(id), id);
+            NP_Info("GRINDR: Peer '%.*s' timed out", (int)sizeof(id), id);
             return false;
         }
 
         if (--queue_countdown <= 0) {
-            NP_Info("QUEUE: No matches found for peer '%.*s'", (int)sizeof(id), id);
+            NP_Info("GRINDR: No matches found for peer '%.*s'", (int)sizeof(id), id);
             pub.gtfo(NPE_QueueEmpty);
             return false;
         }
@@ -579,7 +579,7 @@ static void kill_bro(const NutPunch_PeerId bro) {
     for (auto& queued : queue) {
         if (!std::memcmp(queued.id, bro, sizeof(queued.id))) {
             NP_Info(
-                "QUEUE: Peer '%.*s' disconnected gracefully", (int)sizeof(queued.id), queued.id);
+                "GRINDR: Peer '%.*s' disconnected gracefully", (int)sizeof(queued.id), queued.id);
             queued.countdown = 0;
             break;
         }
@@ -654,7 +654,7 @@ static int receive() {
         }
 
         queue.emplace_back(peer_id, queue_id, pub);
-        NP_Info("QUEUE: Added peer '%.*s' (%.*s)", (int)sizeof(peer_id), peer_id,
+        NP_Info("GRINDR: Added peer '%.*s' (%.*s)", (int)sizeof(peer_id), peer_id,
             (int)sizeof(queue_id), queue_id);
 
         return RecvKeepGoing;
@@ -740,7 +740,7 @@ static void update_grindr() {
             queued.pub.send(buf, sizeof(buf));
             matched.pub.send(buf, sizeof(buf));
 
-            NP_Info("QUEUE: Matched peers '%.*s' and '%.*s' to lobby '%s'", (int)sizeof(queued.id),
+            NP_Info("GRINDR: Matched peers '%.*s' and '%.*s' to lobby '%s'", (int)sizeof(queued.id),
                 queued.id, (int)sizeof(matched.id), matched.id, fmt_lobby_id(lobby_id));
             break;
         }
@@ -748,7 +748,7 @@ static void update_grindr() {
 
     std::erase_if(queue, [](const auto& queued) {
         if (!queued) {
-            NP_Info("QUEUE: Deleting peer '%.*s'", (int)sizeof(queued.id), queued.id);
+            NP_Info("GRINDR: Deleting peer '%.*s'", (int)sizeof(queued.id), queued.id);
             return true;
         }
         return false;
