@@ -704,7 +704,19 @@ static int receive() {
     return RecvKeepGoing;
 }
 
-static void process_grindr() {
+static void update_lobbies() {
+    for (auto& [id, lobby] : lobbies)
+        lobby.update();
+
+    std::erase_if(lobbies, [](const auto& kv) {
+        const auto& lobby = kv.second;
+        if (!lobby)
+            NP_Info("Deleting lobby '%s'", lobby.fmt_id());
+        return !lobby;
+    });
+}
+
+static void update_grindr() {
     for (auto& queued : queue) {
         if (queued && !queued.update())
             continue;
@@ -717,22 +729,8 @@ static void process_grindr() {
             }
 
             NutPunch_LobbyId lobby_id = {0};
-            std::srand(NutPunch_TimeNS());
-            for (int i = 0; i < sizeof(lobby_id); i++) {
-                switch (std::rand() % 3) {
-                default:
-                    lobby_id[i] = (char)('0' + (std::rand() % 10));
-                    break;
-
-                case 1:
-                    lobby_id[i] = (char)('a' + (std::rand() % 26));
-                    break;
-
-                case 2:
-                    lobby_id[i] = (char)('A' + (std::rand() % 26));
-                    break;
-                }
-            }
+            for (int i = 0; i < sizeof(lobby_id); i++)
+                lobby_id[i] = (char)('A' + (std::rand() % 26));
 
             std::memcpy(queued.lobby_id, lobby_id, sizeof(lobby_id));
             std::memcpy(matched.lobby_id, lobby_id, sizeof(lobby_id));
@@ -747,6 +745,14 @@ static void process_grindr() {
             break;
         }
     }
+
+    std::erase_if(queue, [](const auto& queued) {
+        if (!queued) {
+            NP_Info("QUEUE: Deleting peer '%.*s'", (int)sizeof(queued.id), queued.id);
+            return true;
+        }
+        return false;
+    });
 }
 
 struct Soque {
@@ -772,6 +778,7 @@ int main(int argc, char*[]) {
     }
 
     Soque _init;
+    std::srand(NutPunch_TimeNS());
 
     if (!bind_sock())
         return EXIT_FAILURE;
@@ -789,31 +796,13 @@ int main(int argc, char*[]) {
         }
 
         do { result = receive(); } while (result == RecvKeepGoing);
-
         if (result > 0) {
             NP_Warn("Failed to receive data (code %d)", result);
             sock = NUTPUNCH_INVALID_SOCKET;
         }
 
-        process_grindr();
-
-        std::erase_if(queue, [](const auto& queued) {
-            if (!queued) {
-                NP_Info("QUEUE: Deleting peer '%.*s'", (int)sizeof(queued.id), queued.id);
-                return true;
-            }
-            return false;
-        });
-
-        for (auto& [id, lobby] : lobbies)
-            lobby.update();
-
-        std::erase_if(lobbies, [](const auto& kv) {
-            const auto& lobby = kv.second;
-            if (!lobby)
-                NP_Info("Deleting lobby '%s'", lobby.fmt_id());
-            return !lobby;
-        });
+        update_grindr();
+        update_lobbies();
 
         const NutPunch_Clock delta = NutPunch_TimeNS() - start, diff = MIN_DELTA - delta;
         if (diff > 0)
