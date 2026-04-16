@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
     NutPunch_Register(NPCB_LobbyList, handle_lobby_list);
     NutPunch_Register(NPCB_LobbyMetadata, handle_lobby_data);
 
-    NutPunch_Query();
+    NutPunch_QueryLobbies();
     NutPunch_FindLobbies(0, NULL);
 
     int refresh = 0;

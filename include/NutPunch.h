@@ -222,50 +222,50 @@ typedef enum {
 
 typedef void (*NutPunch_Callback)(const void*);
 
-/// Set a custom NutPuncher server address.
+/// Sets a custom NutPuncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
 
-/// Connect to NutPuncher without joining a lobby, mainly for lobby queries. Return `false` if a
+/// Connects to NutPuncher without joining a lobby, mainly for lobby queries. Return `false` if a
 /// network error occurs and `true` otherwise.
-bool NutPunch_Query();
+bool NutPunch_QueryLobbies();
 
-/// Join a lobby by its ID. Return `false` if a network error occurs and `true` otherwise.
+/// Joins a lobby by its ID. Return `false` if a network error occurs and `true` otherwise.
 ///
 /// If no lobby exists with this ID, an error status spits out of `NutPunch_Update()` rather than
 /// immediately here.
 bool NutPunch_Join(const char* lobby_id);
 
-/// Host a lobby with the specified ID. Return `false` if a network error
-/// occurs and `true` otherwise.
+/// Hosts a lobby with the specified ID. Return `false` if a network error occurs and `true`
+/// otherwise.
 ///
-/// If the lobby with the same ID exists, an error status spits out of `NutPunch_Update()` rather
+/// If a lobby with the same ID exists, an error status spits out of `NutPunch_Update()` rather
 /// than immediately here.
 bool NutPunch_Host(const char* lobby_id);
 
-/// Join the queue for matchmaking. The queue ID is used to find similar peers. Return `false` if a
-/// network error occurs and `true` otherwise.
-bool NutPunch_Queue(const char* queue_id);
+/// Joins a matchmaking queue. The queue ID describes your game to find similar peers. Returns
+/// `false` if a network error occurs and `true` otherwise.
+bool NutPunch_EnterQueue(const char* queue_id);
 
-/// Unlist the lobby after calling `NutPunch_Host`.
+/// Unlists the lobby you're the master of. Do this immediately after calling `NutPunch_Host`.
 void NutPunch_SetUnlisted(bool);
 
-/// Return `true` if the current lobby is unlisted.
+/// Returns `true` if the current lobby is unlisted.
 bool NutPunch_IsUnlisted();
 
-/// Change the maximum player count after calling `NutPunch_Host`.
+/// Changes the maximum player count. Do this immediately after calling `NutPunch_Host`.
 void NutPunch_SetMaxPlayers(int players);
 
-/// Get the maximum player count of the lobby you are in. Returns 0 if you aren't in a lobby.
+/// Returns the maximum player count of the lobby you are in. Returns 0 if you aren't in a lobby.
 int NutPunch_GetMaxPlayers();
 
-/// Register an event handler. The callback functions are called as part of `NutPunch_Update()`.
+/// Registers an event handler. The callback functions are called during `NutPunch_Update()`.
 void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb);
 
 /// Call this at the end of your program to disconnect gracefully and run other semi-important
 /// cleanup routines.
 void NutPunch_Cleanup();
 
-/// Call this every frame to update nutpunch. Returns one of the `NPS_*` constants you need to match
+/// Call this every frame to update NutPunch. Returns one of the `NPS_*` constants you need to match
 /// against to see if something goes wrong.
 NutPunch_UpdateStatus NutPunch_Update();
 
@@ -301,8 +301,8 @@ void NutPunch_SetLobbyData(const char* name, int size, const void* data);
 /// squeeze into a field.
 void NutPunch_SetPeerData(const char* name, int size, const void* data);
 
-/// Set the maximum amount of channels this peer can receive from. Packets with an index higher than
-/// or equal to maximum channel count are discarded silently.
+/// Sets the maximum amount of channels this peer can receive from. Packets with an index higher
+/// than or equal to maximum channel count are discarded silently.
 ///
 /// The default behavior is receiving only on channel 0.
 ///
@@ -311,7 +311,8 @@ void NutPunch_SetPeerData(const char* name, int size, const void* data);
 /// Solves the weaponization issue (#32).
 void NutPunch_SetChannelCount(int);
 
-/// Check if there is a packet waiting in the receiving queue for the specified channel index.
+/// Checks if there is a packet waiting in the receiving queue for the specified channel index.
+///
 /// Retrieve message data by calling `NutPunch_NextMessage(channel)`, which see.
 bool NutPunch_HasMessage(NutPunch_Channel);
 
@@ -325,33 +326,33 @@ bool NutPunch_HasMessage(NutPunch_Channel);
 /// `size` will crash your entire program.
 int NutPunch_NextMessage(NutPunch_Channel, void* out, int* size);
 
-/// Send data on the specified channel to the specified peer. Copies the data into a dynamically
+/// Sends data on the specified channel to the specified peer. Copies the data into a dynamically
 /// allocated buffer of `size` bytes.
 ///
 /// For reliable packet delivery, try `NutPunch_SendReliably`.
 void NutPunch_Send(NutPunch_Channel, NutPunch_Peer, const void* data, int size);
 
-/// Send data on the specified channel to the specified peer, expecting them to acknowledge the fact
-/// of reception. Functions similarly to `NutPunch_Send` otherwise, which see.
+/// Sends data on the specified channel to the specified peer, expecting them to acknowledge the
+/// fact of reception. Functions similarly to `NutPunch_Send` otherwise, which see.
 void NutPunch_SendReliably(NutPunch_Channel, NutPunch_Peer, const void* data, int size);
 
-/// Count how many "live" peers we have a route to, including our local peer.
+/// Counts how many "live" peers we have a route to, including our local peer.
 ///
 /// Do not use this as an upper bound for iterating over peers. Iterate from 0 to
 /// `NUTPUNCH_MAX_PLAYERS` and check each peer individually with `NutPunch_PeerAlive`.
 int NutPunch_PeerCount();
 
-/// Return `true` if you are connected to the peer with the specified index.
+/// Returns `true` if you are connected to the peer with the specified index.
 ///
 /// Use `NUTPUNCH_MAX_PLAYERS` as the upper bound for iterating, and check each peer's status
 /// individually using this function.
 bool NutPunch_PeerAlive(NutPunch_Peer);
 
-/// Get the local peer's index. Available only after successfully joining a lobby. Returns
+/// Returns the local peer's index. Available only after successfully joining a lobby. Returns
 /// `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
 int NutPunch_LocalPeer();
 
-/// Get the master peer's index. Available only after successfully joining a lobby. Returns
+/// Returns the master peer's index. Available only after successfully joining a lobby. Returns
 /// `NUTPUNCH_MAX_PLAYERS` if this fails for any reason.
 int NutPunch_MasterPeer();
 
@@ -366,7 +367,7 @@ bool NutPunch_IsReady();
 /// Call this to gracefully disconnect from a lobby.
 void NutPunch_Disconnect();
 
-/// Search for lobbies. If you aren't connected to the NutPuncher, call `NutPunch_Query()` first.
+/// Searches for lobbies. If you aren't connected to the NutPuncher, call `NutPunch_Query()` first.
 ///
 /// The list of lobbies will be retrieved through the `NutPunch_LobbyList` callback.
 ///
@@ -406,11 +407,11 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters);
 /// Call this to reset the underlying socket in case of an inexplicable error.
 void NutPunch_Reset();
 
-/// Get the human-readable description of the latest error that occurred in `NutPunch_Update()` or
-/// several other internal functions.
+/// Returns the human-readable description of the latest error that occurred in `NutPunch_Update()`
+/// or several other internal functions.
 const char* NutPunch_GetLastError();
 
-/// Return a substring of `path` without its directory name. A utility function used internally in
+/// Returns a substring of `path` without its directory name. A utility function used internally in
 /// the default implementation of `NutPunch_Log`.
 const char* NutPunch_Basename(const char* path);
 
@@ -982,7 +983,7 @@ static bool NP_Connect(const char* lobby_id, bool sane, NP_HeartbeatFlagsStorage
     return true;
 }
 
-bool NutPunch_Query() {
+bool NutPunch_QueryLobbies() {
     if (!NP_Connect(NULL, false, 0))
         return false;
 
@@ -998,7 +999,7 @@ bool NutPunch_Join(const char* lobby_id) {
     return NP_Connect(lobby_id, true, NP_HB_JoinExisting);
 }
 
-bool NutPunch_Queue(const char* queue_id) {
+bool NutPunch_EnterQueue(const char* queue_id) {
     NP_LazyInit();
 
     if (!NP_Connect(NULL, false, 0))
