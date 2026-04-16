@@ -41,11 +41,9 @@ Once you've figured out how the players are to connect to your hole-puncher serv
    2. Poll for incoming datagrams with `NutPunch_HasMessage()` and retrieve the datagrams with `NutPunch_NextMessage()`. In scenarios where you need to cache packet data between NutPunch function calls, `memcpy` the data into a static array of `NUTPUNCH_BUFFER_SIZE`[^kb] bytes in order to fit the whole packet without overflowing and/or segfaulting.
 5. Repeat steps 2 through 4. You're all Gucci!
 
-Another important aspect of NutPunch networking would be the ability to set peer/lobby metadata in a simplified key-value store fashion. Peer metadata can include e.g. the peer's nickname, their skin spritesheet name, their lives count - anything you can squeeze into 16 bytes with 8 bytes per key.
+Another important aspect of NutPunch networking would be the ability to set peer/lobby metadata in a simplified key-value store fashion. Peer metadata can include e.g. the peer's nickname, their skin spritesheet name, their lives count - anything you can squeeze into 16 bytes, mapped to an 8-byte key. The same applies to lobby metadata: this could be the name of the map you're playing, a seed value to generate the map procedurally, the difficulty level, etc.
 
-Call `NutPunch_SetVar(...)`/`NutPunch_GetVar(...)` on various sources of metadata to set/get key-value pairs. Setting metadata only does anything if you're "in charge" of the metadata object: either you're the lobby's master and want to set the lobby's metadata, or you're trying to set your own metadata as a peer.
-
-You can use `NutPunch_PeerMetadata()` to get your own metadata, `NutPunch_PeerMetadata(peer_idx)` to get another peer's metadata, `NutPunch_LobbyMetadata()` to get the current lobby's metadata, or `NutPunch_LobbyMetadata("id")` to request a foreign lobby's metadata when you're searching in the lobby listing.
+Call `NutPunch_Set*Data(...)`/`NutPunch_Get*Data(...)` to set/get key-value pairs; replace the asterisk with either `Peer` or `Lobby`. Setting metadata only does anything if you're "in charge" of the metadata object: either you're the lobby's master and want to set the lobby's metadata, or you're trying to set your own metadata as a peer.
 
 [^kb]: `NUTPUNCH_BUFFER_SIZE` is currently defined to be 1024 bytes. Should be small enough for WinSock not to signal a `WSAEMSGSIZE` error on send.
 
