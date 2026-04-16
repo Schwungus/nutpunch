@@ -32,7 +32,7 @@
 #include <string>
 
 static constexpr const NutPunch_Clock KEEP_ALIVE_FOR = 5 * NUTPUNCH_SEC,
-                                      KEEP_QUEUED_FOR = 20 * NUTPUNCH_SEC;
+                                      KEEP_QUEUE_FOR = 20 * NUTPUNCH_SEC;
 
 /// A little debouncing delay to prevent recreating a grindr queue right after timing it out.
 static constexpr const NutPunch_Clock GRINDR_DEBOUNCE = 3 * NUTPUNCH_SEC;
@@ -438,19 +438,32 @@ struct Lobby {
 };
 
 struct Grindr {
+    const std::string queue_id;
     NutPunch_LobbyId lobby_id = {0};
-    NutPunch_Clock queued_at = NutPunch_TimeNS();
+    NutPunch_Clock last_match = NutPunch_TimeNS();
     std::map<std::string, Player> players;
     bool closing = false;
 
-    Grindr() {}
+    Grindr(const std::string& queue_id) : queue_id(queue_id) {}
 
     explicit operator bool() const {
-        return elapsed(queued_at) <= KEEP_QUEUED_FOR && !players.empty();
+        return !closing && elapsed(last_match) <= KEEP_QUEUE_FOR + GRINDR_DEBOUNCE;
+    }
+
+    void accept(const std::string& peer_id, const AddrInfo& pub) {
+        if (players.contains(peer_id)) {
+            auto& p = players.at(peer_id);
+            p.last_beat = NutPunch_TimeNS();
+        } else {
+            players.emplace(peer_id, Player(peer_id.data(), pub));
+            closing = false;
+
+            NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
+        }
     }
 
     void update() {
-        if (elapsed(queued_at) > KEEP_QUEUED_FOR - GRINDR_DEBOUNCE) {
+        if (players.empty() && elapsed(last_match) > KEEP_QUEUE_FOR) {
             if (!closing) {
                 NP_Info("GRINDR: No matches found");
 
@@ -682,18 +695,10 @@ static int receive() {
         std::string queue_id(ptr, sizeof(NutPunch_QueueId));
 
         if (!matchmaking.contains(queue_id))
-            matchmaking.emplace(queue_id, Grindr());
+            matchmaking.emplace(queue_id, Grindr(queue_id));
 
         auto& q = matchmaking.at(queue_id);
-
-        if (q.players.contains(peer_id)) {
-            auto& p = q.players.at(peer_id);
-            p.last_beat = NutPunch_TimeNS();
-        } else {
-            q.players.emplace(peer_id, Player(peer_id.data(), pub));
-            NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
-        }
-
+        q.accept(peer_id, pub);
         return RecvKeepGoing;
     }
 
