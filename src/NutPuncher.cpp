@@ -439,12 +439,11 @@ struct Lobby {
 
 struct Grindr {
     NutPunch_LobbyId lobby_id = {0};
-    NutPunch_Clock queued_at = 0;
+    NutPunch_Clock queued_at = NutPunch_TimeNS();
     std::map<std::string, Player> players;
+    bool closing = false;
 
-    Grindr() {
-        queued_at = NutPunch_TimeNS();
-    }
+    Grindr() {}
 
     explicit operator bool() const {
         return elapsed(queued_at) <= KEEP_QUEUED_FOR && !players.empty();
@@ -452,10 +451,18 @@ struct Grindr {
 
     void update() {
         if (elapsed(queued_at) > KEEP_QUEUED_FOR - GRINDR_DEBOUNCE) {
-            for (const auto& [id, p] : players)
-                p.pub.gtfo(NPE_QueueNoMatch);
-            return;
+            if (!closing) {
+                NP_Info("GRINDR: No matches found");
+
+                for (const auto& [id, p] : players)
+                    p.pub.gtfo(NPE_QueueNoMatch);
+            }
+
+            closing = true;
         }
+
+        if (closing)
+            return;
 
         if (players.size() >= 2) {
             LETSGOO();
