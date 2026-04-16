@@ -680,17 +680,21 @@ static void NP_CleanupPackets(NP_Data** queue) {
     }
 }
 
-static void NP_NukeLobbyData() {
+static void NP_NukeLobbyDataLite() {
     NP_Mode = NPNM_Normal;
     NP_Closing = NP_Unlisted = false;
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
-    NP_Memzero(NP_LobbyMetadata), NP_Memzero(NP_PeerMetadata);
     NP_Memzero(NP_Peers);
 
     for (int i = 0; i < NUTPUNCH_CHANNEL_COUNT; i++) {
         NP_CleanupPackets(&NP_QueueIn[i]);
         NP_CleanupPackets(&NP_QueueOut[i]);
     }
+}
+
+static void NP_NukeLobbyData() {
+    NP_NukeLobbyDataLite();
+    NP_Memzero(NP_LobbyMetadata), NP_Memzero(NP_PeerMetadata);
 }
 
 static void NP_NukeRemote() {
@@ -956,7 +960,11 @@ sockfail:
 
 static bool NP_Connect(const char* lobby_id, bool sane, NP_HeartbeatFlagsStorage flags) {
     NP_LazyInit();
-    NP_NukeLobbyData();
+
+    if (flags & NP_HB_Queue)
+        NP_NukeLobbyDataLite();
+    else
+        NP_NukeLobbyData();
 
     if (sane && (!lobby_id || !lobby_id[0])) {
         NP_Warn("Lobby ID cannot be null or empty!");
