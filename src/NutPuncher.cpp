@@ -93,7 +93,11 @@ static bool match_field_value(const int diff, const int flags) {
 }
 
 static void just_send(ENetPeer* peer, const void* buf, size_t len) {
+    if (!peer)
+        return;
+
     ENetPacket* const packet = enet_packet_create(buf, len, 0);
+
     if (enet_peer_send(peer, 0, packet))
         enet_packet_destroy(packet);
 }
@@ -223,7 +227,8 @@ struct Player {
     }
 
     ~Player() {
-        enet_peer_disconnect_now(enet, 0);
+        if (enet)
+            enet_peer_disconnect_now(enet, 0);
         enet = nullptr;
     }
 
@@ -233,7 +238,9 @@ struct Player {
 
     void reset() {
         std::memset(peer_id, 0, sizeof(peer_id));
-        enet_peer_disconnect_now(enet, 0);
+
+        if (enet)
+            enet_peer_disconnect_now(enet, 0);
         enet = nullptr;
     }
 };
@@ -349,9 +356,15 @@ struct Lobby {
         *ptr++ = capacity;
 
         for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-            ENetAddress addr = players[i].enet->address;
-            memcpy(ptr, &addr.host, 4), ptr += 4;
-            memcpy(ptr, &addr.port, 2), ptr += 2;
+            ENetPeer* peer = players[i].enet;
+
+            if (peer) {
+                uint16_t port = htons(peer->address.port);
+                memcpy(ptr, 12 + (char*)&peer->address.host, 4), ptr += 4;
+                memcpy(ptr, &port, 2), ptr += 2;
+            } else {
+                memset(ptr, 0, 6), ptr += 6;
+            }
         }
 
         std::memcpy(ptr, &metadata, sizeof(Metadata));
@@ -648,9 +661,6 @@ static void handle_recv(ENetEvent event) {
 }
 
 static void receive() {
-    if (!enet)
-        return;
-
     ENetEvent event;
 
     while (enet_host_service(enet, &event, 0) > 0) {
@@ -731,9 +741,9 @@ int main(int argc, char*[]) {
         update_grindr();
         update_lobbies();
 
-        const NutPunch_Clock delta = elapsed(start), diff = MIN_DELTA - delta;
-        if (diff > 0)
-            NP_SleepMs(diff / NUTPUNCH_MS);
+        const NutPunch_Clock delta = elapsed(start);
+        if (delta < MIN_DELTA)
+            NP_SleepMs((MIN_DELTA - delta) / NUTPUNCH_MS);
     }
 
     enet_host_destroy(enet);

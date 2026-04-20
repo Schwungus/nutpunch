@@ -531,12 +531,13 @@ typedef struct {
 #define NP_ANY_LEN (-1)
 #define NP_PING_SIZE (sizeof(NP_Header) + 1 + sizeof(NutPunch_Metadata))
 
-static void NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message), NP_HandleListing(NP_Message),
-    NP_HandleLobbyMetadata(NP_Message), NP_HandleData(NP_Message), NP_HandlePong(NP_Message),
-    NP_HandleDate(NP_Message);
+static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
+    NP_HandleListing(NP_Message), NP_HandleLobbyMetadata(NP_Message), NP_HandleData(NP_Message),
+    NP_HandlePong(NP_Message), NP_HandleDate(NP_Message);
 
 // clang-format off
 static const NP_MessageType NP_MessageTypes[] = {
+    {"PING", 1 + sizeof(NutPunch_Metadata), NP_HandlePing         },
 	{"LIST", NP_ANY_LEN,                    NP_HandleListing      },
 	{"LGMA", NP_ANY_LEN,                    NP_HandleLobbyMetadata},
 	{"DATA", NP_ANY_LEN,                    NP_HandleData         },
@@ -798,7 +799,7 @@ static bool NP_Connect(const char* lobby_id, bool sane, NP_HeartbeatFlagsStorage
 
     NP_ENetHost = enet_host_create(NULL,
         1 + NUTPUNCH_MAX_PLAYERS, // the NutPuncher + the players
-        NP_ChannelCount, 0, 0);
+        1, 0, 0);
 
     if (!NP_ENetHost) {
         NutPunch_Reset(), NP_LastStatus = NPS_Error;
@@ -814,7 +815,7 @@ static bool NP_Connect(const char* lobby_id, bool sane, NP_HeartbeatFlagsStorage
     NP_MemzeroRef(NP_ServerAddr);
     enet_address_set_host(&NP_ServerAddr, NP_ServerHost);
     NP_ServerAddr.port = NUTPUNCH_SERVER_PORT;
-    NP_PuncherPeer = enet_host_connect(NP_ENetHost, &NP_ServerAddr, NP_ChannelCount, 0);
+    NP_PuncherPeer = enet_host_connect(NP_ENetHost, &NP_ServerAddr, 1, 0);
 
     if (!NP_PuncherPeer) {
         NutPunch_Reset(), NP_LastStatus = NPS_Error;
@@ -926,11 +927,10 @@ static void NP_HandleEventCb(NutPunch_CallbackEvent event, const void* data) {
 }
 
 static const char* NP_FormatSockaddr(ENetAddress addr) {
-    static char buf[64] = "", buf1[64] = "";
-    NP_Memzero(buf);
+    static char buf[64] = "";
 
-    enet_address_get_host_ip(&addr, buf1, sizeof(buf1));
-    NutPunch_SNPrintF(buf, sizeof(buf), "%s:%d", buf1, addr.port);
+    const char* s = inet_ntoa(*(struct in_addr*)(12 + (char*)&addr.host));
+    NutPunch_SNPrintF(buf, sizeof(buf), "[%s]:%d", s, addr.port);
 
     return buf;
 }
@@ -938,8 +938,10 @@ static const char* NP_FormatSockaddr(ENetAddress addr) {
 static void NP_KillPeer(NutPunch_Peer peer) {
     if (peer >= NUTPUNCH_MAX_PLAYERS)
         return;
+
     if (NutPunch_PeerAlive(peer))
         NP_HandleEventCb(NPCB_PeerLeft, &peer);
+
     NP_MemzeroRef(NP_Peers[peer]);
 }
 
@@ -948,7 +950,6 @@ static bool NP_AddrNull(ENetAddress addr) {
     return !NutPunch_Memcmp(&addr, &null, sizeof(null));
 }
 
-// TODO: FUCK.
 static void NP_HandlePing(NP_Message msg) {
     const uint8_t idx = *msg.data++;
     if (idx >= NUTPUNCH_MAX_PLAYERS)
@@ -996,7 +997,7 @@ static void NP_HandleGTFO(NP_Message msg) {
 static void NP_PrintOurPublicAddress(const uint8_t* data) {
     ENetAddress addr = {0};
     NutPunch_Memcpy(&addr.host, data, 4), data += 4;
-    addr.port = *(uint16_t*)data, data += 2;
+    addr.port = ntohs(*(uint16_t*)data), data += 2;
     NP_Info("Server thinks you are %s", NP_FormatSockaddr(addr));
 }
 
@@ -1010,8 +1011,10 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
     if (idx == NP_LocalPeer)
         return;
 
-    ENetAddress addr = {0};
-    NutPunch_Memcpy(&addr.host, data, 4), data += 4;
+    ENetAddress addr;
+    NP_MemzeroRef(addr);
+
+    NutPunch_Memcpy(&((char*)&addr.host)[12], data, 4), data += 4;
     addr.port = *(uint16_t*)data, data += 2;
 
     if (NP_AddrNull(addr)) { // they're dead on the NutPuncher's side
@@ -1021,7 +1024,16 @@ static void NP_PingPeer(int idx, const uint8_t* data) {
 
     NP_PeerInfo* const peer = &NP_Peers[idx];
     if (!peer->enet)
-        peer->enet = enet_host_connect(NP_ENetHost, &addr, NP_ChannelCount, NP_LocalPeer);
+        peer->enet = enet_host_connect(NP_ENetHost, &addr, 1, NP_LocalPeer);
+
+    static uint8_t ping[NP_PING_SIZE] = "PING";
+    uint8_t* ptr = &ping[sizeof(NP_Header)];
+    *ptr++ = NP_LocalPeer;
+    NutPunch_Memcpy(ptr, NP_PeerMetadata, sizeof(NutPunch_Metadata));
+
+    ENetPacket* packet = enet_packet_create(ping, ptr - ping, 0);
+    if (enet_peer_send(peer->enet, 0, packet))
+        enet_packet_destroy(packet);
 }
 
 static void NP_HandleBeating(NP_Message msg) {
@@ -1216,12 +1228,6 @@ static void NP_SendHeartbeat() {
         enet_packet_destroy(packet);
 }
 
-typedef enum {
-    NP_RS_SockFail,
-    NP_RS_Again,
-    NP_RS_Done,
-} NP_ReceiveStatus;
-
 static NutPunch_Peer NP_FindPeer(ENetPeer* peer) {
     for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
         if (NP_Peers[i].enet == peer)
@@ -1229,16 +1235,19 @@ static NutPunch_Peer NP_FindPeer(ENetPeer* peer) {
     return NUTPUNCH_MAX_PLAYERS;
 }
 
-static NP_ReceiveStatus NP_TickENetHost() {
+static void NP_TickENetHost() {
     ENetEvent event;
 
     while (enet_host_service(NP_ENetHost, &event, 0) > 0) {
         // happens after handling a GTFO:
         if (NP_LastStatus == NPS_Error || !NP_PuncherPeer)
-            return NP_RS_Done;
+            break;
 
         switch (event.type) {
         case ENET_EVENT_TYPE_CONNECT: {
+            if (event.peer == NP_PuncherPeer)
+                break;
+
             if (event.data >= NUTPUNCH_MAX_PLAYERS)
                 break;
 
@@ -1257,7 +1266,7 @@ static NP_ReceiveStatus NP_TickENetHost() {
         case ENET_EVENT_TYPE_RECEIVE: {
             int size = (int)event.packet->dataLength - (int)sizeof(NP_Header);
             if (size < 0)
-                return NP_RS_Again; // junk
+                return; // junk
 
             uint8_t* ptr = event.packet->data;
             const size_t len = sizeof(NP_MessageTypes) / sizeof(*NP_MessageTypes);
@@ -1285,8 +1294,6 @@ static NP_ReceiveStatus NP_TickENetHost() {
             break;
         }
     }
-
-    return NP_RS_Again;
 }
 
 static void NP_SendGoodbyes() {
@@ -1319,30 +1326,15 @@ void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
 
 static void NP_NetworkUpdate() {
     NutPunch_Clock now = NutPunch_TimeNS(),
-                   server_timeout = NUTPUNCH_SERVER_TIMEOUT_INTERVAL * NUTPUNCH_MS,
-                   peer_timeout = NUTPUNCH_PEER_TIMEOUT_INTERVAL * NUTPUNCH_MS;
+                   server_timeout = NUTPUNCH_SERVER_TIMEOUT_INTERVAL * NUTPUNCH_MS;
 
     if (NP_Mode != NPNM_Query && (now - NP_LastBeating) >= server_timeout) {
         NP_Warn("NutPuncher connection timed out!");
-        goto error;
+        NP_LastStatus = NPS_Error;
+    } else {
+        NP_SendHeartbeat();
+        NP_TickENetHost();
     }
-
-    NP_SendHeartbeat();
-
-    for (;;) {
-        switch (NP_TickENetHost()) {
-        case NP_RS_SockFail:
-            goto error;
-        case NP_RS_Done:
-            NutPunch_Flush();
-            return;
-        case NP_RS_Again:
-            break;
-        }
-    }
-
-error:
-    NP_LastStatus = NPS_Error;
 }
 
 NutPunch_UpdateStatus NutPunch_Update() {
@@ -1406,7 +1398,28 @@ int NutPunch_NextMessage(NutPunch_Channel channel, void* out, int* size) {
 }
 
 void NutPunch_Send(NutPunch_Channel channel, NutPunch_Peer peer, ENetPacketFlag flags,
-    const void* data, int size) {}
+    const void* data, int size) {
+    static uint8_t buf[8096] = {0};
+
+    if (size > sizeof(buf) - 1) {
+        NP_Warn("ARE YOU TRYING TO KILL ME WITH THIS THING???");
+        return;
+    }
+
+    if (!NutPunch_PeerAlive(peer))
+        return;
+
+    NP_PeerInfo* bro = &NP_Peers[peer];
+    if (!bro->enet)
+        return;
+
+    buf[0] = channel;
+    NutPunch_Memcpy(&buf[1], data, size);
+
+    ENetPacket* packet = enet_packet_create(buf, 1 + size, flags);
+    if (enet_peer_send(bro->enet, 0, packet))
+        enet_packet_destroy(packet);
+}
 
 int NutPunch_PeerCount() {
     int count = 0;
@@ -1426,18 +1439,11 @@ bool NutPunch_PeerAlive(NutPunch_Peer peer) {
         return false;
 
     switch (enet_peer_get_state(p->enet)) {
-    case ENET_PEER_STATE_CONNECTING:
-    case ENET_PEER_STATE_ACKNOWLEDGING_CONNECT:
     case ENET_PEER_STATE_CONNECTION_PENDING:
     case ENET_PEER_STATE_CONNECTION_SUCCEEDED:
     case ENET_PEER_STATE_CONNECTED:
-    case ENET_PEER_STATE_ACKNOWLEDGING_DISCONNECT:
         return true;
 
-    case ENET_PEER_STATE_DISCONNECTED:
-    case ENET_PEER_STATE_DISCONNECTING:
-    case ENET_PEER_STATE_DISCONNECT_LATER:
-    case ENET_PEER_STATE_ZOMBIE:
     default:
         if (p->enet)
             enet_peer_reset(p->enet);
