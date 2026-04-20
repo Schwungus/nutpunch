@@ -2,8 +2,11 @@ cmake_minimum_required(VERSION 3.28 FATAL_ERROR)
 
 project(NutPunch LANGUAGES C CXX)
 
-set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
+set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # FIXME: this enet fork is a bitch
 set(BUILD_SHARED_LIBS OFF)
+
+include(FetchContent)
+set(FETCHCONTENT_QUIET FALSE)
 
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
@@ -14,21 +17,23 @@ target_include_directories(NutPunch INTERFACE
 
 if(WIN32)
     target_link_libraries(NutPunch INTERFACE
-        ws2_32 winpthread) # pthreads required for the `timespec_get` polyfill
+        ws2_32 winpthread winmm) # pthreads required for the `timespec_get` polyfill
 endif()
 
-option(NUTPUNCH_TRACING "Enable extra debug logging?")
+option(NUTPUNCH_BUNDLE_ENET "Download NutPunch's own copy of enet?" ON)
 
-if(NUTPUNCH_TRACING)
-    message("NutPunch tracing enabled")
-    target_compile_definitions(NutPunch INTERFACE NUTPUNCH_TRACING=1)
+if(NUTPUNCH_BUNDLE_ENET)
+    FetchContent_Declare(enet
+        URL https://raw.githubusercontent.com/zpl-c/enet/refs/tags/v2.6.5/include/enet.h
+        DOWNLOAD_NO_EXTRACT ON)
+    FetchContent_MakeAvailable(enet)
+
+    target_include_directories(NutPunch INTERFACE ${enet_SOURCE_DIR})
+    target_compile_definitions(NutPunch INTERFACE NUTPUNCH_BUNDLED_ENET=1)
 endif()
 
 option(NUTPUNCH_BUILD_TEST "Build NutPunch test binary?")
 if(NUTPUNCH_BUILD_TEST)
-    include(FetchContent)
-    set(FETCHCONTENT_QUIET FALSE)
-
     FetchContent_Declare(poormans
         GIT_REPOSITORY https://github.com/nonk123/poormans.git
         GIT_TAG fb0e069d4357a59848bec6c217999beb5ad8435e)

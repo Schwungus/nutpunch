@@ -11,7 +11,6 @@ static FILE* logfile = NULL;
 // clang-format on
 
 #define NUTPUNCH_IMPLEMENTATION
-// #define NUTPUNCH_TRACING
 #include <NutPunch.h>
 
 #define POOR_IMPLEMENTATION
@@ -95,11 +94,13 @@ static void receive_shit() {
 
 static void chat_with(int idx) {
     const char* theirName = NutPunch_GetPeerData(idx, "NAME", NULL);
-    if (theirName == NULL)
+
+    if (!theirName)
         return;
+
     static char buf[96] = {0};
     const int size = NutPunch_SNPrintF(buf, sizeof(buf), "Hi, %s!", theirName);
-    NutPunch_SendReliably(CHAN_CHAT, idx, buf, size + 1);
+    NutPunch_Send(CHAN_CHAT, idx, ENET_PACKET_FLAG_RELIABLE, buf, size + 1);
 }
 
 static void send_shit() {
@@ -111,7 +112,7 @@ static void send_shit() {
     data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y);
 
     for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-        NutPunch_Send(CHAN_GAME, i, data, sizeof(data));
+        NutPunch_Send(CHAN_GAME, i, 0, data, sizeof(data));
         if (poor_key_pressed(POOR_T))
             chat_with(i);
     }
@@ -198,7 +199,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    NutPunch_Cleanup();
+    NutPunch_Shutdown();
     fflush(logfile), fclose(logfile);
     return EXIT_SUCCESS;
 }
