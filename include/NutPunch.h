@@ -525,7 +525,7 @@ typedef struct {
 typedef struct {
     const char identifier[sizeof(NP_Header) + 1];
     const int16_t packet_size;
-    void (*const handler)(NP_Message);
+    void (*const handle)(NP_Message);
 } NP_MessageType;
 
 #define NP_ANY_LEN (-1)
@@ -590,22 +590,6 @@ static void NP_NukeLobbyDataLite() {
     NP_Closing = NP_Unlisted = false;
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
     NP_Memzero(NP_Peers);
-}
-
-static void NP_NukeLobbyData() {
-    NP_NukeLobbyDataLite();
-    NP_Memzero(NP_LobbyMetadata), NP_Memzero(NP_PeerMetadata);
-}
-
-static void NP_NukeRemote() {
-    NP_LobbyId[0] = 0, NP_HeartbeatFlags = 0;
-    NP_MemzeroRef(NP_ServerAddr), NP_Memzero(NP_Peers);
-    NP_LastStatus = NPS_Idle;
-}
-
-static void NP_ResetImpl() {
-    NP_LastBeating = NutPunch_TimeNS();
-    NP_NukeRemote(), NP_NukeLobbyData();
 
     if (NP_PuncherPeer)
         enet_peer_disconnect_now(NP_PuncherPeer, 0);
@@ -614,6 +598,20 @@ static void NP_ResetImpl() {
     if (NP_ENetHost)
         enet_host_destroy(NP_ENetHost);
     NP_ENetHost = NULL;
+}
+
+static void NP_NukeLobbyData() {
+    NP_NukeLobbyDataLite();
+    NP_Memzero(NP_LobbyMetadata), NP_Memzero(NP_PeerMetadata);
+}
+
+static void NP_ResetImpl() {
+    NP_LastBeating = NutPunch_TimeNS();
+    NP_NukeLobbyData();
+
+    NP_LobbyId[0] = 0, NP_HeartbeatFlags = 0;
+    NP_MemzeroRef(NP_ServerAddr), NP_Memzero(NP_Peers);
+    NP_LastStatus = NPS_Idle;
 
     for (int i = 0; i < NUTPUNCH_CHANNEL_COUNT; i++) {
         while (NP_Unread[i]) {
@@ -1268,7 +1266,7 @@ static void NP_TickENetHost() {
             if (size < 0)
                 return; // junk
 
-            uint8_t* ptr = event.packet->data;
+            uint8_t* const buf = event.packet->data;
             const size_t len = sizeof(NP_MessageTypes) / sizeof(*NP_MessageTypes);
 
             for (int i = 0; i < len; i++) {
@@ -1276,13 +1274,13 @@ static void NP_TickENetHost() {
 
                 if (type.packet_size != NP_ANY_LEN && size != type.packet_size)
                     continue;
-                if (NutPunch_Memcmp(ptr, type.identifier, sizeof(NP_Header)))
+                if (NutPunch_Memcmp(buf, type.identifier, sizeof(NP_Header)))
                     continue;
 
                 NP_Message msg = {0};
                 msg.from = event.peer, msg.len = size;
-                msg.data = (uint8_t*)(ptr + sizeof(NP_Header));
-                type.handler(msg);
+                msg.data = (uint8_t*)(buf + sizeof(NP_Header));
+                type.handle(msg);
                 break;
             }
 

@@ -31,8 +31,7 @@
 #include <map>
 #include <string>
 
-static constexpr const NutPunch_Clock KEEP_ALIVE_FOR = 5 * NUTPUNCH_SEC,
-                                      KEEP_QUEUE_FOR = 20 * NUTPUNCH_SEC;
+static constexpr const NutPunch_Clock KEEP_QUEUE_FOR = 20 * NUTPUNCH_SEC;
 
 /// A little debouncing delay to prevent recreating a grindr queue right after timing it out.
 static constexpr const NutPunch_Clock GRINDR_DEBOUNCE = 3 * NUTPUNCH_SEC;
@@ -216,8 +215,6 @@ struct Player {
     // HACK: only used in the static array inside `Lobby`.
     NutPunch_PeerId peer_id = {0};
 
-    NutPunch_Clock last_beat = 0;
-
     ENetPeer* enet = nullptr;
 
     Player() {}
@@ -227,13 +224,11 @@ struct Player {
     }
 
     ~Player() {
-        if (enet)
-            enet_peer_disconnect_now(enet, 0);
-        enet = nullptr;
+        reset();
     }
 
     explicit operator bool() const {
-        return elapsed(last_beat) <= KEEP_ALIVE_FOR && !is_memzero(peer_id);
+        return !is_memzero(peer_id) && enet;
     }
 
     void reset() {
@@ -326,7 +321,7 @@ struct Lobby {
 
         auto& player = players[idx];
         std::memcpy(player.peer_id, id, sizeof(NutPunch_PeerId));
-        player.enet = peer, player.last_beat = NutPunch_TimeNS();
+        player.enet = peer;
 
         if (idx == master()) {
             unlisted = flags & NP_HB_Unlisted;
@@ -341,12 +336,6 @@ struct Lobby {
         if (is_memzero(player.peer_id))
             return;
 
-        if (elapsed(player.last_beat) > KEEP_ALIVE_FOR) {
-            NP_Warn("Player %d timed out", idx + 1);
-            player.reset();
-            return;
-        }
-
         static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)] = "BEAT";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
@@ -356,11 +345,11 @@ struct Lobby {
         *ptr++ = capacity;
 
         for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-            ENetPeer* peer = players[i].enet;
+            ENetPeer* bro = players[i].enet;
 
-            if (peer) {
-                uint16_t port = htons(peer->address.port);
-                memcpy(ptr, 12 + (char*)&peer->address.host, 4), ptr += 4;
+            if (bro) {
+                uint16_t port = htons(bro->address.port);
+                memcpy(ptr, 12 + (char*)&bro->address.host, 4), ptr += 4;
                 memcpy(ptr, &port, 2), ptr += 2;
             } else {
                 memset(ptr, 0, 6), ptr += 6;
@@ -373,7 +362,7 @@ struct Lobby {
         just_send(player.enet, buf, ptr - buf);
     }
 
-    bool kill_bro(const NutPunch_PeerId id, ENetPeer* enet) {
+    void kill_bro(const NutPunch_PeerId id, ENetPeer* enet) {
         for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
             if (!players[i])
                 continue;
@@ -382,11 +371,9 @@ struct Lobby {
             if (!id_eq && players[i].enet != enet)
                 continue;
 
-            NP_Info("Player %d disconnected gracefully", i + 1);
+            NP_Info("Player %d disconnected", i + 1);
             players[i].reset();
         }
-
-        return false;
     }
 
     bool match_against(const NutPunch_Filter* filters, size_t filter_count) const {
@@ -441,26 +428,20 @@ struct Grindr {
     }
 
     void accept(const std::string& peer_id, ENetPeer* peer) {
-        if (players.contains(peer_id)) {
-            auto& p = players.at(peer_id);
-            p.last_beat = NutPunch_TimeNS();
-        } else {
-            players.emplace(peer_id, Player(peer_id.data(), peer));
-            closing = false;
+        if (players.contains(peer_id))
+            return;
 
-            NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
-        }
+        players.emplace(peer_id, Player(peer_id.data(), peer));
+        closing = false;
+
+        NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
     }
 
     void update() {
         if (players.empty() && elapsed(last_match) > KEEP_QUEUE_FOR) {
-            if (!closing) {
-                NP_Info("GRINDR: No matches found");
-
+            if (!closing)
                 for (const auto& [id, p] : players)
                     gtfo(p.enet, NPE_QueueNoMatch);
-            }
-
             closing = true;
         }
 
@@ -471,14 +452,6 @@ struct Grindr {
             LETSGOO();
             return;
         }
-
-        std::erase_if(players, [](const auto& pair) {
-            const auto& [id, peer] = pair;
-            if (peer)
-                return false;
-            NP_Info("QUEUE: Peer '%s' timed out", id.c_str());
-            return true;
-        });
 
         for (const auto& [id, p] : players)
             just_send(p.enet, "PONG", sizeof(NP_Header));
@@ -577,15 +550,14 @@ static void send_lobbies(ENetPeer* peer, size_t filter_count, const NutPunch_Fil
 
 static void kill_bro(const NutPunch_PeerId peer_id, ENetPeer* enet) {
     for (auto& [id, lobby] : lobbies)
-        if (lobby.kill_bro(peer_id, enet))
-            break;
+        lobby.kill_bro(peer_id, enet);
 
     for (auto& [id, queue] : matchmaking) {
         std::erase_if(queue.players, [peer_id, enet](const auto& pair) {
             const auto& [id, peer] = pair;
             if (peer.enet != enet && std::memcmp(id.data(), peer_id, sizeof(NutPunch_PeerId)))
                 return false;
-            NP_Info("QUEUE: Peer '%s' disconnected gracefully", id.c_str());
+            NP_Info("QUEUE: Peer '%s' disconnected", id.c_str());
             return true;
         });
     }
@@ -620,9 +592,7 @@ static void handle_recv(ENetEvent event) {
 
         if (!matchmaking.contains(queue_id))
             matchmaking.emplace(queue_id, Grindr(queue_id));
-
-        auto& q = matchmaking.at(queue_id);
-        q.accept(peer_id, event.peer);
+        matchmaking.at(queue_id).accept(peer_id, event.peer);
     } else if (rcv >= sizeof(NutPunch_PeerId) && !std::memcmp(buf, "DISC", sizeof(NP_Header))) {
         kill_bro(ptr, event.peer);
     } else {
