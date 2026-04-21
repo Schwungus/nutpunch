@@ -450,7 +450,6 @@ typedef uint8_t NP_HeartbeatFlagsStorage;
 typedef uint8_t NP_Header[4];
 
 typedef struct {
-    ENetPeer* enet;
     NutPunch_Metadata metadata;
 } NP_PeerInfo;
 
@@ -471,20 +470,21 @@ typedef struct NP_PacketQueue {
 #pragma pack(push, 1)
 
 typedef struct {
-    uint8_t ip[4];
+    uint32_t ip;
     uint16_t port;
 } NP_PeerAddr;
 
 typedef struct {
     uint8_t unlisted;
     NutPunch_Peer local, master, capacity;
-    NP_PeerAddr peers[NUTPUNCH_MAX_PLAYERS];
+    NP_PeerAddr peers[2][NUTPUNCH_MAX_PLAYERS];
     NutPunch_Metadata metadata;
 } NP_Beating;
 
 typedef struct {
     NutPunch_PeerId peer;
     NutPunch_LobbyId lobby;
+    NP_PeerAddr internal_addr;
     NP_HeartbeatFlagsStorage flags;
     NutPunch_Metadata lobby_metadata;
 } NP_Heartbeat;

@@ -216,10 +216,12 @@ struct Player {
     NutPunch_PeerId peer_id = {0};
 
     ENetPeer* enet = nullptr;
+    ENetAddress internal_addr = {0};
 
     Player() {}
 
-    Player(const char* id, ENetPeer* enet) : enet(enet) {
+    Player(const char* id, ENetPeer* enet, ENetAddress internal_addr)
+        : enet(enet), internal_addr(internal_addr) {
         std::memcpy(this->peer_id, id, sizeof(this->peer_id));
     }
 
@@ -233,6 +235,7 @@ struct Player {
 
     void reset() {
         std::memset(peer_id, 0, sizeof(peer_id));
+        std::memset(&internal_addr, 0, sizeof(internal_addr));
 
         if (enet)
             enet_peer_disconnect_now(enet, 0);
@@ -277,9 +280,9 @@ struct Lobby {
         return gamers() > 0;
     }
 
-    NutPunch_Peer index_of(const NutPunch_PeerId id) const {
+    NutPunch_Peer index_of(const std::string& id) const {
         for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-            if (players[i] && !std::memcmp(id, players[i].peer_id, sizeof(NutPunch_PeerId)))
+            if (players[i] && !std::memcmp(id.c_str(), players[i].peer_id, sizeof(NutPunch_PeerId)))
                 return i;
         return NUTPUNCH_MAX_PLAYERS;
     }
@@ -291,7 +294,7 @@ struct Lobby {
         return NUTPUNCH_MAX_PLAYERS;
     }
 
-    bool has(const NutPunch_PeerId id) const {
+    bool has(const std::string& id) const {
         return index_of(id) != NUTPUNCH_MAX_PLAYERS;
     }
 
@@ -303,7 +306,7 @@ struct Lobby {
         return count;
     }
 
-    void accept(const NutPunch_PeerId id, ENetPeer* peer, const NP_HeartbeatFlagsStorage flags,
+    void accept(const std::string& id, ENetPeer* peer, const NP_HeartbeatFlagsStorage flags,
         const char* meta) {
         NutPunch_Peer idx = index_of(id);
         bool just_joined = false;
@@ -320,7 +323,7 @@ struct Lobby {
             NP_Info("Player %d joined lobby '%s'", idx + 1, fmt_id());
 
         auto& player = players[idx];
-        std::memcpy(player.peer_id, id, sizeof(NutPunch_PeerId));
+        std::memcpy(player.peer_id, id.c_str(), sizeof(NutPunch_PeerId));
         player.enet = peer;
 
         if (idx == master()) {
@@ -351,7 +354,12 @@ struct Lobby {
                 uint16_t port = htons(bro->address.port);
                 memcpy(ptr, &bro->address.host, 4), ptr += 4;
                 memcpy(ptr, &port, 2), ptr += 2;
+
+                port = htons(players[i].internal_addr.port);
+                memcpy(ptr, &players[i].internal_addr.host, 4), ptr += 4;
+                memcpy(ptr, &port, 2), ptr += 2;
             } else {
+                memset(ptr, 0, 6), ptr += 6;
                 memset(ptr, 0, 6), ptr += 6;
             }
         }
@@ -431,7 +439,7 @@ struct Grindr {
         if (players.contains(peer_id))
             return;
 
-        players.emplace(peer_id, Player(peer_id.data(), peer));
+        players.emplace(peer_id, Player(peer_id.data(), peer, {0, 0}));
         closing = false;
 
         NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
@@ -483,7 +491,7 @@ struct Grindr {
 
 static std::map<std::string, Grindr> matchmaking;
 
-static bool create_lobby(const char* id, ENetPeer* peer) {
+static bool create_lobby(const std::string& id, ENetPeer* peer) {
     if (lobbies.size() >= MAX_LOBBIES) {
         gtfo(peer, NPE_NoSuchLobby);
         NP_Warn("Reached lobby limit");
@@ -498,7 +506,7 @@ static bool create_lobby(const char* id, ENetPeer* peer) {
     }
 
     lobbies.insert({id, Lobby(id)});
-    NP_Info("Created lobby '%s'", fmt_lobby_id(id));
+    NP_Info("Created lobby '%s'", fmt_lobby_id(id.c_str()));
     return true;
 }
 
@@ -589,6 +597,7 @@ static void handle_recv(ENetEvent event) {
         ptr += sizeof(NutPunch_PeerId);
 
         std::string queue_id(ptr, sizeof(NutPunch_QueueId));
+        ptr += sizeof(NutPunch_QueueId);
 
         if (!matchmaking.contains(queue_id))
             matchmaking.emplace(queue_id, Grindr(queue_id));
@@ -601,13 +610,15 @@ static void handle_recv(ENetEvent event) {
         if (std::memcmp(buf, "JOIN", sizeof(NP_Header)))
             return;
 
-        static NutPunch_PeerId peer_id = {0};
-        std::memcpy(peer_id, ptr, sizeof(NutPunch_PeerId));
+        std::string peer_id(ptr, sizeof(NutPunch_PeerId));
         ptr += sizeof(NutPunch_PeerId);
 
-        static char lobby_id[sizeof(NutPunch_LobbyId) + 1] = {0};
-        std::memcpy(lobby_id, ptr, sizeof(NutPunch_LobbyId));
-        ptr += sizeof(NutPunch_LobbyId);
+        std::string lobby_id(ptr, sizeof(NutPunch_LobbyId));
+        ptr += sizeof(NutPunch_QueueId);
+
+        ENetAddress internal_addr = {0};
+        internal_addr.host = *(uint32_t*)ptr, ptr += 4;
+        internal_addr.port = ntohs(*(uint16_t*)ptr), ptr += 2;
 
         auto flags = *(const NP_HeartbeatFlagsStorage*)ptr;
         ptr += sizeof(flags);
