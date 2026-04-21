@@ -349,7 +349,7 @@ struct Lobby {
 
             if (bro) {
                 uint16_t port = htons(bro->address.port);
-                memcpy(ptr, 12 + (char*)&bro->address.host, 4), ptr += 4;
+                memcpy(ptr, &bro->address.host, 4), ptr += 4;
                 memcpy(ptr, &port, 2), ptr += 2;
             } else {
                 memset(ptr, 0, 6), ptr += 6;
@@ -641,7 +641,6 @@ static void receive() {
             break;
 
         case ENET_EVENT_TYPE_DISCONNECT:
-        case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT:
             kill_bro("", event.peer);
             break;
 

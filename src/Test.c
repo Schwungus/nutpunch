@@ -3,14 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// gotta use a logfile since we're drawing to the console
-static FILE* logfile = NULL;
-
-// clang-format off
-#define NutPunch_Log(msg, ...) do { fprintf(logfile, msg "\n", ##__VA_ARGS__), fflush(logfile); } while (0);
-// clang-format on
-
-#define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
 #define POOR_IMPLEMENTATION
@@ -34,6 +26,18 @@ static const char* randomNames[]
 static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
 
 static uint8_t targetPlayerCount = 0;
+
+// gotta use a logfile since we're drawing to the console
+static FILE* logfile = NULL;
+
+static void log_to_file(const char* fmt, ...) {
+    va_list args = {0};
+    va_start(args, fmt);
+    vfprintf(logfile, fmt, args);
+    va_end(args);
+
+    fflush(logfile);
+}
 
 static void reset_gamestate() {
     NutPunch_Memset(players, 0, sizeof(players));
@@ -150,6 +154,8 @@ int main(int argc, char* argv[]) {
         printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
         return EXIT_FAILURE;
     }
+
+    NP_Logger = log_to_file; // TODO: add a setter function
 
     NutPunch_SetChannelCount(CHAN_COUNT);
     NutPunch_Register(NPCB_PeerJoined, greet);

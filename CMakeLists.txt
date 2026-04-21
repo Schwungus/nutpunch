@@ -8,28 +8,24 @@ set(BUILD_SHARED_LIBS OFF)
 include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)
 
+FetchContent_Declare(enet
+    GIT_REPOSITORY https://github.com/lsalzman/enet.git
+    GIT_TAG 8be2368a8001f28db44e81d5939de5e613025023)
+FetchContent_MakeAvailable(enet)
+
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-add_library(NutPunch INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/NutPunch.h)
-target_include_directories(NutPunch INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_library(NutPunch
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/NutPunch.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/NutPunch.c)
+target_include_directories(NutPunch PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${enet_SOURCE_DIR}/include) # HACK: enet's CMakeLists.txt is borked
+target_link_libraries(NutPunch PUBLIC enet)
 
 if(WIN32)
-    target_link_libraries(NutPunch INTERFACE
-        ws2_32 winpthread winmm) # pthreads required for the `timespec_get` polyfill
-endif()
-
-option(NUTPUNCH_BUNDLE_ENET "Download NutPunch's own copy of enet?" ON)
-
-if(NUTPUNCH_BUNDLE_ENET)
-    FetchContent_Declare(enet
-        URL https://raw.githubusercontent.com/zpl-c/enet/refs/tags/v2.6.5/include/enet.h
-        DOWNLOAD_NO_EXTRACT ON)
-    FetchContent_MakeAvailable(enet)
-
-    target_include_directories(NutPunch INTERFACE ${enet_SOURCE_DIR})
-    target_compile_definitions(NutPunch INTERFACE NUTPUNCH_BUNDLED_ENET=1)
+    # pthreads required for the `timespec_get` polyfill
+    target_link_libraries(NutPunch PUBLIC winpthread)
 endif()
 
 option(NUTPUNCH_BUILD_TEST "Build NutPunch test binary?")
