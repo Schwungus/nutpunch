@@ -721,6 +721,8 @@ static void NP_HandlePong(NP_Message msg) {
 }
 
 static void NP_HandleDate(NP_Message msg) {
+    NP_Warn("SHIT");
+
     if (NP_Mode != NPNM_Matchmaking)
         return;
 

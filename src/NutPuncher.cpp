@@ -91,11 +91,11 @@ static bool match_field_value(const int diff, const int flags) {
     return (flags & NPF_Not) ? !result : result;
 }
 
-static void just_send(ENetPeer* peer, const void* buf, size_t len) {
+static void just_send(ENetPeer* peer, const void* buf, size_t len, uint32_t flags) {
     if (!peer)
         return;
 
-    ENetPacket* const packet = enet_packet_create(buf, len, 0);
+    ENetPacket* const packet = enet_packet_create(buf, len, flags);
 
     if (enet_peer_send(peer, 0, packet))
         enet_packet_destroy(packet);
@@ -105,8 +105,8 @@ static void gtfo(ENetPeer* peer, NutPunch_ErrorCode error) {
     static uint8_t buf[sizeof(NP_Header) + 1] = "GTFO";
     buf[sizeof(NP_Header)] = error;
 
-    for (int i = 0; i < 10; i++)
-        just_send(peer, buf, sizeof(buf));
+    for (int i = 0; i < 10; i++) // we dgaf about reliability, we're just proving a point......
+        just_send(peer, buf, sizeof(buf), 0);
 }
 
 struct Field : NutPunch_Field {
@@ -367,7 +367,7 @@ struct Lobby {
         std::memcpy(ptr, &metadata, sizeof(Metadata));
         ptr += sizeof(Metadata);
 
-        just_send(player.enet, buf, ptr - buf);
+        just_send(player.enet, buf, ptr - buf, 0);
     }
 
     void kill_bro(const NutPunch_PeerId id, ENetPeer* enet) {
@@ -387,6 +387,7 @@ struct Lobby {
     bool match_against(const NutPunch_Filter* filters, size_t filter_count) const {
         for (int f = 0; f < filter_count; f++) {
             const auto& filter = filters[f];
+
             if (filter.field.alwayszero != 0) {
                 int diff = (uint8_t)filter.special.value;
                 diff -= special(filter.special.index);
@@ -394,6 +395,7 @@ struct Lobby {
                     goto next_filter;
                 return false;
             }
+
             for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++) {
                 const auto& field = metadata.fields[m];
                 if (!field.named(filter.field.name))
@@ -401,10 +403,12 @@ struct Lobby {
                 if (field.matches(filter))
                     goto next_filter;
             }
+
             return false; // no field matched the filter
         next_filter:
             continue;
         }
+
         // All filters matched.
         return true;
     }
@@ -462,7 +466,7 @@ struct Grindr {
         }
 
         for (const auto& [id, p] : players)
-            just_send(p.enet, "PONG", sizeof(NP_Header));
+            just_send(p.enet, "PONG", sizeof(NP_Header), 0);
     }
 
     void LETSGOO() {
@@ -476,12 +480,12 @@ struct Grindr {
         for (int i = 0; i < sizeof(lobby_id); i++)
             lobby_id[i] = (char)('A' + (std::rand() % 26));
 
-        uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "DATE";
-        std::memcpy(buf + sizeof(NP_Header), lobby_id, sizeof(NutPunch_LobbyId));
+        static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "DATE";
+        std::memcpy(buf + sizeof(NP_Header), lobby_id, sizeof(lobby_id));
 
-        for (int i = 0; i < 10; i++) {
-            just_send(pair1.second.enet, buf, sizeof(buf));
-            just_send(pair2.second.enet, buf, sizeof(buf));
+        for (const auto enet : {pair1.second.enet, pair2.second.enet}) {
+            const uint32_t flags = ENET_PACKET_FLAG_UNSEQUENCED | ENET_PACKET_FLAG_RELIABLE;
+            just_send(enet, buf, sizeof(buf), flags);
         }
 
         NP_Info("QUEUE: Matched peers '%s' and '%s' to lobby '%s'", pair1.first.c_str(),
@@ -529,7 +533,7 @@ static void send_lobbies(ENetPeer* peer, const char* target_id) {
             ptr += sizeof(NutPunch_Field);
         }
 
-        just_send(peer, buf, ptr - buf);
+        just_send(peer, buf, ptr - buf, 0);
         break;
     }
 }
@@ -553,7 +557,7 @@ static void send_lobbies(ENetPeer* peer, size_t filter_count, const NutPunch_Fil
             break;
     }
 
-    just_send(peer, buf, ptr - buf);
+    just_send(peer, buf, ptr - buf, 0);
 }
 
 static void kill_bro(const NutPunch_PeerId peer_id, ENetPeer* enet) {
