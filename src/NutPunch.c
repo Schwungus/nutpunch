@@ -1022,6 +1022,8 @@ NutPunch_Clock NutPunch_TimeNS() {
 
 #ifndef NUTPUNCH_WINDOSE
 
+#include <errno.h>
+
 void NP_SleepMs(int ms) {
     // Stolen from: <https://stackoverflow.com/a/1157217>
     struct timespec ts = {0};
