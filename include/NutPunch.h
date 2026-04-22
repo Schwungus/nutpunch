@@ -83,7 +83,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
+#include <stdio.h> // IWYU pragma: export
 
 extern char NP_LastError[512];
 extern void (*NP_Logger)(const char*, ...);
@@ -350,7 +350,7 @@ int NutPunch_NextMessage(NutPunch_Channel, void* out, int* size);
 
 /// Sends data on the specified channel, to the specified peer, with the specified ENet flags (e.g.
 /// `ENET_PACKET_FLAG_RELIABLE` for reliable delivery).
-void NutPunch_Send(NutPunch_Channel, NutPunch_Peer, ENetPacketFlag, const void*, int);
+void NutPunch_Send(NutPunch_Channel, NutPunch_Peer, uint32_t, const void*, int);
 
 /// Counts how many "live" peers we have a route to, including our local peer.
 ///
@@ -449,23 +449,6 @@ enum {
 typedef uint8_t NP_HeartbeatFlagsStorage;
 typedef uint8_t NP_Header[4];
 
-typedef struct {
-    NutPunch_Metadata metadata;
-} NP_PeerInfo;
-
-typedef struct {
-    ENetPeer* from;
-    int len;
-    const uint8_t* data;
-} NP_Message;
-
-typedef struct NP_PacketQueue {
-    NutPunch_Peer peer;
-    void* data;
-    size_t len;
-    struct NP_PacketQueue* next;
-} NP_PacketQueue;
-
 // tightly packed structs matching packet layouts.
 #pragma pack(push, 1)
 
@@ -490,12 +473,6 @@ typedef struct {
 } NP_Heartbeat;
 
 #pragma pack(pop)
-
-typedef struct {
-    const char identifier[sizeof(NP_Header) + 1];
-    const int16_t packet_size;
-    void (*const handle)(NP_Message);
-} NP_MessageType;
 
 enum {
     NP_HB_JoinExisting = 1 << 0,
