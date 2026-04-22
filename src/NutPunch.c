@@ -175,7 +175,7 @@ static void NP_LazyInit() {
 
     enet_initialize();
 
-    srand(NutPunch_TimeNS()); // TODO: abstract `rand` & `srand`
+    srand(NutPunch_TimeNS());
     for (int i = 0; i < sizeof(NutPunch_PeerId); i++)
         NP_PeerId[i] = (char)('A' + rand() % 26);
 
@@ -567,14 +567,10 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     if (idx == NP_LocalPeer)
         return;
 
-    ENetAddress pub = {0}, internal = {0};
+    ENetAddress pub = {0};
 
     NutPunch_Memcpy(&pub.host, data, 4), data += 4;
     pub.port = ntohs(*(uint16_t*)data), data += 2;
-
-    // TODO: determine if we still need the internal address....
-    NutPunch_Memcpy(&internal.host, data, 4), data += 4;
-    internal.port = ntohs(*(uint16_t*)data), data += 2;
 
     if (NP_AddrNull(pub)) { // they're dead on the NutPuncher's side
         NP_KillPeer(idx);
@@ -626,7 +622,7 @@ static void NP_HandleBeating(NP_Message msg) {
         NP_SendPings(i, msg.data);
         if (i == NP_LocalPeer && just_joined)
             NP_PrintOurAddresses(msg.data);
-        msg.data += 2 * sizeof(NP_PeerAddr);
+        msg.data += sizeof(NP_PeerAddr);
     }
 
     for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
@@ -741,7 +737,6 @@ static void NP_SendHeartbeat() {
     NP_Memzero(heartbeat);
 
     uint8_t* ptr = heartbeat;
-    const uint16_t port = htons(NP_ENetHost->address.port);
 
     switch (NP_Mode) {
     case NPNM_Normal:
@@ -753,9 +748,6 @@ static void NP_SendHeartbeat() {
 
         NutPunch_Memcpy(ptr, NP_LobbyId, sizeof(NutPunch_LobbyId));
         ptr += sizeof(NutPunch_LobbyId);
-
-        NutPunch_Memcpy(ptr, &NP_ENetHost->address.host, 4), ptr += 4;
-        NutPunch_Memcpy(ptr, &port, 2), ptr += 2;
 
         *(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags,
         ptr += sizeof(NP_HeartbeatFlagsStorage);

@@ -460,17 +460,21 @@ typedef struct {
 typedef struct {
     uint8_t unlisted;
     NutPunch_Peer local, master, capacity;
-    NP_PeerAddr peers[2][NUTPUNCH_MAX_PLAYERS];
+    NP_PeerAddr peers[NUTPUNCH_MAX_PLAYERS];
     NutPunch_Metadata metadata;
 } NP_Beating;
 
 typedef struct {
     NutPunch_PeerId peer;
     NutPunch_LobbyId lobby;
-    NP_PeerAddr internal_addr;
     NP_HeartbeatFlagsStorage flags;
     NutPunch_Metadata lobby_metadata;
 } NP_Heartbeat;
+
+typedef struct {
+    NutPunch_PeerId peer;
+    NutPunch_QueueId queue;
+} NP_Find;
 
 #pragma pack(pop)
 

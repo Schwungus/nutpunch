@@ -216,12 +216,10 @@ struct Player {
     NutPunch_PeerId peer_id = {0};
 
     ENetPeer* enet = nullptr;
-    ENetAddress internal_addr = {0};
 
     Player() {}
 
-    Player(const char* id, ENetPeer* enet, ENetAddress internal_addr)
-        : enet(enet), internal_addr(internal_addr) {
+    Player(const char* id, ENetPeer* enet) : enet(enet) {
         std::memcpy(this->peer_id, id, sizeof(this->peer_id));
     }
 
@@ -235,7 +233,6 @@ struct Player {
 
     void reset() {
         std::memset(peer_id, 0, sizeof(peer_id));
-        std::memset(&internal_addr, 0, sizeof(internal_addr));
 
         if (enet)
             enet_peer_disconnect_now(enet, 0);
@@ -354,12 +351,7 @@ struct Lobby {
                 uint16_t port = htons(bro->address.port);
                 memcpy(ptr, &bro->address.host, 4), ptr += 4;
                 memcpy(ptr, &port, 2), ptr += 2;
-
-                port = htons(players[i].internal_addr.port);
-                memcpy(ptr, &players[i].internal_addr.host, 4), ptr += 4;
-                memcpy(ptr, &port, 2), ptr += 2;
             } else {
-                memset(ptr, 0, 6), ptr += 6;
                 memset(ptr, 0, 6), ptr += 6;
             }
         }
@@ -367,7 +359,7 @@ struct Lobby {
         std::memcpy(ptr, &metadata, sizeof(Metadata));
         ptr += sizeof(Metadata);
 
-        just_send(player.enet, buf, ptr - buf, 0);
+        just_send(player.enet, buf, sizeof(buf), 0);
     }
 
     void kill_bro(const NutPunch_PeerId id, ENetPeer* enet) {
@@ -443,7 +435,7 @@ struct Grindr {
         if (players.contains(peer_id))
             return;
 
-        players.emplace(peer_id, Player(peer_id.data(), peer, {0, 0}));
+        players.emplace(peer_id, Player(peer_id.data(), peer));
         closing = false;
 
         NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
@@ -460,10 +452,8 @@ struct Grindr {
         if (closing)
             return;
 
-        if (players.size() >= 2) {
+        if (players.size() >= 2)
             LETSGOO();
-            return;
-        }
 
         for (const auto& [id, p] : players)
             just_send(p.enet, "PONG", sizeof(NP_Header), 0);
@@ -483,10 +473,8 @@ struct Grindr {
         static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "DATE";
         std::memcpy(buf + sizeof(NP_Header), lobby_id, sizeof(lobby_id));
 
-        for (const auto enet : {pair1.second.enet, pair2.second.enet}) {
-            const uint32_t flags = ENET_PACKET_FLAG_UNSEQUENCED | ENET_PACKET_FLAG_RELIABLE;
-            just_send(enet, buf, sizeof(buf), flags);
-        }
+        for (const auto enet : {pair1.second.enet, pair2.second.enet})
+            just_send(enet, buf, sizeof(buf), ENET_PACKET_FLAG_RELIABLE);
 
         NP_Info("QUEUE: Matched peers '%s' and '%s' to lobby '%s'", pair1.first.c_str(),
             pair2.first.c_str(), fmt_lobby_id(lobby_id));
@@ -575,7 +563,7 @@ static void kill_bro(const NutPunch_PeerId peer_id, ENetPeer* enet) {
     }
 }
 
-static ENetHost* enet = nullptr;
+static ENetHost* ENET = nullptr;
 
 static void handle_recv(ENetEvent event) {
     int rcv = (int)event.packet->dataLength - (int)sizeof(NP_Header);
@@ -593,10 +581,7 @@ static void handle_recv(ENetEvent event) {
         } else {
             // junk...
         }
-    } else if (!std::memcmp(buf, "FIND", sizeof(NP_Header))) {
-        if (rcv != sizeof(NutPunch_PeerId) + sizeof(NutPunch_QueueId))
-            return; // junk...
-
+    } else if (rcv == sizeof(NP_Find) && !std::memcmp(buf, "FIND", sizeof(NP_Header))) {
         std::string peer_id(ptr, sizeof(NutPunch_PeerId));
         ptr += sizeof(NutPunch_PeerId);
 
@@ -608,21 +593,12 @@ static void handle_recv(ENetEvent event) {
         matchmaking.at(queue_id).accept(peer_id, event.peer);
     } else if (rcv >= sizeof(NutPunch_PeerId) && !std::memcmp(buf, "DISC", sizeof(NP_Header))) {
         kill_bro(ptr, event.peer);
-    } else {
-        if (rcv != sizeof(NP_Heartbeat))
-            return; // most likely junk...
-        if (std::memcmp(buf, "JOIN", sizeof(NP_Header)))
-            return;
-
+    } else if (rcv == sizeof(NP_Heartbeat) && !std::memcmp(buf, "JOIN", sizeof(NP_Header))) {
         std::string peer_id(ptr, sizeof(NutPunch_PeerId));
         ptr += sizeof(NutPunch_PeerId);
 
         std::string lobby_id(ptr, sizeof(NutPunch_LobbyId));
-        ptr += sizeof(NutPunch_QueueId);
-
-        ENetAddress internal_addr = {0};
-        internal_addr.host = *(uint32_t*)ptr, ptr += 4;
-        internal_addr.port = ntohs(*(uint16_t*)ptr), ptr += 2;
+        ptr += sizeof(NutPunch_LobbyId);
 
         auto flags = *(const NP_HeartbeatFlagsStorage*)ptr;
         ptr += sizeof(flags);
@@ -642,13 +618,15 @@ static void handle_recv(ENetEvent event) {
             lobbies[lobby_id].accept(peer_id, event.peer, flags, ptr);
         else
             gtfo(event.peer, err);
+    } else {
+        // most likely junk...
     }
 }
 
 static void receive() {
     ENetEvent event;
 
-    while (enet_host_service(enet, &event, 0) > 0) {
+    while (enet_host_service(ENET, &event, 0) > 0) {
         switch (event.type) {
         case ENET_EVENT_TYPE_RECEIVE:
             handle_recv(event);
@@ -706,8 +684,8 @@ int main(int argc, char*[]) {
     addr.port = NUTPUNCH_SERVER_PORT;
 
     static constexpr const size_t max_conns = 512; // TODO: revise
-    enet = enet_host_create(&addr, max_conns, 1, 0, 0);
-    if (!enet)
+    ENET = enet_host_create(&addr, max_conns, 1, 0, 0);
+    if (!ENET)
         return EXIT_FAILURE;
 
     constexpr const NutPunch_Clock MIN_DELTA = NUTPUNCH_SEC / 30;
@@ -716,7 +694,7 @@ int main(int argc, char*[]) {
     for (;;) {
         const NutPunch_Clock start = NutPunch_TimeNS();
 
-        if (!enet) {
+        if (!ENET) {
             NP_Warn("SOCKET DIED!!!");
             return EXIT_FAILURE;
         }
@@ -724,14 +702,15 @@ int main(int argc, char*[]) {
         receive();
         update_grindr();
         update_lobbies();
+        enet_host_flush(ENET);
 
         const NutPunch_Clock delta = elapsed(start);
         if (delta < MIN_DELTA)
             NP_SleepMs((MIN_DELTA - delta) / NUTPUNCH_MS);
     }
 
-    enet_host_destroy(enet);
-    enet = nullptr;
+    enet_host_destroy(ENET);
+    ENET = nullptr;
 
     enet_deinitialize();
     return EXIT_SUCCESS;
