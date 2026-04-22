@@ -64,6 +64,7 @@ static void maybe_join_netgame() {
 
     const char* name = randomNames[rand() % nameCount];
     NutPunch_SetPeerData("NAME", (int)strlen(name) + 1, name);
+    NutPunch_Log("We are %s", name);
 }
 
 static void draw_players() {

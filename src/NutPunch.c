@@ -37,7 +37,7 @@
 
 typedef struct {
     NutPunch_Metadata metadata;
-    bool connecting;
+    ENetPeer* enet; // only used by `NP_SendPings`
 } NP_PeerInfo;
 
 typedef struct {
@@ -356,7 +356,7 @@ static bool NP_Connect(const char* lobby_id, bool sane, NP_HeartbeatFlagsStorage
     NP_MemzeroRef(NP_ServerAddr);
     enet_address_set_host(&NP_ServerAddr, NP_ServerHost);
     NP_ServerAddr.port = NUTPUNCH_SERVER_PORT;
-    NP_PuncherPeer = enet_host_connect(NP_ENetHost, &NP_ServerAddr, 1, NUTPUNCH_MAX_PLAYERS);
+    NP_PuncherPeer = enet_host_connect(NP_ENetHost, &NP_ServerAddr, 1, 0);
 
     if (!NP_PuncherPeer) {
         NutPunch_Reset(), NP_LastStatus = NPS_Error;
@@ -481,7 +481,11 @@ static void NP_KillPeer(NutPunch_Peer peer) {
     if (NutPunch_PeerAlive(peer))
         NP_HandleEventCb(NPCB_PeerLeft, &peer);
 
-    NP_MemzeroRef(NP_Peers[peer]);
+    NP_PeerInfo* ptr = &NP_Peers[peer];
+    if (ptr->enet)
+        enet_peer_reset(ptr->enet);
+
+    NP_MemzeroRef(*ptr);
 }
 
 static bool NP_AddrNull(ENetAddress addr) {
@@ -489,25 +493,34 @@ static bool NP_AddrNull(ENetAddress addr) {
 }
 
 static void NP_HandlePing(NP_Message msg) {
-    const uint8_t idx = *msg.data++;
+    const NutPunch_Peer idx = *msg.data++;
     if (idx >= NUTPUNCH_MAX_PLAYERS)
         return;
 
+    const bool was_dead = !NutPunch_PeerAlive(idx);
+    msg.from->data = &NP_Peers[idx];
+
     NP_PeerInfo* const peer = &NP_Peers[idx];
+    peer->enet = msg.from;
+
+    static NutPunch_PeerFieldDiff changed[NUTPUNCH_MAX_FIELDS] = {0};
+    NP_Memzero(changed);
 
     for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-        NutPunch_Field* then = &peer->metadata[i];
-        NutPunch_Field* now = (NutPunch_Field*)msg.data;
+        NutPunch_Field *then = &peer->metadata[i], *now = (NutPunch_Field*)msg.data;
         msg.data += sizeof(NutPunch_Field);
 
-        if (!NutPunch_Memcmp(then, now, sizeof(NutPunch_Field)))
-            continue;
-
-        NutPunch_PeerFieldDiff changed = {0};
-        changed.peer = idx, changed.then = *then, changed.now = *now;
+        changed[i].peer = idx, changed[i].then = *then, changed[i].now = *now;
         *then = *now;
-        NP_HandleEventCb(NPCB_PeerMetadataChanged, &changed);
     }
+
+    if (was_dead)
+        NP_HandleEventCb(NPCB_PeerJoined, &idx);
+
+    // makes more sense to emit peer metadata changes AFTER they've been joined.
+    for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
+        if (NutPunch_Memcmp(&changed[i].then, &changed[i].now, NUTPUNCH_FIELD_DATA_MAX))
+            NP_HandleEventCb(NPCB_PeerMetadataChanged, &changed[i]);
 }
 
 static void NP_HandleGTFO(NP_Message msg) {
@@ -540,22 +553,9 @@ static void NP_PrintOurAddresses(const uint8_t* data) {
     NP_Info("Same-NAT address: %s", NP_FormatSockaddr(NP_ENetHost->address));
 }
 
-static ENetPeer* NP_GetEnetPeer(NutPunch_Peer peer) {
-    if (!NP_ENetHost)
-        return NULL;
-
-    for (size_t i = 0; i < NP_ENetHost->peerCount; i++) {
-        ENetPeer* ptr = &NP_ENetHost->peers[i];
-        if (ptr->data == &NP_Peers[peer] && ptr->state == ENET_PEER_STATE_CONNECTED)
-            return ptr;
-    }
-
-    return NULL;
-}
-
-static NutPunch_Peer NP_FindPeer(ENetPeer* peer) {
+static NutPunch_Peer NP_FindEnetPeer(ENetPeer* peer) {
     for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-        if (NP_GetEnetPeer(i) == peer)
+        if (NP_Peers[i].enet == peer)
             return i;
     return NUTPUNCH_MAX_PLAYERS;
 }
@@ -581,13 +581,10 @@ static void NP_SendPings(int idx, const uint8_t* data) {
         return;
     }
 
-    ENetPeer* enet = NP_GetEnetPeer(idx);
-
     NP_PeerInfo* const peer = &NP_Peers[idx];
-    if (!peer->connecting) {
-        enet = enet_host_connect(NP_ENetHost, &pub, 1, NP_LocalPeer);
-        peer->connecting = true;
-    }
+
+    if (!peer->enet)
+        peer->enet = enet_host_connect(NP_ENetHost, &pub, 1, 0);
 
     static uint8_t ping[NP_PING_SIZE] = "PING";
     uint8_t* ptr = &ping[sizeof(NP_Header)];
@@ -595,7 +592,7 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     *ptr++ = NP_LocalPeer;
     NutPunch_Memcpy(ptr, NP_PeerMetadata, sizeof(NutPunch_Metadata));
 
-    NP_JustSend(enet, ping, sizeof(ping), 0);
+    NP_JustSend(peer->enet, ping, sizeof(ping), 0);
 }
 
 static void NP_HandleBeating(NP_Message msg) {
@@ -643,6 +640,7 @@ static void NP_HandleBeating(NP_Message msg) {
         NutPunch_FieldDiff diff = {0};
         diff.then = *then, diff.now = *now;
         *then = *now;
+
         NP_HandleEventCb(NPCB_LobbyMetadataChanged, &diff);
     }
 
@@ -684,7 +682,7 @@ static void NP_HandleLobbyMetadata(NP_Message msg) {
 }
 
 static void NP_HandleData(NP_Message msg) {
-    NutPunch_Peer peer_idx = NP_FindPeer(msg.from);
+    NutPunch_Peer peer_idx = NP_FindEnetPeer(msg.from);
     if (peer_idx == NUTPUNCH_MAX_PLAYERS)
         return;
 
@@ -794,21 +792,11 @@ static void NP_TickENetHost() {
 
         switch (event.type) {
         case ENET_EVENT_TYPE_CONNECT: {
-            if (event.peer == NP_PuncherPeer)
-                break;
-
-            if (event.data >= NUTPUNCH_MAX_PLAYERS)
-                break;
-
-            NutPunch_Peer idx = event.data;
-            event.peer->data = &NP_Peers[idx];
-            NP_HandleEventCb(NPCB_PeerJoined, &idx);
-
             break;
         }
 
         case ENET_EVENT_TYPE_DISCONNECT:
-            NP_KillPeer(NP_FindPeer(event.peer));
+            NP_KillPeer(NP_FindEnetPeer(event.peer));
             event.peer->data = NULL;
             break;
 
@@ -950,15 +938,17 @@ void NutPunch_Send(
         return;
     }
 
-    ENetPeer* enet = NP_GetEnetPeer(peer);
+    if (size <= 0)
+        return;
 
-    // TODO: construct the `ENetPacket` in-place to avoid an additional mallocation.
-    uint8_t* buf = NutPunch_Malloc(1 + size);
-    buf[0] = channel, NutPunch_Memcpy(&buf[1], data, size);
+    const size_t total_size = sizeof(NP_Header) + 1 + size;
+    uint8_t *buf = NutPunch_Malloc(total_size), *ptr = buf + sizeof(NP_Header);
 
-    NP_JustSend(enet, buf, 1 + size, flags);
+    NutPunch_Memcpy(buf, "DATA", sizeof(NP_Header));
+    *ptr++ = channel;
+    NutPunch_Memcpy(ptr, data, size);
 
-    NutPunch_Free(buf);
+    NP_JustSend(NP_Peers[peer].enet, buf, total_size, flags | ENET_PACKET_FLAG_NO_ALLOCATE);
 }
 
 int NutPunch_PeerCount() {
@@ -969,11 +959,15 @@ int NutPunch_PeerCount() {
 }
 
 bool NutPunch_PeerAlive(NutPunch_Peer peer) {
-    if (!NutPunch_IsReady() || peer >= NUTPUNCH_MAX_PLAYERS)
+    if (peer >= NUTPUNCH_MAX_PLAYERS)
         return false;
     if (NutPunch_LocalPeer() == peer)
         return true;
-    return NP_GetEnetPeer(peer) != NULL;
+
+    ENetPeer* enet = NP_Peers[peer].enet;
+    if (!enet)
+        return false;
+    return enet->data == &NP_Peers[peer]; // INSANE DOUBLE BACKREF HACK
 }
 
 int NutPunch_LocalPeer() {
