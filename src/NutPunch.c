@@ -924,26 +924,22 @@ int NutPunch_NextMessage(NutPunch_Channel channel, void* out, int* size) {
 
 void NutPunch_Send(NutPunch_Channel channel, NutPunch_Peer peer, ENetPacketFlag flags,
     const void* data, int size) {
-    static uint8_t buf[8096] = {0};
-
-    if (size > sizeof(buf) - 1) {
-        NP_Warn("ARE YOU TRYING TO KILL ME WITH THIS THING???");
-        return;
-    }
-
     if (!NutPunch_PeerAlive(peer))
         return;
-
-    buf[0] = channel;
-    NutPunch_Memcpy(&buf[1], data, size);
 
     ENetPeer* enet = NP_GetEnetPeer(&NP_Peers[peer]);
     if (!enet)
         return;
 
+    // TODO: construct the `ENetPacket` in-place to avoid an additional mallocation.
+    uint8_t* buf = NutPunch_Malloc(1 + size);
+    buf[0] = channel, NutPunch_Memcpy(&buf[1], data, size);
+
     ENetPacket* packet = enet_packet_create(buf, 1 + size, flags);
     if (enet_peer_send(enet, 0, packet))
         enet_packet_destroy(packet);
+
+    NutPunch_Free(buf);
 }
 
 int NutPunch_PeerCount() {
