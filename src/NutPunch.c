@@ -860,7 +860,8 @@ static void NP_SendGoodbyes() {
 void NutPunch_Flush() {
     if (NP_Closing)
         NP_SendGoodbyes();
-    enet_host_flush(NP_ENetHost);
+    if (NP_ENetHost != NULL)
+        enet_host_flush(NP_ENetHost);
 }
 
 void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
