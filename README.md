@@ -7,7 +7,7 @@
 > [!CAUTION]
 > NutPunch implements **UDP-based peer-to-peer networking**. Use only if you know what you're getting yourself into. **Client-server architecture** is a lot more commonplace in games, and arguably much easier to implement and understand. You have been warned. Think for yourself to make the right decision.
 
-NutPunch is a UDP hole-punching library for REAL men (and women). Header-only. Dependency-free. Brutal. Written in plain C.
+NutPunch is a UDP hole-punching suite for REAL men (and women). [ENet](https://github.com/lsalzman/enet)-powered. Written in plain C. Brutal as hell.
 
 Comes with a [public instance](#public-instance) for out-of-the-box integration.
 
@@ -37,15 +37,13 @@ Once you've figured out how the players are to connect to your hole-puncher serv
    2. Check your status by matching the returned value against `NPS_*` constants. `NPS_Online` is what you're looking for normally, but make sure to handle `NPS_Error`. To get a human-readable error description, call `NutPunch_GetLastError()`.
 3. Run the game logic.
 4. Keep in sync with the peers:
-   1. Send datagrams with `NutPunch_Send()` or `NutPunch_SendReliably()`.
-   2. Poll for incoming datagrams with `NutPunch_HasMessage()` and retrieve the datagrams with `NutPunch_NextMessage()`. In scenarios where you need to cache packet data between NutPunch function calls, `memcpy` the data into a static array of `NUTPUNCH_BUFFER_SIZE`[^kb] bytes in order to fit the whole packet without overflowing and/or segfaulting.
+   1. Send datagrams with `NutPunch_Send()`.
+   2. Poll for incoming datagrams with `NutPunch_HasMessage()` and retrieve the datagrams with `NutPunch_NextMessage()`.
 5. Repeat steps 2 through 4. You're all Gucci!
 
 Another important aspect of NutPunch networking would be the ability to set peer/lobby metadata in a simplified key-value store fashion. Peer metadata can include e.g. the peer's nickname, their skin spritesheet name, their lives count - anything you can squeeze into 16 bytes, mapped to an 8-byte key. The same applies to lobby metadata: this could be the name of the map you're playing, a seed value to generate the map procedurally, the difficulty level, etc.
 
 Call `NutPunch_Set*Data(...)`/`NutPunch_Get*Data(...)` to set/get key-value pairs; replace the asterisk with either `Peer` or `Lobby`. Setting metadata only does anything if you're "in charge" of the metadata object: either you're the lobby's master and want to set the lobby's metadata, or you're trying to set your own metadata as a peer.
-
-[^kb]: `NUTPUNCH_BUFFER_SIZE` is currently defined to be 1024 bytes. Should be small enough for WinSock not to signal a `WSAEMSGSIZE` error on send.
 
 ## Premade Integrations
 
@@ -68,18 +66,15 @@ add_executable(MyGame main.c) # your game's CMake target goes here
 target_link_libraries(MyGame PRIVATE NutPunch)
 ```
 
-For other build systems (or lack thereof), you only need to copy [`NutPunch.h`](include/NutPunch.h) into your include path. Make sure to link against `ws2_32` on Windows though, or else you'll end up with scary linker errors related to Winsock.
+For other build systems (or lack thereof), follow the procedure described in our [`CMakeLists.txt`](CMakeLists.txt):
+
+1. Build ENet from source.
+2. Build `src/NutPunch.c` with `include` set as its include-directory.
+3. Link your game against NutPunch, ENet, and (if you're a Windose user) `winpthread`.
 
 ## Basic Usage
 
-Once [`NutPunch.h`](include/NutPunch.h) is in your include-path, using it is straightforward, just like any header-only library. Select a source file where the library's function definitions will reside (it could be your `main.c` as well), tell the compiler to add NutPunch implementation details with a `#define`, and `#include` the library's main header inside it:
-
-```c
-#define NUTPUNCH_IMPLEMENTATION
-#include <NutPunch.h>
-```
-
-Then `#include <NutPunch.h>` wherever you need to use it. Here's a really simple example:
+Once you've built & linked against NutPunch, just include [`<NutPunch.h>`](include/NutPunch.h) and get cracking on some netcode. Here's a really basic example:
 
 ```c
 #include <stdlib.h> // for EXIT_SUCCESS
@@ -87,16 +82,20 @@ Then `#include <NutPunch.h>` wherever you need to use it. Here's a really simple
 #include <NutPunch.h>
 
 int main(int argc, char* argv[]) {
+    (void)argc, (void)argv;
+
     NutPunch_Join("MyLobby");
-    for (;;) // your game's mainloop goes here...
+
+    for (;;) { // your game's mainloop goes here...
         NutPunch_Update();
+        Sleep(1000 / 60);
+    }
+
     return EXIT_SUCCESS;
 }
 ```
 
-If you want to see all the juicy APIs in action, try reading [`Test.c`](src/Test.c) from this repo.
-
-Take a look at [advanced usage](#advanced-usage) to discover things you can customize.
+If you want to see all the juicy APIs in action, read up on [`Test.c`](src/Test.c) from this repo. For a general overview of available functionality, just read the doc-comments for the functions around the middle of [`NutPunch.h`](include/NutPunch.h). Also take a look at [the advanced usage section](#advanced-usage) to discover things you can customize.
 
 ## Public Instance
 
@@ -111,39 +110,27 @@ NutPunch_Join("lobby-id");
 
 ## Advanced Usage
 
-### Customize Memory Handling
-
-You can `#define` custom memory handling functions for NutPunch to use, before including the header. They're only relevant to the implementation. If none are specified, C's standard library functions are used.
-
-SDL3 example:
-
-```c
-#include <SDL3/SDL_stdinc.h>
-
-#define NUTPUNCH_IMPLEMENTATION
-#define NUTPUNCH_NOSTD
-
-#define NutPunch_SNPrintF SDL_snprintf
-#define NutPunch_Memcmp SDL_memcmp
-#define NutPunch_Memset SDL_memset
-#define NutPunch_Memcpy SDL_memcpy
-#define NutPunch_Malloc SDL_malloc
-#define NutPunch_Free SDL_free
-
-#include <NutPunch.h>
-```
-
 ### Customize Logger Implementation
 
-Just like in the example above, you can override NutPunch's logging facility before including `NutPunch.h`:
+You can override NutPunch's logging facility by setting `NP_Logger`. Here's a simple example of logging to `stderr` rather than `stdout` as done by default:
 
 ```c
-#define NUTPUNCH_IMPLEMENTATION
-
-#include <stdio.h>
-#define NutPunch_Log(...) printf(__VA_ARGS__)
-
 #include <NutPunch.h>
+
+static void my_logger(const char* fmt, ...) {
+    va_list args = {0};
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+
+    fflush(stderr);
+}
+
+int main(int argc, char* argv[]) {
+    (void)argc, (void)argv;
+    NP_Logger = my_logger;
+    // use NutPunch...
+}
 ```
 
 ## Hosting your own NutPuncher
