@@ -181,10 +181,11 @@ static void NP_LazyInit() {
 
     NP_ResetImpl();
 
-    NutPunch_Log(".-------------------------------------------------------------.");
-    NutPunch_Log("| For troubleshooting multiplayer connectivity, please visit: |");
-    NutPunch_Log("|    https://github.com/Schwungus/nutpunch#troubleshooting    |");
-    NutPunch_Log("'-------------------------------------------------------------'");
+    void (*const println)(const char*, ...) = (NP_Logger ? NP_Logger : NP_DefaultLogger);
+    println(".-------------------------------------------------------------.");
+    println("| For troubleshooting multiplayer connectivity, please visit: |");
+    println("|    https://github.com/Schwungus/nutpunch#troubleshooting    |");
+    println("'-------------------------------------------------------------'");
 }
 
 void NutPunch_Shutdown() {

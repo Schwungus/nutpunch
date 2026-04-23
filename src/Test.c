@@ -64,7 +64,7 @@ static void maybe_join_netgame() {
 
     const char* name = randomNames[rand() % nameCount];
     NutPunch_SetPeerData("NAME", (int)strlen(name) + 1, name);
-    NutPunch_Log("We are %s", name);
+    NP_Info("We are %s", name);
 }
 
 static void draw_players() {
@@ -93,7 +93,7 @@ static void receive_shit() {
     while (NutPunch_HasMessage(CHAN_CHAT)) {
         int size = sizeof(data);
         const int peer = NutPunch_NextMessage(CHAN_CHAT, data, &size);
-        NutPunch_Log("[%s]: %s", (char*)NutPunch_GetPeerData(peer, "NAME", NULL), data);
+        NP_Info("[%s]: %s", (char*)NutPunch_GetPeerData(peer, "NAME", NULL), data);
     }
 }
 
@@ -145,12 +145,12 @@ static void draw_debug_bits(int status) {
 
 static void greet(const void* raw) {
     NutPunch_Peer peer = *(NutPunch_Peer*)raw;
-    NutPunch_Log("Welcome, %s!", (char*)NutPunch_GetPeerData(peer, "NAME", NULL));
+    NP_Info("Welcome, %s!", (char*)NutPunch_GetPeerData(peer, "NAME", NULL));
 }
 
 static void bye(const void* raw) {
     NutPunch_Peer peer = *(NutPunch_Peer*)raw;
-    NutPunch_Log("Farewell, %s!", (char*)NutPunch_GetPeerData(peer, "NAME", NULL));
+    NP_Info("Farewell, %s!", (char*)NutPunch_GetPeerData(peer, "NAME", NULL));
 }
 
 int main(int argc, char* argv[]) {

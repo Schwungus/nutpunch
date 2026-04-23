@@ -93,11 +93,9 @@ void NP_DefaultLogger(const char*, ...);
 
 extern char NP_LastError[512];
 
-#define NutPunch_Log(msg, ...)                                                                     \
-    do {                                                                                           \
-        (NP_Logger ? NP_Logger : NP_DefaultLogger)(                                                \
-            "(%s:%d) " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);            \
-    } while (0)
+#define NutPunch_Log(level, fmt, ...)                                                              \
+    ((NP_Logger ? NP_Logger : NP_DefaultLogger)(                                                   \
+        level " (%s:%d) " fmt "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__))
 
 #define NutPunch_SNPrintF snprintf
 
@@ -111,10 +109,10 @@ extern char NP_LastError[512];
 #define NP_Memzero(array) NutPunch_Memset(array, 0, sizeof(array))
 #define NP_MemzeroRef(ref) NutPunch_Memset(&(ref), 0, sizeof(ref))
 
-#define NP_Info(...) NutPunch_Log("INFO: " __VA_ARGS__)
+#define NP_Info(...) NutPunch_Log("INFO", __VA_ARGS__)
 #define NP_Warn(...)                                                                               \
     do {                                                                                           \
-        NutPunch_Log("WARN: " __VA_ARGS__);                                                        \
+        NutPunch_Log("WARN", __VA_ARGS__);                                                         \
         NutPunch_SNPrintF(NP_LastError, sizeof(NP_LastError), ##__VA_ARGS__);                      \
     } while (0)
 
