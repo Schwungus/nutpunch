@@ -78,7 +78,8 @@ extern "C" {
 /// How many milliseconds to wait before resending a reliable packet.
 #define NUTPUNCH_BOUNCE_INTERVAL ((NutPunch_Clock)250)
 
-#define NUTPUNCH_CHANNEL_COUNT (1 << (8 * sizeof(NutPunch_Channel)))
+/// The maximum amount of channels a NutPunch host can send to/receive on.
+#define NUTPUNCH_MAX_CHANNELS (254)
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -331,11 +332,12 @@ void NutPunch_SetPeerData(const char* name, int size, const void* data);
 /// Sets the maximum amount of channels this peer can receive from. Packets with an index higher
 /// than or equal to maximum channel count are discarded silently.
 ///
+/// WARNING: make sure to set the channel count BEFORE you try `NutPunch_Host` or `NutPunch_Join`.
+/// Otherwise, the default channel count will be used once you connect.
+///
 /// The default behavior is receiving only on channel 0.
 ///
-/// Passing less than 1 or more than 256 channels fails silently.
-///
-/// Solves the weaponization issue (#32).
+/// Setting 0 channels or more than `NUTPUNCH_MAX_CHANNELS` fails silently.
 void NutPunch_SetChannelCount(int);
 
 /// Checks if there is a packet waiting in the receiving queue for the specified channel index.

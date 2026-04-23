@@ -44,6 +44,7 @@ typedef struct {
     ENetPeer* from;
     int len;
     const uint8_t* data;
+    NutPunch_Channel chan;
 } NP_Message;
 
 typedef struct NP_PacketQueue {
@@ -110,8 +111,8 @@ static ENetPeer* NP_PuncherPeer = NULL;
 static ENetAddress NP_ServerAddr = {0};
 static char NP_ServerHost[128] = {0};
 
-static NutPunch_Channel NP_ChannelCount = 0;
-static NP_PacketQueue* NP_Unread[NUTPUNCH_CHANNEL_COUNT] = {0};
+static NutPunch_Channel NP_ChannelCount = 1;
+static NP_PacketQueue* NP_Unread[NUTPUNCH_MAX_CHANNELS] = {0};
 
 static bool NP_Unlisted = false;
 static NutPunch_Metadata NP_LobbyMetadata = {0}, NP_PeerMetadata = {0};
@@ -119,12 +120,13 @@ static NutPunch_Metadata NP_LobbyMetadata = {0}, NP_PeerMetadata = {0};
 static NP_NetMode NP_Mode = NPNM_Normal;
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 
-static void NP_JustSend(ENetPeer* peer, const void* buf, size_t len, uint32_t flags) {
+static void
+NP_JustSend(ENetPeer* peer, uint8_t channel, const void* buf, size_t len, uint32_t flags) {
     if (!peer)
         return;
 
     ENetPacket* packet = enet_packet_create(buf, len, flags);
-    if (enet_peer_send(peer, 0, packet))
+    if (enet_peer_send(peer, channel, packet))
         enet_packet_destroy(packet);
 }
 
@@ -156,7 +158,7 @@ static void NP_ResetImpl() {
     NP_MemzeroRef(NP_ServerAddr), NP_Memzero(NP_Peers);
     NP_LastStatus = NPS_Idle;
 
-    for (size_t i = 0; i < NUTPUNCH_CHANNEL_COUNT; i++) {
+    for (size_t i = 0; i < NUTPUNCH_MAX_CHANNELS; i++) {
         while (NP_Unread[i]) {
             NP_PacketQueue* ptr = NP_Unread[i];
             NP_Unread[i] = ptr->next;
@@ -301,7 +303,7 @@ void NutPunch_RequestLobbyData(const NutPunch_LobbyId lobby) {
     static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "LIST";
     NutPunch_Memcpy(buf + sizeof(NP_Header), lobby, sizeof(NutPunch_LobbyId));
 
-    NP_JustSend(NP_PuncherPeer, buf, sizeof(buf), 0);
+    NP_JustSend(NP_PuncherPeer, 0, buf, sizeof(buf), 0);
 }
 
 const void* NutPunch_GetLobbyData(const char* name, int* size) {
@@ -336,7 +338,7 @@ static bool NP_Connect(const char* lobby_id, bool sane, NP_HeartbeatFlagsStorage
 
     // TODO: revise the magic numbers.
     ENetAddress addr = {ENET_HOST_ANY, ENET_PORT_ANY};
-    NP_ENetHost = enet_host_create(&addr, 128, 1, 0, 0);
+    NP_ENetHost = enet_host_create(&addr, 128, 1 + NP_ChannelCount, 0, 0);
 
     if (!NP_ENetHost) {
         NutPunch_Reset(), NP_LastStatus = NPS_Error;
@@ -449,7 +451,7 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
         ptr += filter_count * sizeof(NutPunch_Filter);
     }
 
-    NP_JustSend(NP_PuncherPeer, query, ptr - query, 0);
+    NP_JustSend(NP_PuncherPeer, 0, query, ptr - query, 0);
 }
 
 const char* NutPunch_GetLastError() {
@@ -576,7 +578,7 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     NP_PeerInfo* const peer = &NP_Peers[idx];
 
     if (!peer->enet)
-        peer->enet = enet_host_connect(NP_ENetHost, &pub, 1, 0);
+        peer->enet = enet_host_connect(NP_ENetHost, &pub, 1 + NP_ChannelCount, 0);
 
     static uint8_t ping[NP_PING_SIZE] = "PING";
     uint8_t* ptr = &ping[sizeof(NP_Header)];
@@ -584,7 +586,7 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     *ptr++ = NP_LocalPeer;
     NutPunch_Memcpy(ptr, NP_PeerMetadata, sizeof(NutPunch_Metadata));
 
-    NP_JustSend(peer->enet, ping, sizeof(ping), 0);
+    NP_JustSend(peer->enet, 0, ping, sizeof(ping), 0);
 }
 
 static void NP_HandleBeating(NP_Message msg) {
@@ -674,25 +676,31 @@ static void NP_HandleLobbyMetadata(NP_Message msg) {
 }
 
 static void NP_HandleData(NP_Message msg) {
+    if (msg.from == NP_PuncherPeer)
+        return;
+
     NutPunch_Peer peer_idx = NP_FindEnetPeer(msg.from);
+
     if (peer_idx == NUTPUNCH_MAX_PLAYERS)
         return;
 
-    const NutPunch_Channel channel = *msg.data++;
-    msg.len--;
+    if (!msg.chan) // channel 0 is reserved for NutPunch communications
+        return;
 
-    if (channel >= NP_ChannelCount)
+    const NutPunch_Channel chan = msg.chan - 1;
+
+    if (chan >= NP_ChannelCount)
         return;
 
     NP_PeerInfo* const peer = &NP_Peers[peer_idx];
     NP_PacketQueue* next = NULL;
 
-    if (!NP_Unread[channel]) {
-        NP_Unread[channel] = (NP_PacketQueue*)NutPunch_Malloc(sizeof(NP_PacketQueue));
-        next = NP_Unread[channel];
+    if (!NP_Unread[chan]) {
+        NP_Unread[chan] = (NP_PacketQueue*)NutPunch_Malloc(sizeof(NP_PacketQueue));
+        next = NP_Unread[chan];
     }
 
-    for (NP_PacketQueue* cur = NP_Unread[channel]; cur && !next; cur = cur->next) {
+    for (NP_PacketQueue* cur = NP_Unread[chan]; cur && !next; cur = cur->next) {
         if (!cur->next) {
             cur->next = (NP_PacketQueue*)NutPunch_Malloc(sizeof(NP_PacketQueue));
             next = cur->next;
@@ -769,7 +777,7 @@ static void NP_SendHeartbeat() {
         return;
     }
 
-    NP_JustSend(NP_PuncherPeer, heartbeat, ptr - heartbeat, 0);
+    NP_JustSend(NP_PuncherPeer, 0, heartbeat, ptr - heartbeat, 0);
 }
 
 static void NP_TickENetHost() {
@@ -807,7 +815,7 @@ static void NP_TickENetHost() {
                     continue;
 
                 NP_Message msg = {0};
-                msg.from = event.peer, msg.len = size;
+                msg.from = event.peer, msg.len = size, msg.chan = event.channelID;
                 msg.data = (uint8_t*)(buf + sizeof(NP_Header));
                 type.handle(msg);
                 break;
@@ -834,7 +842,7 @@ static void NP_SendGoodbyes() {
     NutPunch_Memcpy(bye + sizeof(NP_Header), NP_PeerId, sizeof(NutPunch_PeerId));
 
     for (int i = 0; i < 10; i++)
-        NP_JustSend(NP_PuncherPeer, bye, sizeof(bye), 0);
+        NP_JustSend(NP_PuncherPeer, 0, bye, sizeof(bye), 0);
 }
 
 void NutPunch_Flush() {
@@ -886,7 +894,7 @@ void NutPunch_Disconnect() {
 }
 
 void NutPunch_SetChannelCount(int count) {
-    if (count < 1 || count >= NUTPUNCH_CHANNEL_COUNT)
+    if (count < 1 || count > NUTPUNCH_MAX_CHANNELS)
         return;
     NP_ChannelCount = count;
 }
@@ -931,14 +939,17 @@ void NutPunch_Send(
     if (size <= 0)
         return;
 
-    const size_t total_size = sizeof(NP_Header) + 1 + size;
+    if (channel >= NUTPUNCH_MAX_CHANNELS)
+        return;
+
+    const size_t total_size = sizeof(NP_Header) + size;
     uint8_t *buf = NutPunch_Malloc(total_size), *ptr = buf + sizeof(NP_Header);
 
     NutPunch_Memcpy(buf, "DATA", sizeof(NP_Header));
-    *ptr++ = channel;
     NutPunch_Memcpy(ptr, data, size);
 
-    NP_JustSend(NP_Peers[peer].enet, buf, total_size, flags | ENET_PACKET_FLAG_NO_ALLOCATE);
+    NP_JustSend(
+        NP_Peers[peer].enet, 1 + channel, buf, total_size, flags | ENET_PACKET_FLAG_NO_ALLOCATE);
 }
 
 int NutPunch_PeerCount() {
