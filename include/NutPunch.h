@@ -88,7 +88,11 @@ extern "C" {
 
 /// Set this pointer to NULL to use the default NutPunch logger, or override the NutPunch logger by
 /// supplying your own logging function.
+///
+/// NutPunch breaks its logging output into lines for you. On the most basic level, all you need to
+/// do to implement a logger is to supply a varargs `printf` implementation.
 extern void (*NP_Logger)(const char*, ...);
+
 void NP_DefaultLogger(const char*, ...);
 
 extern char NP_LastError[512];
