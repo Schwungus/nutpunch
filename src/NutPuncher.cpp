@@ -26,7 +26,6 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
-#include <array>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -220,7 +219,8 @@ struct Player {
     std::string id;
     ENetPeer* enet;
 
-    Player(const std::string& id, ENetPeer* enet) : id(id), enet(enet) {}
+    Player(NutPunch_Peer index, const std::string& id, ENetPeer* enet)
+        : index(index), id(id), enet(enet) {}
 
     ~Player() {
         // HACK: not calling `reset()` here since that would close the `enet` peer which is managed
@@ -235,6 +235,8 @@ struct Player {
     }
 
     void boot() {
+        id.clear();
+
         if (enet)
             enet_peer_disconnect_now(enet, 0);
         enet = nullptr;
@@ -313,7 +315,7 @@ struct Lobby {
                 return;
             }
 
-            players.emplace_back(id, enet).index = idx;
+            players.emplace_back(idx, id, enet);
         }
 
         if (just_joined)
@@ -338,17 +340,21 @@ struct Lobby {
         *ptr++ = master();
         *ptr++ = capacity;
 
-        std::array<ENetAddress, NUTPUNCH_MAX_PLAYERS> addrs;
+        static constexpr const size_t addrs_size = NUTPUNCH_MAX_PLAYERS * sizeof(NP_PeerAddr);
+        std::memset(ptr, 0, addrs_size);
 
-        for (const auto& player : players)
-            if (player.enet)
-                addrs[player.index] = player.enet->address;
+        for (const auto& player : players) {
+            if (!player)
+                continue;
 
-        for (const auto& addr : addrs) {
-            uint16_t port = htons(addr.port);
-            memcpy(ptr, &addr.host, 4), ptr += 4;
-            memcpy(ptr, &port, 2), ptr += 2;
+            const auto addr = player.enet->address;
+            const size_t off = player.index * sizeof(NP_PeerAddr);
+
+            const uint16_t port = htons(addr.port);
+            memcpy(ptr + off + 0, &addr.host, 4);
+            memcpy(ptr + off + 4, &port, 2);
         }
+        ptr += addrs_size;
 
         std::memcpy(ptr, &metadata, sizeof(Metadata));
         ptr += sizeof(Metadata);
@@ -358,12 +364,8 @@ struct Lobby {
 
     void kill_bro(const NutPunch_PeerId id, ENetPeer* enet) {
         for (auto& player : players) {
-            if (!player)
-                continue;
-
             if (player.id != id && player.enet != enet)
                 continue;
-
             NP_Info("Player %s disconnected", player.id.c_str());
             player.boot();
         }
@@ -428,7 +430,7 @@ struct Grindr {
         if (players.contains(peer_id))
             return;
 
-        players.emplace(peer_id, Player(peer_id.data(), peer));
+        players.emplace(peer_id, Player(0, peer_id, peer));
         closing = false;
 
         NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
