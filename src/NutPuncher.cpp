@@ -33,7 +33,7 @@
 
 static constexpr const NutPunch_Clock KEEP_QUEUE_FOR = 20 * NUTPUNCH_SEC;
 
-/// A little debouncing delay to prevent recreating a grindr queue right after timing it out.
+/// a little debouncing delay to prevent recreating a grindr queue right after timing it out.
 static constexpr const NutPunch_Clock GRINDR_DEBOUNCE = 3 * NUTPUNCH_SEC;
 
 static constexpr const size_t MAX_LOBBIES = 512;
@@ -41,6 +41,8 @@ static constexpr const size_t MAX_LOBBIES = 512;
 static NutPunch_Clock elapsed(NutPunch_Clock start) {
     return NutPunch_TimeNS() - start;
 }
+
+static ENetHost* ENET = nullptr;
 
 struct Lobby;
 static std::map<std::string, Lobby> lobbies;
@@ -214,7 +216,6 @@ struct Metadata {
 struct Player {
     // HACK: only used in the static array inside `Lobby`.
     NutPunch_PeerId peer_id = {0};
-
     ENetPeer* enet = nullptr;
 
     Player() {}
@@ -224,7 +225,11 @@ struct Player {
     }
 
     ~Player() {
-        reset();
+        // HACK: not calling `reset()` here since that would close the `enet` peer which is managed
+        // EXTERNALLY by the `ENET` host.
+        //
+        // also, `enet` is essentially a shared pointer, so closing it without reference-counting
+        // breaks a lot of things...
     }
 
     explicit operator bool() const {
@@ -452,7 +457,7 @@ struct Grindr {
         if (closing)
             return;
 
-        if (players.size() >= 2)
+        while (players.size() >= 2) // highly unlikely but i like taking it rough :)
             LETSGOO();
 
         for (const auto& [id, p] : players)
@@ -460,10 +465,10 @@ struct Grindr {
     }
 
     void LETSGOO() {
-        auto pair1 = *players.begin();
+        auto pair1 = std::move(*players.begin());
         players.erase(players.begin()); // TODO: erase from the end?
 
-        auto pair2 = *players.begin();
+        auto pair2 = std::move(*players.begin());
         players.erase(players.begin());
 
         NutPunch_LobbyId lobby_id = {0};
@@ -562,8 +567,6 @@ static void kill_bro(const NutPunch_PeerId peer_id, ENetPeer* enet) {
         });
     }
 }
-
-static ENetHost* ENET = nullptr;
 
 static void handle_recv(ENetEvent event) {
     int rcv = (int)event.packet->dataLength - (int)sizeof(NP_Header);
