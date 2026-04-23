@@ -673,23 +673,35 @@ static void update_grindr() {
     });
 }
 
+struct ENetGuard {
+    ENetGuard() {
+        enet_initialize();
+
+        ENetAddress addr = {0};
+        addr.host = ENET_HOST_ANY;
+        addr.port = NUTPUNCH_SERVER_PORT;
+
+        static constexpr const size_t max_conns = 512; // TODO: revise
+        ENET = enet_host_create(&addr, max_conns, 1, 0, 0);
+    }
+
+    ~ENetGuard() {
+        if (ENET)
+            enet_host_destroy(ENET);
+        ENET = nullptr;
+
+        enet_deinitialize();
+    }
+};
+
 int main(int argc, char*[]) {
     if (argc == 4) { // deploy-script hack to print the server port
         std::printf("%d\n", NUTPUNCH_SERVER_PORT);
         return EXIT_SUCCESS;
     }
 
-    enet_initialize();
     std::srand(NutPunch_TimeNS());
-
-    ENetAddress addr = {0};
-    addr.host = ENET_HOST_ANY;
-    addr.port = NUTPUNCH_SERVER_PORT;
-
-    static constexpr const size_t max_conns = 512; // TODO: revise
-    ENET = enet_host_create(&addr, max_conns, 1, 0, 0);
-    if (!ENET)
-        return EXIT_FAILURE;
+    ENetGuard _enet;
 
     constexpr const NutPunch_Clock MIN_DELTA = NUTPUNCH_SEC / 30;
     NP_Info("Running on port %d", NUTPUNCH_SERVER_PORT);
@@ -712,9 +724,5 @@ int main(int argc, char*[]) {
             NP_SleepMs((MIN_DELTA - delta) / NUTPUNCH_MS);
     }
 
-    enet_host_destroy(ENET);
-    ENET = nullptr;
-
-    enet_deinitialize();
     return EXIT_SUCCESS;
 }
