@@ -79,7 +79,7 @@ extern "C" {
 #define NUTPUNCH_BOUNCE_INTERVAL ((NutPunch_Clock)250)
 
 /// The maximum amount of channels a NutPunch host can send to/receive on.
-#define NUTPUNCH_MAX_CHANNELS (254)
+#define NUTPUNCH_MAX_CHANNELS (30)
 
 #include <stdbool.h>
 #include <stddef.h>
