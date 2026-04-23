@@ -904,10 +904,16 @@ bool NutPunch_HasMessage(NutPunch_Channel chan) {
     return chan < NUTPUNCH_MAX_CHANNELS && NP_Unread[chan] != NULL;
 }
 
-int NutPunch_NextMessage(NutPunch_Channel channel, void* out, int* size) {
-    NP_PacketQueue* const packet = NP_Unread[channel];
+int NutPunch_NextMessage(NutPunch_Channel chan, void* out, int* size) {
+    if (chan >= NUTPUNCH_MAX_CHANNELS) {
+        NP_Warn("We don't have %d channels bro", chan + 1);
+        return NUTPUNCH_MAX_PLAYERS;
+    }
+
+    NP_PacketQueue* const packet = NP_Unread[chan];
+
     if (!packet) {
-        NP_Warn("You forgot to check `NutPunch_HasMessage(%d)`", channel);
+        NP_Warn("You forgot to check `NutPunch_HasMessage(%d)`", chan);
         return NUTPUNCH_MAX_PLAYERS;
     }
 
@@ -921,7 +927,7 @@ int NutPunch_NextMessage(NutPunch_Channel channel, void* out, int* size) {
     if (out)
         NutPunch_Memcpy(out, packet->data, packet->len);
 
-    NP_Unread[channel] = packet->next;
+    NP_Unread[chan] = packet->next;
     NutPunch_Free(packet->data);
     NutPunch_Free(packet);
 
