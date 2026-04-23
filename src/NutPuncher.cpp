@@ -466,7 +466,7 @@ struct Grindr {
 
     void LETSGOO() {
         auto pair1 = std::move(*players.begin());
-        players.erase(players.begin()); // TODO: erase from the end?
+        players.erase(players.begin());
 
         auto pair2 = std::move(*players.begin());
         players.erase(players.begin());

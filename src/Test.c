@@ -159,7 +159,7 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
-    NP_Logger = log_to_file; // TODO: add a setter function
+    NP_Logger = log_to_file;
 
     NutPunch_SetChannelCount(CHAN_COUNT);
     NutPunch_Register(NPCB_PeerJoined, greet);
