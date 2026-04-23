@@ -179,12 +179,10 @@ static void NP_LazyInit() {
 
     NP_ResetImpl();
 
-    // clang-format off
-	NutPunch_Log(".-------------------------------------------------------------.");
-	NutPunch_Log("| For troubleshooting multiplayer connectivity, please visit: |");
-	NutPunch_Log("|    https://github.com/Schwungus/nutpunch#troubleshooting    |");
-	NutPunch_Log("'-------------------------------------------------------------'");
-    // clang-format on
+    NutPunch_Log(".-------------------------------------------------------------.");
+    NutPunch_Log("| For troubleshooting multiplayer connectivity, please visit: |");
+    NutPunch_Log("|    https://github.com/Schwungus/nutpunch#troubleshooting    |");
+    NutPunch_Log("'-------------------------------------------------------------'");
 }
 
 void NutPunch_Shutdown() {
@@ -983,8 +981,8 @@ bool NutPunch_IsReady() {
 }
 
 const char* NutPunch_Basename(const char* path) {
-    size_t len = 0; // clang-format off
-	for (len = 0; path[len]; len++) {} // clang-format on
+    size_t len = 0;
+    for (len = 0; path[len]; len++) {}
     for (size_t i = len - 2; i >= 0; i--)
         if (path[i] == '/' || path[i] == '\\')
             return &path[i + 1];
