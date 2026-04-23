@@ -1,5 +1,4 @@
 #define NUTPUNCH_IMPLEMENTATION
-#define NUTPUNCH_TRACING
 #include "NutPunch.h"
 
 static const char *LOBBY = "Zalooping", *WOWZA = "FUCK YOU";
@@ -38,7 +37,7 @@ int main(int argc, char* argv[]) {
     NP_Info("SENDING SHIT OUT");
     for (int peer = 0; peer < NUTPUNCH_MAX_PLAYERS; peer++)
         if (peer != NutPunch_LocalPeer() && NutPunch_PeerAlive(peer))
-            NutPunch_SendReliably(CHAN_MAIN, peer, WOWZA, (int)strlen(WOWZA));
+            NutPunch_Send(CHAN_MAIN, peer, NP_Send_Reliably, WOWZA, (int)strlen(WOWZA));
 
     for (int i = 0; i < 30; i++) {
         if (NutPunch_Update() == NPS_Error)
@@ -46,6 +45,7 @@ int main(int argc, char* argv[]) {
         while (NutPunch_HasMessage(CHAN_MAIN)) {
             static char data[32] = "";
             memset(data, 0, sizeof(data));
+
             int size = sizeof(data);
             const int sender = NutPunch_NextMessage(CHAN_MAIN, data, &size);
             NP_Info("From %02d: %s", sender, data);
@@ -53,7 +53,7 @@ int main(int argc, char* argv[]) {
         NP_SleepMs(100);
     }
 
-    NutPunch_Cleanup();
+    NutPunch_Shutdown();
     NP_Info("DONE BYE");
     return EXIT_SUCCESS;
 

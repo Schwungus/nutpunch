@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
     NutPunch_Register(NPCB_LobbyList, handle_lobby_list);
     NutPunch_Register(NPCB_LobbyMetadata, handle_lobby_data);
 
-    NutPunch_QueryLobbies();
+    NutPunch_QueryMode();
     NutPunch_FindLobbies(0, NULL);
 
     int refresh = 0;
@@ -83,6 +83,6 @@ int main(int argc, char* argv[]) {
         NP_SleepMs(1000 / 30);
     }
 
-    NutPunch_Cleanup();
+    NutPunch_Shutdown();
     return EXIT_SUCCESS;
 }

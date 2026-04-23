@@ -3,15 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// gotta use a logfile since we're drawing to the console
-static FILE* logfile = NULL;
-
-// clang-format off
-#define NutPunch_Log(msg, ...) do { fprintf(logfile, msg "\n", ##__VA_ARGS__), fflush(logfile); } while (0);
-// clang-format on
-
-#define NUTPUNCH_IMPLEMENTATION
-// #define NUTPUNCH_TRACING
 #include <NutPunch.h>
 
 #define POOR_IMPLEMENTATION
@@ -35,6 +26,18 @@ static const char* randomNames[]
 static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
 
 static uint8_t targetPlayerCount = 0;
+
+// gotta use a logfile since we're drawing to the console
+static FILE* logfile = NULL;
+
+static void log_to_file(const char* fmt, ...) {
+    va_list args = {0};
+    va_start(args, fmt);
+    vfprintf(logfile, fmt, args);
+    va_end(args);
+
+    fflush(logfile);
+}
 
 static void reset_gamestate() {
     NutPunch_Memset(players, 0, sizeof(players));
@@ -61,6 +64,7 @@ static void maybe_join_netgame() {
 
     const char* name = randomNames[rand() % nameCount];
     NutPunch_SetPeerData("NAME", (int)strlen(name) + 1, name);
+    NP_Info("We are %s", name);
 }
 
 static void draw_players() {
@@ -89,17 +93,19 @@ static void receive_shit() {
     while (NutPunch_HasMessage(CHAN_CHAT)) {
         int size = sizeof(data);
         const int peer = NutPunch_NextMessage(CHAN_CHAT, data, &size);
-        NutPunch_Log("[%s]: %s", (char*)NutPunch_GetPeerData(peer, "NAME", NULL), data);
+        NP_Info("[%s]: %s", (char*)NutPunch_GetPeerData(peer, "NAME", NULL), data);
     }
 }
 
 static void chat_with(int idx) {
     const char* theirName = NutPunch_GetPeerData(idx, "NAME", NULL);
-    if (theirName == NULL)
+
+    if (!theirName)
         return;
+
     static char buf[96] = {0};
     const int size = NutPunch_SNPrintF(buf, sizeof(buf), "Hi, %s!", theirName);
-    NutPunch_SendReliably(CHAN_CHAT, idx, buf, size + 1);
+    NutPunch_Send(CHAN_CHAT, idx, NP_Send_Reliably, buf, size + 1);
 }
 
 static void send_shit() {
@@ -111,7 +117,10 @@ static void send_shit() {
     data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y);
 
     for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-        NutPunch_Send(CHAN_GAME, i, data, sizeof(data));
+        if (!NutPunch_PeerAlive(i))
+            continue;
+
+        NutPunch_Send(CHAN_GAME, i, NP_Send_Unsequenced, data, sizeof(data));
         if (poor_key_pressed(POOR_T))
             chat_with(i);
     }
@@ -136,12 +145,12 @@ static void draw_debug_bits(int status) {
 
 static void greet(const void* raw) {
     NutPunch_Peer peer = *(NutPunch_Peer*)raw;
-    NutPunch_Log("Welcome, %s!", (char*)NutPunch_GetPeerData(peer, "NAME", NULL));
+    NP_Info("Welcome, %s!", (char*)NutPunch_GetPeerData(peer, "NAME", NULL));
 }
 
 static void bye(const void* raw) {
     NutPunch_Peer peer = *(NutPunch_Peer*)raw;
-    NutPunch_Log("Farewell, %s!", (char*)NutPunch_GetPeerData(peer, "NAME", NULL));
+    NP_Info("Farewell, %s!", (char*)NutPunch_GetPeerData(peer, "NAME", NULL));
 }
 
 int main(int argc, char* argv[]) {
@@ -149,6 +158,8 @@ int main(int argc, char* argv[]) {
         printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
         return EXIT_FAILURE;
     }
+
+    NP_Logger = log_to_file;
 
     NutPunch_SetChannelCount(CHAN_COUNT);
     NutPunch_Register(NPCB_PeerJoined, greet);
@@ -198,7 +209,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    NutPunch_Cleanup();
+    NutPunch_Shutdown();
     fflush(logfile), fclose(logfile);
     return EXIT_SUCCESS;
 }
