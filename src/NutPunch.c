@@ -900,8 +900,8 @@ void NutPunch_SetChannelCount(int count) {
     NP_ChannelCount = count;
 }
 
-bool NutPunch_HasMessage(NutPunch_Channel channel) {
-    return NP_Unread[channel] != NULL;
+bool NutPunch_HasMessage(NutPunch_Channel chan) {
+    return chan < NUTPUNCH_MAX_CHANNELS && NP_Unread[chan] != NULL;
 }
 
 int NutPunch_NextMessage(NutPunch_Channel channel, void* out, int* size) {
