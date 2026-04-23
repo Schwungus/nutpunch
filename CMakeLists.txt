@@ -20,7 +20,7 @@ add_library(NutPunch
     ${CMAKE_CURRENT_SOURCE_DIR}/src/NutPunch.c)
 target_include_directories(NutPunch PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${enet_SOURCE_DIR}/include) # HACK: enet's CMakeLists.txt is borked
+    ${enet_SOURCE_DIR}/include) # HACK: enet's CMakeLists.txt is ancient & borked
 target_link_libraries(NutPunch PUBLIC enet)
 
 if(WIN32)
