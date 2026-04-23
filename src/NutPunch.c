@@ -62,7 +62,7 @@ typedef struct {
 
 static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
     NP_HandleListing(NP_Message), NP_HandleLobbyMetadata(NP_Message), NP_HandleData(NP_Message),
-    NP_HandlePong(NP_Message), NP_HandleDate(NP_Message);
+    NP_HandleQueue(NP_Message), NP_HandleDate(NP_Message);
 
 #define NP_ANY_LEN (-1)
 #define NP_PING_SIZE (sizeof(NP_Header) + 1 + sizeof(NutPunch_Metadata))
@@ -74,7 +74,7 @@ static const NP_MessageType NP_MessageTypes[] = {
     {"DATA", NP_HandleData,          NP_ANY_LEN                                          },
     {"GTFO", NP_HandleGTFO,          1                                                   },
     {"BEAT", NP_HandleBeating,       sizeof(NP_Beating)                                  },
-    {"PONG", NP_HandlePong,          0                                                   },
+    {"QUEU", NP_HandleQueue,         sizeof(uint8_t) + sizeof(uint16_t)                  },
     {"DATE", NP_HandleDate,          sizeof(NutPunch_LobbyId)                            },
 };
 
@@ -119,6 +119,7 @@ static NutPunch_Metadata NP_LobbyMetadata = {0}, NP_PeerMetadata = {0};
 
 static NP_NetMode NP_Mode = NPNM_Normal;
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
+static int NP_QueueCount = 0, NP_QueueTime = 0;
 
 static void
 NP_JustSend(ENetPeer* peer, uint8_t channel, const void* buf, size_t len, uint32_t flags) {
@@ -403,6 +404,14 @@ bool NutPunch_EnterQueue(const char* queue_id) {
         NutPunch_SNPrintF(NP_QueueId, sizeof(NP_QueueId), "%s", queue_id);
 
     return true;
+}
+
+int NutPunch_QueueTime() {
+    return NP_QueueTime;
+}
+
+int NutPunch_QueueCount() {
+    return NP_QueueCount;
 }
 
 void NutPunch_SetUnlisted(bool unlisted) {
@@ -716,14 +725,16 @@ static void NP_HandleData(NP_Message msg) {
     }
 }
 
-static void NP_HandlePong(NP_Message msg) {
-    if (msg.from == NP_PuncherPeer)
-        NP_LastBeating = NutPunch_TimeNS();
+static void NP_HandleQueue(NP_Message msg) {
+    if (msg.from != NP_PuncherPeer)
+        return;
+
+    NP_LastBeating = NutPunch_TimeNS();
+    NP_QueueTime = *msg.data++;
+    NP_QueueCount = *(uint16_t*)msg.data;
 }
 
 static void NP_HandleDate(NP_Message msg) {
-    NP_Warn("SHIT");
-
     if (NP_Mode != NPNM_Matchmaking)
         return;
 

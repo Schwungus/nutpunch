@@ -432,21 +432,36 @@ struct Grindr {
     }
 
     void update() {
-        if (players.empty() && elapsed(last_match) > KEEP_QUEUE_FOR) {
+        if (closing)
+            return;
+
+        if (players.size() <= 1 && elapsed(last_match) > KEEP_QUEUE_FOR) {
             if (!closing)
                 for (const auto& [id, p] : players)
                     gtfo(p.enet, NPE_QueueNoMatch);
-            closing = true;
-        }
 
-        if (closing)
+            closing = true;
             return;
+        }
 
         while (players.size() >= 2) // highly unlikely but i like taking it rough :)
             LETSGOO();
 
+        const auto num_players = players.size();
+        if (!num_players)
+            return;
+
+        uint8_t buf[sizeof(NP_Header) + sizeof(uint8_t) + sizeof(uint16_t)] = "QUEU";
+        uint8_t* ptr = buf + sizeof(NP_Header);
+
+        *ptr = (KEEP_QUEUE_FOR - elapsed(last_match)) / NUTPUNCH_SEC;
+        ptr += sizeof(uint8_t);
+
+        *(uint16_t*)ptr = num_players - 1;
+        ptr += sizeof(uint16_t);
+
         for (const auto& [id, p] : players)
-            just_send(p.enet, "PONG", sizeof(NP_Header), 0);
+            just_send(p.enet, buf, sizeof(buf), 0);
     }
 
     void LETSGOO() {

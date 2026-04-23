@@ -288,6 +288,12 @@ bool NutPunch_Host(const char* lobby_id);
 /// `false` if a network error occurs and `true` otherwise.
 bool NutPunch_EnterQueue(const char* queue_id);
 
+/// Returns the remaining time before getting kicked out of a queue in seconds.
+int NutPunch_QueueTime();
+
+/// Returns the amount of peers waiting in the same queue.
+int NutPunch_QueueCount();
+
 /// Unlists the lobby you're the master of. Do this immediately after calling `NutPunch_Host`.
 void NutPunch_SetUnlisted(bool);
 
