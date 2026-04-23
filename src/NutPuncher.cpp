@@ -48,11 +48,6 @@ static ENetHost* ENET = nullptr;
 struct Lobby;
 static std::unordered_map<std::string, Lobby> lobbies;
 
-template <typename T> static bool is_memzero(const T& x) {
-    static constexpr const char zero[sizeof(T)] = {0};
-    return !std::memcmp((char*)&x, zero, sizeof(zero));
-}
-
 static const char* fmt_lobby_id(const std::string& id) {
     static char buf[sizeof(NutPunch_LobbyId) + 1] = {0};
 
@@ -118,7 +113,7 @@ struct Field : NutPunch_Field {
     }
 
     explicit operator bool() const {
-        return size && !is_memzero(name);
+        return size && name[0];
     }
 
     bool named(const char* name) const {
@@ -510,8 +505,6 @@ static void send_lobbies(ENetPeer* peer, const char* target_id) {
             continue;
 
         for (const auto& field : lobby.metadata.fields) {
-            if (is_memzero(field))
-                continue;
             std::memcpy(ptr, &field, sizeof(NutPunch_Field));
             ptr += sizeof(NutPunch_Field);
         }
