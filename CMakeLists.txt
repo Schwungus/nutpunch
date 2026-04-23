@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28 FATAL_ERROR)
 
 project(NutPunch LANGUAGES C CXX)
 
-set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
+set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
 set(BUILD_SHARED_LIBS OFF)
 
 include(FetchContent)
