@@ -37,7 +37,7 @@ int main(int argc, char* argv[]) {
     NP_Info("SENDING SHIT OUT");
     for (int peer = 0; peer < NUTPUNCH_MAX_PLAYERS; peer++)
         if (peer != NutPunch_LocalPeer() && NutPunch_PeerAlive(peer))
-            NutPunch_Send(CHAN_MAIN, peer, ENET_PACKET_FLAG_RELIABLE, WOWZA, (int)strlen(WOWZA));
+            NutPunch_Send(CHAN_MAIN, peer, NP_Send_Reliably, WOWZA, (int)strlen(WOWZA));
 
     for (int i = 0; i < 30; i++) {
         if (NutPunch_Update() == NPS_Error)

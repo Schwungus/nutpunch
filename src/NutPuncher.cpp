@@ -464,7 +464,7 @@ struct Grindr {
         std::memcpy(buf + sizeof(NP_Header), lobby_id, sizeof(lobby_id));
 
         for (const auto enet : {pair1.second.enet, pair2.second.enet})
-            just_send(enet, buf, sizeof(buf), ENET_PACKET_FLAG_RELIABLE);
+            just_send(enet, buf, sizeof(buf), NP_Send_Reliably);
 
         NP_Info("QUEUE: Matched peers '%s' and '%s' to lobby '%s'", pair1.first.c_str(),
             pair2.first.c_str(), fmt_lobby_id(lobby_id));

@@ -248,6 +248,18 @@ typedef enum {
 
 typedef void (*NutPunch_Callback)(const void*);
 
+typedef enum {
+    /// Set this flag to send a reliable packet. This means the packet will be periodically resent
+    /// until delivery is confirmed by the target peer.
+    NP_Send_Reliably = ENET_PACKET_FLAG_RELIABLE,
+
+    /// Set this flag to disable the default behavior of sequencing every non-reliable packet.
+    ///
+    /// Sequencing ensures the packets arrive in the order they were sent and discards them
+    /// otherwise.
+    NP_Send_Unsequenced = ENET_PACKET_FLAG_UNSEQUENCED,
+} NutPunch_SendFlags;
+
 /// Sets a custom NutPuncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
 
@@ -353,8 +365,8 @@ bool NutPunch_HasMessage(NutPunch_Channel);
 /// `size` will crash your entire program.
 int NutPunch_NextMessage(NutPunch_Channel, void* out, int* size);
 
-/// Sends data on the specified channel, to the specified peer, with the specified ENet flags (e.g.
-/// `ENET_PACKET_FLAG_RELIABLE` for reliable delivery).
+/// Sends data on the specified channel, to the specified peer, with the specified flags. Use 0 or
+/// bitwise-or one or more `NP_Send_*` constants to assemble the flags argument.
 void NutPunch_Send(NutPunch_Channel, NutPunch_Peer, uint32_t, const void*, int);
 
 /// Counts how many "live" peers we have a route to, including our local peer.

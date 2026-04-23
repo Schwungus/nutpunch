@@ -932,15 +932,7 @@ int NutPunch_NextMessage(NutPunch_Channel channel, void* out, int* size) {
 
 void NutPunch_Send(
     NutPunch_Channel channel, NutPunch_Peer peer, uint32_t flags, const void* data, int size) {
-    if (!NutPunch_PeerAlive(peer)) {
-        NP_Warn("Sending to a dead peer should result in your own death too");
-        return;
-    }
-
-    if (size <= 0)
-        return;
-
-    if (channel >= NUTPUNCH_MAX_CHANNELS)
+    if (!NutPunch_PeerAlive(peer) || size <= 0 || channel >= NUTPUNCH_MAX_CHANNELS)
         return;
 
     const size_t total_size = sizeof(NP_Header) + size;
@@ -949,8 +941,7 @@ void NutPunch_Send(
     NutPunch_Memcpy(buf, "DATA", sizeof(NP_Header));
     NutPunch_Memcpy(ptr, data, size);
 
-    NP_JustSend(
-        NP_Peers[peer].enet, 1 + channel, buf, total_size, flags | ENET_PACKET_FLAG_NO_ALLOCATE);
+    NP_JustSend(NP_Peers[peer].enet, 1 + channel, buf, total_size, flags | NP_Send_Reliably);
 }
 
 int NutPunch_PeerCount() {
