@@ -79,7 +79,7 @@ static const NP_MessageType NP_MessageTypes[] = {
 };
 // clang-format on
 
-static void NP_DefaultLogger(const char* fmt, ...) {
+void NP_DefaultLogger(const char* fmt, ...) {
     va_list args = {0};
     va_start(args, fmt);
     vfprintf(stdout, fmt, args);
@@ -88,7 +88,7 @@ static void NP_DefaultLogger(const char* fmt, ...) {
     fflush(stdout);
 }
 
-void (*NP_Logger)(const char*, ...) = NP_DefaultLogger;
+void (*NP_Logger)(const char*, ...) = NULL;
 char NP_LastError[512] = "";
 
 static NutPunch_Clock NP_LastBeating = 0;

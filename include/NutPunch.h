@@ -85,12 +85,17 @@ extern "C" {
 #include <stdint.h>
 #include <stdio.h> // IWYU pragma: export
 
-extern char NP_LastError[512];
+/// Set this pointer to NULL to use the default NutPunch logger, or override the NutPunch logger by
+/// supplying your own logging function.
 extern void (*NP_Logger)(const char*, ...);
+void NP_DefaultLogger(const char*, ...);
+
+extern char NP_LastError[512];
 
 #define NutPunch_Log(msg, ...)                                                                     \
     do {                                                                                           \
-        NP_Logger("(%s:%d) " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);      \
+        (NP_Logger ? NP_Logger : NP_DefaultLogger)(                                                \
+            "(%s:%d) " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);            \
     } while (0)
 
 #define NutPunch_SNPrintF snprintf
