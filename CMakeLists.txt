@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28 FATAL_ERROR)
 
 project(NutPunch LANGUAGES C CXX)
 
-set(CMAKE_COMPILE_WARNING_AS_ERROR OFF) # FIXME: this enet fork is a bitch
+set(CMAKE_COMPILE_WARNING_AS_ERROR OFF)
 set(BUILD_SHARED_LIBS OFF)
 
 include(FetchContent)
