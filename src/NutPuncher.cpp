@@ -500,18 +500,20 @@ static void send_lobbies(ENetPeer* peer, const char* target_id) {
     std::memcpy(ptr, target_id, sizeof(NutPunch_LobbyId));
     ptr += sizeof(NutPunch_LobbyId);
 
-    for (const auto& [id, lobby] : lobbies) {
-        if (id != target_id || lobby.unlisted)
-            continue;
+    if (!lobbies.contains(target_id))
+        return;
 
-        for (const auto& field : lobby.metadata.fields) {
-            std::memcpy(ptr, &field, sizeof(NutPunch_Field));
-            ptr += sizeof(NutPunch_Field);
-        }
+    const auto& lobby = lobbies.at(target_id);
 
-        just_send(peer, buf, ptr - buf, 0);
-        break;
+    if (lobby.unlisted)
+        return;
+
+    for (const auto& field : lobby.metadata.fields) {
+        std::memcpy(ptr, &field, sizeof(NutPunch_Field));
+        ptr += sizeof(NutPunch_Field);
     }
+
+    just_send(peer, buf, sizeof(buf), 0);
 }
 
 static void send_lobbies(ENetPeer* peer, size_t filter_count, const NutPunch_Filter* filters) {

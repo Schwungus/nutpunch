@@ -55,8 +55,8 @@ typedef struct NP_PacketQueue {
 
 typedef struct {
     const char identifier[sizeof(NP_Header) + 1];
-    const int16_t packet_size;
     void (*const handle)(NP_Message);
+    const int16_t packet_size;
 } NP_MessageType;
 
 static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
@@ -66,18 +66,16 @@ static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeati
 #define NP_ANY_LEN (-1)
 #define NP_PING_SIZE (sizeof(NP_Header) + 1 + sizeof(NutPunch_Metadata))
 
-// clang-format off
 static const NP_MessageType NP_MessageTypes[] = {
-    {"PING", 1 + sizeof(NutPunch_Metadata), NP_HandlePing         },
-	{"LIST", NP_ANY_LEN,                    NP_HandleListing      },
-	{"LGMA", NP_ANY_LEN,                    NP_HandleLobbyMetadata},
-	{"DATA", NP_ANY_LEN,                    NP_HandleData         },
-	{"GTFO", 1,		                        NP_HandleGTFO         },
-	{"BEAT", sizeof(NP_Beating),            NP_HandleBeating      },
-    {"PONG", 0,		                        NP_HandlePong         },
-    {"DATE", sizeof(NutPunch_LobbyId),      NP_HandleDate         },
+    {"PING", NP_HandlePing,          1 + sizeof(NutPunch_Metadata)                       },
+    {"LIST", NP_HandleListing,       NP_ANY_LEN                                          },
+    {"LGMA", NP_HandleLobbyMetadata, sizeof(NutPunch_LobbyId) + sizeof(NutPunch_Metadata)},
+    {"DATA", NP_HandleData,          NP_ANY_LEN                                          },
+    {"GTFO", NP_HandleGTFO,          1                                                   },
+    {"BEAT", NP_HandleBeating,       sizeof(NP_Beating)                                  },
+    {"PONG", NP_HandlePong,          0                                                   },
+    {"DATE", NP_HandleDate,          sizeof(NutPunch_LobbyId)                            },
 };
-// clang-format on
 
 void NP_DefaultLogger(const char* fmt, ...) {
     va_list args = {0};
