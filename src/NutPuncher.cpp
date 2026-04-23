@@ -214,7 +214,7 @@ struct Metadata {
 };
 
 struct Player {
-    // HACK: only used in the static array inside `Lobby`.
+    // set either in the constructor or externally like in the static array inside `Lobby`
     NutPunch_PeerId peer_id = {0};
     ENetPeer* enet = nullptr;
 
