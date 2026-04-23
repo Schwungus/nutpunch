@@ -26,10 +26,12 @@
 #define NUTPUNCH_IMPLEMENTATION
 #include <NutPunch.h>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
-#include <map>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 static constexpr const NutPunch_Clock KEEP_QUEUE_FOR = 20 * NUTPUNCH_SEC;
 
@@ -45,14 +47,14 @@ static NutPunch_Clock elapsed(NutPunch_Clock start) {
 static ENetHost* ENET = nullptr;
 
 struct Lobby;
-static std::map<std::string, Lobby> lobbies;
+static std::unordered_map<std::string, Lobby> lobbies;
 
 template <typename T> static bool is_memzero(const T& x) {
     static constexpr const char zero[sizeof(T)] = {0};
     return !std::memcmp((char*)&x, zero, sizeof(zero));
 }
 
-static const char* fmt_lobby_id(const char* id) {
+static const char* fmt_lobby_id(const std::string& id) {
     static char buf[sizeof(NutPunch_LobbyId) + 1] = {0};
 
     for (int i = 0; i < sizeof(NutPunch_LobbyId); i++) {
@@ -214,15 +216,11 @@ struct Metadata {
 };
 
 struct Player {
-    // set either in the constructor or externally like in the static array inside `Lobby`
-    NutPunch_PeerId peer_id = {0};
-    ENetPeer* enet = nullptr;
+    NutPunch_Peer index = 0;
+    std::string id;
+    ENetPeer* enet;
 
-    Player() {}
-
-    Player(const char* id, ENetPeer* enet) : enet(enet) {
-        std::memcpy(this->peer_id, id, sizeof(this->peer_id));
-    }
+    Player(const std::string& id, ENetPeer* enet) : id(id), enet(enet) {}
 
     ~Player() {
         // HACK: not calling `reset()` here since that would close the `enet` peer which is managed
@@ -233,12 +231,10 @@ struct Player {
     }
 
     explicit operator bool() const {
-        return !is_memzero(peer_id) && enet;
+        return !id.empty() && enet;
     }
 
-    void reset() {
-        std::memset(peer_id, 0, sizeof(peer_id));
-
+    void boot() {
         if (enet)
             enet_peer_disconnect_now(enet, 0);
         enet = nullptr;
@@ -246,25 +242,24 @@ struct Player {
 };
 
 struct Lobby {
-    NutPunch_LobbyId id = {0};
+    const std::string id;
     bool unlisted = false;
     uint8_t capacity = NUTPUNCH_MAX_PLAYERS;
-    Player players[NUTPUNCH_MAX_PLAYERS] = {};
+    std::vector<Player> players;
     Metadata metadata;
 
     Lobby() {}
 
-    Lobby(const std::string& id) {
-        std::memcpy(this->id, id.c_str(), sizeof(this->id));
-    }
+    Lobby(const std::string& id) : id(id) {}
 
     const char* fmt_id() const {
         return fmt_lobby_id(id);
     }
 
     void update() {
-        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-            beat(i);
+        for (auto& player : players)
+            beat(player);
+        std::erase_if(players, [](const auto& player) { return !player; });
     }
 
     int special(uint8_t idx) const {
@@ -272,26 +267,19 @@ struct Lobby {
         case NPSF_Capacity:
             return capacity;
         case NPSF_Players:
-            return gamers();
+            return (int)players.size();
         default:
             return 0;
         }
     }
 
     explicit operator bool() const {
-        return gamers() > 0;
+        return players.size() > 0;
     }
 
     NutPunch_Peer index_of(const std::string& id) const {
-        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-            if (players[i] && !std::memcmp(id.c_str(), players[i].peer_id, sizeof(NutPunch_PeerId)))
-                return i;
-        return NUTPUNCH_MAX_PLAYERS;
-    }
-
-    NutPunch_Peer next_dead() const {
-        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-            if (!players[i])
+        for (size_t i = 0; i < players.size(); i++)
+            if (players[i] && id == players[i].id)
                 return i;
         return NUTPUNCH_MAX_PLAYERS;
     }
@@ -300,33 +288,36 @@ struct Lobby {
         return index_of(id) != NUTPUNCH_MAX_PLAYERS;
     }
 
-    NutPunch_Peer gamers() const {
-        NutPunch_Peer count = 0;
-        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-            if (players[i])
-                count++;
-        return count;
-    }
-
-    void accept(const std::string& id, ENetPeer* peer, const NP_HeartbeatFlagsStorage flags,
+    void accept(const std::string& id, ENetPeer* enet, const NP_HeartbeatFlagsStorage flags,
         const char* meta) {
         NutPunch_Peer idx = index_of(id);
         bool just_joined = false;
 
-        if (idx == NUTPUNCH_MAX_PLAYERS)
-            idx = next_dead(), just_joined = true;
-
         if (idx == NUTPUNCH_MAX_PLAYERS) {
-            gtfo(peer, NPE_LobbyFull);
-            return;
+            for (idx = 0; idx < (NutPunch_Peer)players.size(); idx++) {
+                bool good = true;
+                for (const auto& player : players) {
+                    if (player.index == idx) {
+                        good = false;
+                        break;
+                    }
+                }
+                if (good)
+                    break;
+            }
+
+            just_joined = true;
+
+            if (idx >= NUTPUNCH_MAX_PLAYERS) {
+                gtfo(enet, NPE_LobbyFull);
+                return;
+            }
+
+            players.emplace_back(id, enet).index = idx;
         }
 
         if (just_joined)
             NP_Info("Player %d joined lobby '%s'", idx + 1, fmt_id());
-
-        auto& player = players[idx];
-        std::memcpy(player.peer_id, id.c_str(), sizeof(NutPunch_PeerId));
-        player.enet = peer;
 
         if (idx == master()) {
             unlisted = flags & NP_HB_Unlisted;
@@ -335,30 +326,28 @@ struct Lobby {
         }
     }
 
-    void beat(const NutPunch_Peer idx) {
-        auto& player = players[idx];
-
-        if (is_memzero(player.peer_id))
+    void beat(Player& player) {
+        if (player.id.empty())
             return;
 
         static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)] = "BEAT";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
         *ptr++ = unlisted;
-        *ptr++ = idx;
+        *ptr++ = player.index;
         *ptr++ = master();
         *ptr++ = capacity;
 
-        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-            ENetPeer* bro = players[i].enet;
+        std::array<ENetAddress, NUTPUNCH_MAX_PLAYERS> addrs;
 
-            if (bro) {
-                uint16_t port = htons(bro->address.port);
-                memcpy(ptr, &bro->address.host, 4), ptr += 4;
-                memcpy(ptr, &port, 2), ptr += 2;
-            } else {
-                memset(ptr, 0, 6), ptr += 6;
-            }
+        for (const auto& player : players)
+            if (player.enet)
+                addrs[player.index] = player.enet->address;
+
+        for (const auto& addr : addrs) {
+            uint16_t port = htons(addr.port);
+            memcpy(ptr, &addr.host, 4), ptr += 4;
+            memcpy(ptr, &port, 2), ptr += 2;
         }
 
         std::memcpy(ptr, &metadata, sizeof(Metadata));
@@ -368,16 +357,15 @@ struct Lobby {
     }
 
     void kill_bro(const NutPunch_PeerId id, ENetPeer* enet) {
-        for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-            if (!players[i])
+        for (auto& player : players) {
+            if (!player)
                 continue;
 
-            const bool id_eq = !std::memcmp(players[i].peer_id, id, sizeof(NutPunch_PeerId));
-            if (!id_eq && players[i].enet != enet)
+            if (player.id != id && player.enet != enet)
                 continue;
 
-            NP_Info("Player %d disconnected", i + 1);
-            players[i].reset();
+            NP_Info("Player %s disconnected", player.id.c_str());
+            player.boot();
         }
     }
 
@@ -411,9 +399,9 @@ struct Lobby {
     }
 
     NutPunch_Peer master() {
-        if (master_idx < NUTPUNCH_MAX_PLAYERS && players[master_idx])
+        if (master_idx < players.size() && players[master_idx])
             return master_idx;
-        for (master_idx = 0; master_idx < NUTPUNCH_MAX_PLAYERS; master_idx++)
+        for (master_idx = 0; master_idx < (NutPunch_Peer)players.size(); master_idx++)
             if (players[master_idx])
                 break;
         return master_idx;
@@ -427,7 +415,7 @@ struct Grindr {
     const std::string queue_id;
     NutPunch_LobbyId lobby_id = {0};
     NutPunch_Clock last_match = NutPunch_TimeNS();
-    std::map<std::string, Player> players;
+    std::unordered_map<std::string, Player> players;
     bool closing = false;
 
     Grindr(const std::string& queue_id) : queue_id(queue_id) {}
@@ -486,7 +474,7 @@ struct Grindr {
     }
 };
 
-static std::map<std::string, Grindr> matchmaking;
+static std::unordered_map<std::string, Grindr> matchmaking;
 
 static bool create_lobby(const std::string& id, ENetPeer* peer) {
     if (lobbies.size() >= MAX_LOBBIES) {
@@ -544,7 +532,7 @@ static void send_lobbies(ENetPeer* peer, size_t filter_count, const NutPunch_Fil
 
         std::memcpy(ptr, id.data(), std::strlen(lobby.fmt_id()));
         ptr += sizeof(NutPunch_LobbyId);
-        *ptr++ = lobby.gamers(), *ptr++ = lobby.capacity;
+        *ptr++ = lobby.players.size(), *ptr++ = lobby.capacity;
 
         if (++count >= NUTPUNCH_MAX_SEARCH_RESULTS)
             break;
