@@ -56,7 +56,7 @@ typedef struct NP_PacketQueue {
 typedef struct {
     const char identifier[sizeof(NP_Header) + 1];
     void (*const handle)(NP_Message);
-    const int16_t packet_size;
+    const int64_t packet_size;
 } NP_MessageType;
 
 static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
