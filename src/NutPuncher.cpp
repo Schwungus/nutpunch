@@ -418,7 +418,7 @@ struct Grindr {
     Grindr(const std::string& queue_id) : queue_id(queue_id) {}
 
     explicit operator bool() const {
-        return !closing && elapsed(last_match) <= KEEP_QUEUE_FOR + GRINDR_DEBOUNCE;
+        return elapsed(last_match) <= KEEP_QUEUE_FOR + GRINDR_DEBOUNCE;
     }
 
     void accept(const std::string& peer_id, ENetPeer* peer) {
@@ -435,16 +435,21 @@ struct Grindr {
         if (closing)
             return;
 
-        if (players.size() <= 1 && elapsed(last_match) > KEEP_QUEUE_FOR) {
-            if (!closing)
+        constexpr const size_t match = 2;
+
+        if (players.size() < match && elapsed(last_match) > KEEP_QUEUE_FOR) {
+            if (!closing) {
                 for (const auto& [id, p] : players)
                     gtfo(p.enet, NPE_QueueNoMatch);
 
-            closing = true;
+                players.clear();
+                closing = true;
+            }
+
             return;
         }
 
-        while (players.size() >= 2) // highly unlikely but i like taking it rough :)
+        while (players.size() >= match) // highly unlikely to loop but i like taking it rough :)
             LETSGOO();
 
         const auto num_players = players.size();
