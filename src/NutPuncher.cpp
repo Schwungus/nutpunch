@@ -619,7 +619,12 @@ static void handle_recv(ENetEvent event) {
         std::string peer_id(ptr, sizeof(NutPunch_PeerId));
         ptr += sizeof(NutPunch_PeerId);
 
-        std::string lobby_id(ptr, sizeof(NutPunch_LobbyId));
+        size_t len = 0;
+        for (; len < sizeof(NutPunch_LobbyId); len++)
+            if (!ptr[len])
+                break;
+
+        std::string lobby_id(ptr, len);
         ptr += sizeof(NutPunch_LobbyId);
 
         auto flags = *(const NP_HeartbeatFlagsStorage*)ptr;
