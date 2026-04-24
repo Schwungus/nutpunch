@@ -600,10 +600,8 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     if (!peer->enet) {
         if (!peer->pub_tmp)
             peer->pub_tmp = enet_host_connect(NP_ENetHost, &pub, 1 + NP_ChannelCount, 0);
-        if (!peer->same_nat_tmp) {
+        if (!peer->same_nat_tmp)
             peer->same_nat_tmp = enet_host_connect(NP_ENetHost, &same_nat, 1 + NP_ChannelCount, 0);
-            NP_Warn("SHIT %s", NP_FormatSockaddr(same_nat));
-        }
     }
 
     static uint8_t ping[NP_PING_SIZE] = "PING";
