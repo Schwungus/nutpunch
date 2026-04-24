@@ -410,7 +410,6 @@ struct Lobby {
 
 struct Grindr {
     const std::string queue_id;
-    NutPunch_LobbyId lobby_id = {0};
     NutPunch_Clock last_match = NutPunch_TimeNS();
     std::unordered_map<std::string, Player> players;
     bool closing = false;
@@ -477,12 +476,12 @@ struct Grindr {
         auto pair2 = std::move(*players.begin());
         players.erase(players.begin());
 
-        NutPunch_LobbyId lobby_id = {0};
-        for (int i = 0; i < sizeof(lobby_id); i++)
-            lobby_id[i] = (char)('A' + (std::rand() % 26));
+        std::string lobby_id;
+        for (int i = 0; i < sizeof(NutPunch_LobbyId); i++)
+            lobby_id.push_back((char)('A' + (std::rand() % 26)));
 
         static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "DATE";
-        std::memcpy(buf + sizeof(NP_Header), lobby_id, sizeof(lobby_id));
+        std::memcpy(buf + sizeof(NP_Header), lobby_id.data(), sizeof(NutPunch_LobbyId));
 
         for (const auto enet : {pair1.second.enet, pair2.second.enet})
             just_send(enet, buf, sizeof(buf), NP_Send_Reliably);
@@ -509,7 +508,7 @@ static bool create_lobby(const std::string& id, ENetPeer* peer) {
     }
 
     lobbies.insert({id, Lobby(id)});
-    NP_Info("Created lobby '%s'", fmt_lobby_id(id.c_str()));
+    NP_Info("Created lobby '%s'", fmt_lobby_id(id));
     return true;
 }
 
