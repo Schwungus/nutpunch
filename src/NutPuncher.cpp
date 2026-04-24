@@ -456,11 +456,12 @@ struct Grindr {
         if (!num_players)
             return;
 
-        uint8_t buf[sizeof(NP_Header) + sizeof(uint8_t) + sizeof(uint16_t)] = "QUEU";
+        static uint8_t buf[sizeof(NP_Header) + sizeof(uint8_t) + sizeof(uint16_t)] = "QUEU";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
-        *ptr = (KEEP_QUEUE_FOR - elapsed(last_match)) / NUTPUNCH_SEC;
-        ptr += sizeof(uint8_t);
+        const NutPunch_Clock since = elapsed(last_match),
+                             diff = KEEP_QUEUE_FOR > since ? KEEP_QUEUE_FOR - since : 0;
+        *ptr++ = diff / NUTPUNCH_SEC;
 
         *(uint16_t*)ptr = htons(num_players - 1);
         ptr += sizeof(uint16_t);
