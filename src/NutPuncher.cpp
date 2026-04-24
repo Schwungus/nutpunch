@@ -211,11 +211,16 @@ struct Metadata {
 
 struct Player {
     NutPunch_Peer index = 0;
+    ENetAddress same_nat{0, 0};
+
     std::string id;
     ENetPeer* enet;
 
-    Player(NutPunch_Peer index, const std::string& id, ENetPeer* enet)
-        : index(index), id(id), enet(enet) {}
+    Player(NutPunch_Peer index, ENetAddress same_nat, const std::string& id, ENetPeer* enet)
+        : index(index), same_nat(same_nat), id(id), enet(enet) {
+        if (!same_nat.host)
+            same_nat.host = htonl(0x7f000001);
+    }
 
     ~Player() {
         // HACK: not calling `reset()` here since that would close the `enet` peer which is managed
@@ -287,6 +292,10 @@ struct Lobby {
 
     void accept(const std::string& id, ENetPeer* enet, const NP_HeartbeatFlagsStorage flags,
         const char* meta) {
+        ENetAddress same_nat{0, 0};
+        same_nat.host = *(uint32_t*)meta, meta += 4;
+        same_nat.port = ntohs(*(uint16_t*)meta), meta += 2;
+
         NutPunch_Peer idx = index_of(id);
         bool just_joined = false;
 
@@ -310,7 +319,7 @@ struct Lobby {
                 return;
             }
 
-            players.emplace_back(idx, id, enet);
+            players.emplace_back(idx, same_nat, id, enet);
         }
 
         if (just_joined)
@@ -335,7 +344,7 @@ struct Lobby {
         *ptr++ = master();
         *ptr++ = capacity;
 
-        static constexpr const size_t addrs_size = NUTPUNCH_MAX_PLAYERS * sizeof(NP_PeerAddr);
+        static constexpr const size_t addrs_size = NUTPUNCH_MAX_PLAYERS * sizeof(NP_PeerAddr) * 2;
         std::memset(ptr, 0, addrs_size);
 
         for (const auto& player : players) {
@@ -345,9 +354,13 @@ struct Lobby {
             const auto addr = player.enet->address;
             const size_t off = player.index * sizeof(NP_PeerAddr);
 
-            const uint16_t port = htons(addr.port);
+            uint16_t port = htons(addr.port);
             memcpy(ptr + off + 0, &addr.host, 4);
             memcpy(ptr + off + 4, &port, 2);
+
+            port = htons(player.same_nat.port);
+            memcpy(ptr + off + 6, &addr.host, 4);
+            memcpy(ptr + off + 10, &port, 2);
         }
         ptr += addrs_size;
 
@@ -424,7 +437,7 @@ struct Grindr {
         if (players.contains(peer_id))
             return;
 
-        players.emplace(peer_id, Player(0, peer_id, peer));
+        players.emplace(peer_id, Player(0, {0, 0}, peer_id, peer));
         closing = false;
 
         NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());

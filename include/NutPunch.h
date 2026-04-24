@@ -487,7 +487,7 @@ typedef struct {
 typedef struct {
     uint8_t unlisted;
     NutPunch_Peer local, master, capacity;
-    NP_PeerAddr peers[NUTPUNCH_MAX_PLAYERS];
+    NP_PeerAddr peers[2][NUTPUNCH_MAX_PLAYERS];
     NutPunch_Metadata metadata;
 } NP_Beating;
 
@@ -495,6 +495,7 @@ typedef struct {
     NutPunch_PeerId peer;
     NutPunch_LobbyId lobby;
     NP_HeartbeatFlagsStorage flags;
+    NP_PeerAddr same_nat;
     NutPunch_Metadata lobby_metadata;
 } NP_Heartbeat;
 

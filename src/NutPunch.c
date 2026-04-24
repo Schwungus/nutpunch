@@ -37,7 +37,7 @@
 
 typedef struct {
     NutPunch_Metadata metadata;
-    ENetPeer* enet; // only used by `NP_SendPings`
+    ENetPeer *enet, *pub_tmp, *same_nat_tmp;
 } NP_PeerInfo;
 
 typedef struct {
@@ -509,7 +509,7 @@ static void NP_HandlePing(NP_Message msg) {
     msg.from->data = &NP_Peers[idx];
 
     NP_PeerInfo* const peer = &NP_Peers[idx];
-    peer->enet = msg.from;
+    peer->enet = msg.from, peer->pub_tmp = peer->same_nat_tmp = NULL;
 
     static NutPunch_PeerFieldDiff changed[NUTPUNCH_MAX_FIELDS] = {0};
     NP_Memzero(changed);
@@ -583,10 +583,13 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     if (idx == NP_LocalPeer)
         return;
 
-    ENetAddress pub = {0};
+    ENetAddress pub = {0}, same_nat = {0};
 
     NutPunch_Memcpy(&pub.host, data, 4), data += 4;
     pub.port = ntohs(*(uint16_t*)data), data += 2;
+
+    NutPunch_Memcpy(&same_nat.host, data, 4), data += 4;
+    same_nat.port = ntohs(*(uint16_t*)data), data += 2;
 
     if (NP_AddrNull(pub)) { // they're dead on the NutPuncher's side
         NP_KillPeer(idx);
@@ -595,8 +598,12 @@ static void NP_SendPings(int idx, const uint8_t* data) {
 
     NP_PeerInfo* const peer = &NP_Peers[idx];
 
-    if (!peer->enet)
-        peer->enet = enet_host_connect(NP_ENetHost, &pub, 1 + NP_ChannelCount, 0);
+    if (!peer->enet) {
+        if (!peer->pub_tmp)
+            peer->pub_tmp = enet_host_connect(NP_ENetHost, &pub, 1 + NP_ChannelCount, 0);
+        if (!peer->same_nat_tmp)
+            peer->same_nat_tmp = enet_host_connect(NP_ENetHost, &same_nat, 1 + NP_ChannelCount, 0);
+    }
 
     static uint8_t ping[NP_PING_SIZE] = "PING";
     uint8_t* ptr = &ping[sizeof(NP_Header)];
@@ -604,7 +611,12 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     *ptr++ = NP_LocalPeer;
     NutPunch_Memcpy(ptr, NP_PeerMetadata, sizeof(NutPunch_Metadata));
 
-    NP_JustSend(peer->enet, 0, ping, sizeof(ping), 0);
+    if (peer->enet)
+        NP_JustSend(peer->enet, 0, ping, sizeof(ping), 0);
+    if (peer->pub_tmp)
+        NP_JustSend(peer->pub_tmp, 0, ping, sizeof(ping), 0);
+    if (peer->same_nat_tmp)
+        NP_JustSend(peer->same_nat_tmp, 0, ping, sizeof(ping), 0);
 }
 
 static void NP_HandleBeating(NP_Message msg) {
@@ -638,7 +650,7 @@ static void NP_HandleBeating(NP_Message msg) {
         NP_SendPings(i, msg.data);
         if (i == NP_LocalPeer && just_joined)
             NP_PrintOurAddresses(msg.data);
-        msg.data += sizeof(NP_PeerAddr);
+        msg.data += 2 * sizeof(NP_PeerAddr);
     }
 
     for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
@@ -761,6 +773,7 @@ static void NP_SendHeartbeat() {
     NP_Memzero(heartbeat);
 
     uint8_t* ptr = heartbeat;
+    const uint16_t port = htons(NP_ENetHost->address.port);
 
     switch (NP_Mode) {
     case NPNM_Normal:
@@ -775,6 +788,9 @@ static void NP_SendHeartbeat() {
 
         *(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags,
         ptr += sizeof(NP_HeartbeatFlagsStorage);
+
+        NutPunch_Memcpy(ptr, &NP_ENetHost->address.host, 4), ptr += 4;
+        NutPunch_Memcpy(ptr, &port, 2), ptr += 2;
 
         NutPunch_Memcpy(ptr, NP_LobbyMetadata, sizeof(NutPunch_Metadata));
         ptr += sizeof(NutPunch_Metadata);
