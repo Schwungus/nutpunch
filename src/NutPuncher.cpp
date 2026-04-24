@@ -217,10 +217,7 @@ struct Player {
     ENetPeer* enet;
 
     Player(NutPunch_Peer index, ENetAddress same_nat, const std::string& id, ENetPeer* enet)
-        : index(index), same_nat(same_nat), id(id), enet(enet) {
-        if (!same_nat.host)
-            same_nat.host = htonl(0x7f000001);
-    }
+        : index(index), same_nat(same_nat), id(id), enet(enet) {}
 
     ~Player() {
         // HACK: not calling `reset()` here since that would close the `enet` peer which is managed
@@ -295,6 +292,9 @@ struct Lobby {
         ENetAddress same_nat{0, 0};
         same_nat.host = *(uint32_t*)meta, meta += 4;
         same_nat.port = ntohs(*(uint16_t*)meta), meta += 2;
+
+        if (!ntohl(same_nat.host))
+            same_nat.host = htonl(0x7f000001);
 
         NutPunch_Peer idx = index_of(id);
         bool just_joined = false;

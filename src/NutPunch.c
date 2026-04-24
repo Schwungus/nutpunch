@@ -566,7 +566,6 @@ static void NP_PrintOurAddresses(const uint8_t* data) {
     addr.port = ntohs(*(uint16_t*)data), data += 2;
 
     NP_Info("Server thinks you are %s", NP_FormatSockaddr(addr));
-    NP_Info("Same-NAT address: %s", NP_FormatSockaddr(NP_ENetHost->address));
 }
 
 static NutPunch_Peer NP_FindEnetPeer(ENetPeer* peer) {
