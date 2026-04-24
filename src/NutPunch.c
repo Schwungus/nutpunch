@@ -115,11 +115,12 @@ static NutPunch_Channel NP_ChannelCount = 1;
 static NP_PacketQueue* NP_Unread[NUTPUNCH_MAX_CHANNELS] = {0};
 
 static bool NP_Unlisted = false;
-static NutPunch_Metadata NP_LobbyMetadata = {0}, NP_PeerMetadata = {0};
 
 static NP_NetMode NP_Mode = NPNM_Normal;
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
 static int NP_QueueCount = 0, NP_QueueTime = 0;
+
+static NutPunch_Metadata NP_LobbyMetadata = {0}, NP_PeerMetadata = {0};
 
 static void
 NP_JustSend(ENetPeer* peer, uint8_t channel, const void* buf, size_t len, uint32_t flags) {
@@ -132,10 +133,15 @@ NP_JustSend(ENetPeer* peer, uint8_t channel, const void* buf, size_t len, uint32
 }
 
 static void NP_NukeLobbyDataLite() {
-    NP_Mode = NPNM_Normal;
     NP_Closing = NP_Unlisted = false;
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
     NP_Memzero(NP_Peers);
+
+    NP_Mode = NPNM_Normal;
+    NP_HeartbeatFlags = NP_QueueCount = NP_QueueTime = 0;
+    NP_LobbyId[0] = 0;
+
+    NutPunch_SetMaxPlayers(NUTPUNCH_MAX_PLAYERS);
 
     if (NP_PuncherPeer)
         enet_peer_disconnect_now(NP_PuncherPeer, 0);
@@ -144,6 +150,15 @@ static void NP_NukeLobbyDataLite() {
     if (NP_ENetHost)
         enet_host_destroy(NP_ENetHost);
     NP_ENetHost = NULL;
+
+    for (size_t i = 0; i < NUTPUNCH_MAX_CHANNELS; i++) {
+        while (NP_Unread[i]) {
+            NP_PacketQueue* ptr = NP_Unread[i];
+            NP_Unread[i] = ptr->next;
+            NutPunch_Free(ptr->data);
+            NutPunch_Free(ptr);
+        }
+    }
 }
 
 static void NP_NukeLobbyData() {
@@ -155,18 +170,8 @@ static void NP_ResetImpl() {
     NP_LastBeating = NutPunch_TimeNS();
     NP_NukeLobbyData();
 
-    NP_LobbyId[0] = 0, NP_HeartbeatFlags = 0;
     NP_MemzeroRef(NP_ServerAddr), NP_Memzero(NP_Peers);
     NP_LastStatus = NPS_Idle;
-
-    for (size_t i = 0; i < NUTPUNCH_MAX_CHANNELS; i++) {
-        while (NP_Unread[i]) {
-            NP_PacketQueue* ptr = NP_Unread[i];
-            NP_Unread[i] = ptr->next;
-            NutPunch_Free(ptr->data);
-            NutPunch_Free(ptr);
-        }
-    }
 }
 
 static void NP_LazyInit() {
@@ -338,7 +343,6 @@ static bool NP_Connect(const char* lobby_id, bool sane, NP_HeartbeatFlagsStorage
         return false;
     }
 
-    // TODO: revise the magic numbers.
     ENetAddress addr = {ENET_HOST_ANY, ENET_PORT_ANY};
     NP_ENetHost = enet_host_create(&addr, 128, 1 + NP_ChannelCount, 0, 0);
 
@@ -356,11 +360,12 @@ static bool NP_Connect(const char* lobby_id, bool sane, NP_HeartbeatFlagsStorage
     NP_MemzeroRef(NP_ServerAddr);
     enet_address_set_host(&NP_ServerAddr, NP_ServerHost);
     NP_ServerAddr.port = NUTPUNCH_SERVER_PORT;
+
     NP_PuncherPeer = enet_host_connect(NP_ENetHost, &NP_ServerAddr, 1, 0);
 
     if (!NP_PuncherPeer) {
         NutPunch_Reset(), NP_LastStatus = NPS_Error;
-        NP_Warn("Failed to connect to NutPuncher!");
+        NP_Warn("Failed to resolve the NutPuncher!");
         return false;
     }
 
@@ -384,11 +389,19 @@ bool NutPunch_QueryMode() {
 }
 
 bool NutPunch_Host(const char* lobby_id) {
-    return NP_Connect(lobby_id, true, 0);
+    NP_Mode = NPNM_Normal;
+    if (!NP_Connect(lobby_id, true, 0))
+        return false;
+    NP_Info("Hosting lobby '%s'", NP_LobbyId);
+    return true;
 }
 
 bool NutPunch_Join(const char* lobby_id) {
-    return NP_Connect(lobby_id, true, NP_HB_JoinExisting);
+    NP_Mode = NPNM_Normal;
+    if (!NP_Connect(lobby_id, true, NP_HB_JoinExisting))
+        return false;
+    NP_Info("Joining lobby '%s'", NP_LobbyId);
+    return true;
 }
 
 bool NutPunch_EnterQueue(const char* queue_id) {
@@ -426,11 +439,9 @@ bool NutPunch_IsUnlisted() {
 }
 
 void NutPunch_SetMaxPlayers(int players) {
-    const int DEFAULT = 4;
-
-    if (players <= 1 || players > NUTPUNCH_MAX_PLAYERS) {
-        NP_Warn("Setting %d players max (requested %d)", DEFAULT, players);
-        players = DEFAULT;
+    if (players < 2 || players > NUTPUNCH_MAX_PLAYERS) {
+        NP_Warn("Setting %d players max (requested %d)", NUTPUNCH_MAX_PLAYERS, players);
+        players = NUTPUNCH_MAX_PLAYERS;
     }
 
     NP_HeartbeatFlags &= 0xF;
