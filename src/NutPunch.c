@@ -591,7 +591,7 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     NutPunch_Memcpy(&same_nat.host, data, 4), data += 4;
     same_nat.port = ntohs(*(uint16_t*)data), data += 2;
 
-    if (NP_AddrNull(pub)) { // they're dead on the NutPuncher's side
+    if (NP_AddrNull(pub) && NP_AddrNull(same_nat)) { // they're dead on the NutPuncher's side
         NP_KillPeer(idx);
         return;
     }
@@ -601,8 +601,10 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     if (!peer->enet) {
         if (!peer->pub_tmp)
             peer->pub_tmp = enet_host_connect(NP_ENetHost, &pub, 1 + NP_ChannelCount, 0);
-        if (!peer->same_nat_tmp)
+        if (!peer->same_nat_tmp) {
             peer->same_nat_tmp = enet_host_connect(NP_ENetHost, &same_nat, 1 + NP_ChannelCount, 0);
+            NP_Warn("SHIT %s", NP_FormatSockaddr(same_nat));
+        }
     }
 
     static uint8_t ping[NP_PING_SIZE] = "PING";

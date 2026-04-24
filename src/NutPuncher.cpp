@@ -344,7 +344,8 @@ struct Lobby {
         *ptr++ = master();
         *ptr++ = capacity;
 
-        static constexpr const size_t addrs_size = NUTPUNCH_MAX_PLAYERS * sizeof(NP_PeerAddr) * 2;
+        static constexpr const size_t stride = sizeof(NP_PeerAddr) * 2,
+                                      addrs_size = NUTPUNCH_MAX_PLAYERS * stride;
         std::memset(ptr, 0, addrs_size);
 
         for (const auto& player : players) {
@@ -352,7 +353,7 @@ struct Lobby {
                 continue;
 
             const auto addr = player.enet->address;
-            const size_t off = player.index * sizeof(NP_PeerAddr);
+            const size_t off = player.index * stride;
 
             uint16_t port = htons(addr.port);
             memcpy(ptr + off + 0, &addr.host, 4);
