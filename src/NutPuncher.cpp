@@ -457,7 +457,7 @@ struct Grindr {
         *ptr = (KEEP_QUEUE_FOR - elapsed(last_match)) / NUTPUNCH_SEC;
         ptr += sizeof(uint8_t);
 
-        *(uint16_t*)ptr = num_players - 1;
+        *(uint16_t*)ptr = htons(num_players - 1);
         ptr += sizeof(uint16_t);
 
         for (const auto& [id, p] : players)

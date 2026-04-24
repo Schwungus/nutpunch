@@ -731,7 +731,7 @@ static void NP_HandleQueue(NP_Message msg) {
 
     NP_LastBeating = NutPunch_TimeNS();
     NP_QueueTime = *msg.data++;
-    NP_QueueCount = *(uint16_t*)msg.data;
+    NP_QueueCount = ntohs(*(uint16_t*)msg.data);
 }
 
 static void NP_HandleDate(NP_Message msg) {
