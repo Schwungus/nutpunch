@@ -360,7 +360,7 @@ struct Lobby {
             memcpy(ptr + off + 4, &port, 2);
 
             port = htons(player.same_nat.port);
-            memcpy(ptr + off + 6, &addr.host, 4);
+            memcpy(ptr + off + 6, &player.same_nat.host, 4);
             memcpy(ptr + off + 10, &port, 2);
         }
         ptr += addrs_size;
