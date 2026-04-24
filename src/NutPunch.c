@@ -535,19 +535,27 @@ static void NP_HandleGTFO(NP_Message msg) {
     if (msg.from != NP_PuncherPeer)
         return;
 
-    // Have to work around designated array initializers for C++ NutPuncher to compile...
-    const char* errors[NPE_Max] = {0};
-    errors[NPE_NoSuchLobby] = "Lobby doesn't exist";
-    errors[NPE_LobbyExists] = "Lobby already exists";
-    errors[NPE_LobbyFull] = "Lobby is full";
-    errors[NPE_QueueNoMatch] = "No players to match with";
-    errors[NPE_Sybau] = "sybau :wilted_rose:";
-
-    int idx = msg.data[0];
-    if (idx <= NPE_Ok || idx >= NPE_Max)
+    switch (msg.data[0]) {
+    case NPE_NoSuchLobby:
+        NP_Warn("Lobby doesn't exist: '%s'", NP_LobbyId);
+        break;
+    case NPE_LobbyExists:
+        NP_Warn("The lobby you're hosting exists: '%s'", NP_LobbyId);
+        break;
+    case NPE_LobbyFull:
+        NP_Warn("Lobby '%s' is full!", NP_LobbyId);
+        break;
+    case NPE_QueueNoMatch:
+        NP_Warn("We found no players to match you with!");
+        break;
+    case NPE_Sybau:
+        NP_Warn("sybau :wilted_rose:");
+        break;
+    default:
         NP_Warn("Unidentified error");
-    else
-        NP_Warn("%s", errors[idx]);
+        break;
+    }
+
     NP_LastStatus = NPS_Error;
 }
 
