@@ -58,11 +58,14 @@ int main(int argc, char* argv[]) {
     NutPunch_Register(NPCB_LobbyMetadata, handle_lobby_data);
 
     NutPunch_QueryMode();
-    NutPunch_FindLobbies(0, NULL);
-
-    int refresh = 0;
+    int threshold = 150, refresh = threshold;
 
     for (;;) {
+        if (++refresh >= threshold) {
+            NutPunch_FindLobbies(0, NULL);
+            refresh = 0;
+        }
+
         if (NPS_Error == NutPunch_Update()) {
             printf("failed to connect or smth\n");
             return EXIT_FAILURE;
@@ -74,11 +77,6 @@ int main(int argc, char* argv[]) {
             break;
         }
 #endif
-
-        if (++refresh >= 150) {
-            NutPunch_FindLobbies(0, NULL);
-            refresh = 0;
-        }
 
         NP_SleepMs(1000 / 30);
     }
