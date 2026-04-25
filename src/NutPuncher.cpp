@@ -561,8 +561,11 @@ static void send_lobby_metadata(ENetPeer* peer, const char* target_id) {
 static void send_lobbies(ENetPeer* peer, size_t filter_count, const NutPunch_Filter* filters) {
     constexpr const size_t fuckyou = NUTPUNCH_MAX_SEARCH_RESULTS * sizeof(NutPunch_LobbyInfo);
     static uint8_t buf[sizeof(NP_Header) + fuckyou] = "LIST"; // BITCH REFORMATS EVERY COMMIT
-    uint8_t* ptr = buf + sizeof(NP_Header);
 
+    if (filter_count > NUTPUNCH_MAX_SEARCH_FILTERS)
+        return;
+
+    uint8_t* ptr = buf + sizeof(NP_Header);
     size_t count = 0;
 
     for (const auto& [id, lobby] : lobbies) {
@@ -605,7 +608,7 @@ static void handle_recv(ENetEvent event) {
     if (!std::memcmp(buf, "LIST", sizeof(NP_Header))) {
         if (rcv == sizeof(NutPunch_LobbyId)) {
             send_lobby_metadata(event.peer, ptr);
-        } else if (!(rcv % sizeof(NutPunch_Filter))) {
+        } else if (rcv % sizeof(NutPunch_Filter) == 0) {
             const auto filtars = reinterpret_cast<const NutPunch_Filter*>(ptr);
             send_lobbies(event.peer, rcv / sizeof(NutPunch_Filter), filtars);
         } else {
