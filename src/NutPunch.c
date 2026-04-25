@@ -68,14 +68,14 @@ static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeati
 #define NP_PING_SIZE (sizeof(NP_Header) + 1 + sizeof(NutPunch_Metadata))
 
 static const NP_MessageType NP_MessageTypes[] = {
-    {"PING", NP_HandlePing,          1 + sizeof(NutPunch_Metadata)                       },
-    {"LIST", NP_HandleListing,       NP_ANY_LEN                                          },
-    {"LGMA", NP_HandleLobbyMetadata, sizeof(NutPunch_LobbyId) + sizeof(NutPunch_Metadata)},
-    {"DATA", NP_HandleData,          NP_ANY_LEN                                          },
-    {"GTFO", NP_HandleGTFO,          1                                                   },
-    {"BEAT", NP_HandleBeating,       sizeof(NP_Beating)                                  },
-    {"QUEU", NP_HandleQueue,         sizeof(uint8_t) + sizeof(uint16_t)                  },
-    {"DATE", NP_HandleDate,          sizeof(NutPunch_LobbyId)                            },
+    {"PING", NP_HandlePing,          1 + sizeof(NutPunch_Metadata)                           },
+    {"LIST", NP_HandleListing,       NP_ANY_LEN                                              },
+    {"LGMA", NP_HandleLobbyMetadata, sizeof(NutPunch_LobbyId) + 1 + sizeof(NutPunch_Metadata)},
+    {"DATA", NP_HandleData,          NP_ANY_LEN                                              },
+    {"GTFO", NP_HandleGTFO,          1                                                       },
+    {"BEAT", NP_HandleBeating,       sizeof(NP_Beating)                                      },
+    {"QUEU", NP_HandleQueue,         sizeof(uint8_t) + sizeof(uint16_t)                      },
+    {"DATE", NP_HandleDate,          sizeof(NutPunch_LobbyId)                                },
 };
 
 void NP_DefaultLogger(const char* fmt, ...) {
@@ -700,18 +700,14 @@ static void NP_HandleListing(NP_Message msg) {
 }
 
 static void NP_HandleLobbyMetadata(NP_Message msg) {
-    if (msg.from != NP_PuncherPeer || msg.len < sizeof(NutPunch_LobbyId))
+    if (msg.from != NP_PuncherPeer)
         return;
 
     NP_LastBeating = NutPunch_TimeNS();
 
     NutPunch_LobbyMetadata info = {0};
-
-    NutPunch_Memcpy(info.lobby, msg.data, sizeof(NutPunch_LobbyId));
-    msg.data += sizeof(NutPunch_LobbyId);
-    info.count = (msg.len - sizeof(NutPunch_LobbyId)) / sizeof(NutPunch_Field);
-    info.metadata = info.count ? (NutPunch_Field*)msg.data : NULL;
-
+    NutPunch_Memcpy(info.lobby, msg.data, sizeof(info.lobby)), msg.data += sizeof(info.lobby);
+    info.count = *msg.data++, info.metadata = info.count ? (NutPunch_Field*)msg.data : NULL;
     NP_HandleEventCb(NPCB_LobbyMetadata, &info);
 }
 

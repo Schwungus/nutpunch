@@ -526,13 +526,9 @@ static bool create_lobby(const std::string& id, ENetPeer* peer) {
     return true;
 }
 
-static void send_lobbies(ENetPeer* peer, const char* target_id) {
-    constexpr const size_t pnrsize = sizeof(NutPunch_LobbyId) + sizeof(NutPunch_Metadata);
+static void send_lobby_metadata(ENetPeer* peer, const char* target_id) {
+    constexpr const size_t pnrsize = sizeof(NutPunch_LobbyId) + 1 + sizeof(NutPunch_Metadata);
     static uint8_t buf[sizeof(NP_Header) + pnrsize] = "LGMA";
-    uint8_t* ptr = buf + sizeof(NP_Header);
-
-    std::memcpy(ptr, target_id, sizeof(NutPunch_LobbyId));
-    ptr += sizeof(NutPunch_LobbyId);
 
     if (!lobbies.contains(target_id))
         return;
@@ -542,12 +538,24 @@ static void send_lobbies(ENetPeer* peer, const char* target_id) {
     if (lobby.unlisted)
         return;
 
+    uint8_t* ptr = buf + sizeof(NP_Header);
+    std::memcpy(ptr, target_id, sizeof(NutPunch_LobbyId));
+    ptr += sizeof(NutPunch_LobbyId);
+
+    uint8_t count = 0;
+    for (const auto& field : lobby.metadata.fields)
+        count += (bool)field;
+    *ptr++ = count;
+
     for (const auto& field : lobby.metadata.fields) {
-        std::memcpy(ptr, &field, sizeof(NutPunch_Field));
+        if (field)
+            std::memcpy(ptr, &field, sizeof(NutPunch_Field));
+        else
+            std::memset(ptr, 0, sizeof(NutPunch_Field));
         ptr += sizeof(NutPunch_Field);
     }
 
-    just_send(peer, buf, sizeof(buf), 0);
+    just_send(peer, buf, ptr - buf, 0);
 }
 
 static void send_lobbies(ENetPeer* peer, size_t filter_count, const NutPunch_Filter* filters) {
@@ -596,7 +604,7 @@ static void handle_recv(ENetEvent event) {
 
     if (!std::memcmp(buf, "LIST", sizeof(NP_Header))) {
         if (rcv == sizeof(NutPunch_LobbyId)) {
-            send_lobbies(event.peer, ptr);
+            send_lobby_metadata(event.peer, ptr);
         } else if (!(rcv % sizeof(NutPunch_Filter))) {
             const auto filtars = reinterpret_cast<const NutPunch_Filter*>(ptr);
             send_lobbies(event.peer, rcv / sizeof(NutPunch_Filter), filtars);

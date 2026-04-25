@@ -477,6 +477,9 @@ typedef uint8_t NP_HeartbeatFlagsStorage;
 typedef uint8_t NP_Header[4];
 
 // tightly packed structs matching packet layouts.
+//
+// FOR THE FUTURE GENERATIONS: PACKET STRUCTS GO HERE!!!!!!
+
 #pragma pack(push, 1)
 
 typedef struct {
