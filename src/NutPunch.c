@@ -878,8 +878,7 @@ static void NP_SendHeartbeat() {
 }
 
 static void NP_FlushPendingQueue() {
-    NP_ENetQueue* prev = NULL;
-    for (NP_ENetQueue* cur = NP_Pending; cur; cur = cur->next) {
+    for (NP_ENetQueue *prev = NULL, *cur = NP_Pending; cur; cur = cur->next) {
         if (cur->peer->state != ENET_PEER_STATE_CONNECTED) {
             prev = cur;
             continue;
