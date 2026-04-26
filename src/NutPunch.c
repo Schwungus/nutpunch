@@ -300,13 +300,8 @@ static void NP_SetVar(NutPunch_Field** fields, const char* name, const char* dat
 }
 
 static void NP_DumpMetadata(void* raw_out, const NutPunch_Field* fields) {
-    char* out = raw_out;
-
-    while (fields) {
-        NutPunch_Memcpy(out, fields->name, NUTPUNCH_FIELD_NAME_MAX), out += NUTPUNCH_FIELD_NAME_MAX;
-        NutPunch_Memcpy(out, fields->data, NUTPUNCH_FIELD_DATA_MAX), out += NUTPUNCH_FIELD_DATA_MAX;
-        fields = fields->next;
-    }
+    for (char* out = raw_out; fields; fields = fields->next)
+        NutPunch_Memcpy(out, fields, sizeof(NP_Field)), out += sizeof(NP_Field);
 }
 
 void NutPunch_RequestLobbyData(const NutPunch_LobbyId lobby) {
