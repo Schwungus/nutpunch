@@ -130,7 +130,11 @@ NP_JustSend(ENetPeer* peer, uint8_t channel, const void* buf, size_t len, uint32
     if (!peer)
         return;
 
+    flags &= ~ENET_PACKET_FLAG_NO_ALLOCATE;
     ENetPacket* packet = enet_packet_create(buf, len, flags);
+
+    if (!packet)
+        return;
 
     NP_ENetQueue* last = NP_Pending;
     for (; last && last->next; last = last->next) {}
@@ -150,14 +154,6 @@ static void NP_NukeLobbyDataLite() {
 
     NutPunch_SetMaxPlayers(NUTPUNCH_MAX_PLAYERS);
 
-    if (NP_PuncherPeer)
-        enet_peer_disconnect_now(NP_PuncherPeer, 0);
-    NP_PuncherPeer = NULL;
-
-    if (NP_ENetHost)
-        enet_host_destroy(NP_ENetHost);
-    NP_ENetHost = NULL;
-
     for (size_t i = 0; i < NUTPUNCH_MAX_CHANNELS; i++) {
         while (NP_Unread[i]) {
             NP_DataQueue* ptr = NP_Unread[i];
@@ -169,10 +165,18 @@ static void NP_NukeLobbyDataLite() {
 
     while (NP_Pending) {
         NP_ENetQueue* ptr = NP_Pending;
-        NP_Pending->next = ptr->next;
+        NP_Pending = ptr->next;
         enet_packet_destroy(ptr->packet);
         NutPunch_Free(ptr);
     }
+
+    if (NP_PuncherPeer)
+        enet_peer_disconnect_now(NP_PuncherPeer, 0);
+    NP_PuncherPeer = NULL;
+
+    if (NP_ENetHost)
+        enet_host_destroy(NP_ENetHost);
+    NP_ENetHost = NULL;
 }
 
 static void NP_NukeMetadata(NutPunch_Field** metadata) {
