@@ -209,7 +209,7 @@ static void NP_LazyInit() {
     enet_initialize();
 
     srand(NutPunch_TimeNS());
-    for (int i = 0; i < sizeof(NutPunch_PeerId); i++)
+    for (size_t i = 0; i < sizeof(NutPunch_PeerId); i++)
         NP_PeerId[i] = (char)('A' + rand() % 26);
 
     NP_ResetImpl();
@@ -537,7 +537,7 @@ static void NP_HandlePing(NP_Message msg) {
 
     size_t changed_count = 0;
 
-    for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+    for (size_t i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
         NP_Field now = *(NP_Field*)msg.data;
         msg.data += sizeof(now);
 
@@ -564,7 +564,7 @@ static void NP_HandlePing(NP_Message msg) {
         NP_HandleEventCb(NPCB_PeerJoined, &idx);
 
     // makes more sense to emit peer metadata changes AFTER they've been joined.
-    for (int i = 0; i < changed_count; i++)
+    for (size_t i = 0; i < changed_count; i++)
         NP_HandleEventCb(NPCB_PeerMetadataChanged, &changed[i]);
 }
 
@@ -689,7 +689,7 @@ static void NP_HandleBeating(NP_Message msg) {
         msg.data += 2 * sizeof(NP_PeerAddr);
     }
 
-    for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+    for (size_t i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
         NP_Field now = *(NP_Field*)msg.data;
         msg.data += sizeof(now);
 
@@ -744,7 +744,7 @@ static void NP_HandleLobbyMetadata(NP_Message msg) {
     NutPunch_Memcpy(info.lobby, msg.data, sizeof(info.lobby)), msg.data += sizeof(info.lobby);
     info.metadata = NULL;
 
-    for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+    for (size_t i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
         if (!msg.data[0])
             break;
 
@@ -905,7 +905,7 @@ static void NP_TickENetHost() {
             uint8_t* const buf = event.packet->data;
             const size_t len = sizeof(NP_MessageTypes) / sizeof(*NP_MessageTypes);
 
-            for (int i = 0; i < len; i++) {
+            for (size_t i = 0; i < len; i++) {
                 const NP_MessageType type = NP_MessageTypes[i];
 
                 if (type.packet_size != NP_ANY_LEN && size != type.packet_size)
