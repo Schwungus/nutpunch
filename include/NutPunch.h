@@ -50,16 +50,6 @@ extern "C" {
 /// The UDP port used by the nutpunching mediator server.
 #define NUTPUNCH_SERVER_PORT (30000 + NUTPUNCH_API_VERSION)
 
-#ifndef NUTPUNCH_SERVER_TIMEOUT_INTERVAL
-/// How many milliseconds to wait for NutPuncher to respond before disconnecting.
-#define NUTPUNCH_SERVER_TIMEOUT_INTERVAL ((NutPunch_Clock)5000)
-#endif
-
-#ifndef NUTPUNCH_PEER_TIMEOUT_INTERVAL
-/// How many milliseconds to wait for a peer to respond before timing out.
-#define NUTPUNCH_PEER_TIMEOUT_INTERVAL ((NutPunch_Clock)5000)
-#endif
-
 /// The maximum amount of results `NutPunch_LobbyList` can provide.
 #define NUTPUNCH_MAX_SEARCH_RESULTS (16)
 

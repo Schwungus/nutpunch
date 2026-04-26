@@ -94,8 +94,6 @@ void NP_DefaultLogger(const char* fmt, ...) {
 void (*NP_Logger)(const char*, ...) = NULL;
 char NP_LastError[512] = "";
 
-static NutPunch_Clock NP_LastBeating = 0;
-
 static bool NP_InitDone = false, NP_Closing = false;
 static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
@@ -192,7 +190,6 @@ static void NP_NukeLobbyData() {
 }
 
 static void NP_ResetImpl() {
-    NP_LastBeating = NutPunch_TimeNS();
     NP_NukeLobbyData();
 
     NP_MemzeroRef(NP_ServerAddr), NP_Memzero(NP_Peers);
@@ -374,7 +371,6 @@ static bool NP_Connect(const char* lobby_id, bool sane, NP_HeartbeatFlagsStorage
     }
 
     NP_HeartbeatFlags = flags;
-    NP_LastBeating = NutPunch_TimeNS();
 
     NP_Info("Ready to send heartbeats");
     NP_LastStatus = NPS_Online;
@@ -663,8 +659,6 @@ static void NP_HandleBeating(NP_Message msg) {
     if (msg.from != NP_PuncherPeer)
         return;
 
-    NP_LastBeating = NutPunch_TimeNS();
-
     const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
     const NutPunch_Peer old_master = NutPunch_MasterPeer();
     const uint8_t* ptr = msg.data;
@@ -746,8 +740,6 @@ static void NP_HandleListing(NP_Message msg) {
     if (msg.from != NP_PuncherPeer)
         return;
 
-    NP_LastBeating = NutPunch_TimeNS();
-
     NutPunch_LobbyList list = {0};
     list.count = msg.len / sizeof(NutPunch_LobbyInfo);
     list.lobbies = list.count ? (NutPunch_LobbyInfo*)msg.data : NULL;
@@ -758,8 +750,6 @@ static void NP_HandleListing(NP_Message msg) {
 static void NP_HandleLobbyMetadata(NP_Message msg) {
     if (msg.from != NP_PuncherPeer)
         return;
-
-    NP_LastBeating = NutPunch_TimeNS();
 
     NutPunch_LobbyMetadata info = {0};
 
@@ -810,8 +800,6 @@ static void NP_HandleData(NP_Message msg) {
 static void NP_HandleQueue(NP_Message msg) {
     if (msg.from != NP_PuncherPeer)
         return;
-
-    NP_LastBeating = NutPunch_TimeNS();
     NP_QueueTime = *msg.data++;
     NP_QueueCount = ntohs(*(uint16_t*)msg.data);
 }
@@ -970,17 +958,9 @@ void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
 }
 
 static void NP_NetworkUpdate() {
-    NutPunch_Clock now = NutPunch_TimeNS(),
-                   server_timeout = NUTPUNCH_SERVER_TIMEOUT_INTERVAL * NUTPUNCH_MS;
-
-    if (NP_Mode != NPNM_Query && (now - NP_LastBeating) >= server_timeout) {
-        NP_Warn("NutPuncher connection timed out!");
-        NP_LastStatus = NPS_Error;
-    } else {
-        NP_SendHeartbeat();
-        NP_FlushPendingQueue();
-        NP_TickENetHost();
-    }
+    NP_SendHeartbeat();
+    NP_FlushPendingQueue();
+    NP_TickENetHost();
 }
 
 NutPunch_UpdateStatus NutPunch_Update() {
