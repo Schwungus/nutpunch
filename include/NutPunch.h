@@ -123,7 +123,7 @@ extern char NP_LastError[512];
     } while (0)
 
 #ifdef NUTPUNCH_WINDOSE
-#define NP_SleepMs(ms) Sleep(ms)
+#define NP_SleepMs Sleep
 #else
 void NP_SleepMs(int ms);
 #endif

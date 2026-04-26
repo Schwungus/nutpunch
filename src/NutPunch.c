@@ -1099,22 +1099,9 @@ const char* NutPunch_Basename(const char* path) {
     return path;
 }
 
-// `TIME_UTC` & `timespec_get` polyfill for picky compilers.
-#ifndef TIME_UTC
-
-#define TIME_UTC 1
-
-static int timespec_get(struct timespec* ts, int base) {
-    if (base == TIME_UTC)
-        return clock_gettime(CLOCK_REALTIME, ts) ? 0 : base;
-    return 0;
-}
-
-#endif // TIME_UTC
-
 NutPunch_Clock NutPunch_TimeNS() {
     struct timespec ts = {0};
-    timespec_get(&ts, TIME_UTC);
+    clock_gettime(CLOCK_REALTIME, &ts);
     return (NutPunch_Clock)ts.tv_sec * NUTPUNCH_SEC + (NutPunch_Clock)ts.tv_nsec;
 }
 

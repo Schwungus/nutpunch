@@ -24,7 +24,7 @@ target_include_directories(NutPunch PUBLIC
 target_link_libraries(NutPunch PUBLIC enet)
 
 if(WIN32)
-    # pthreads required for the `timespec_get` polyfill
+    # pthreads required for `clock_gettime`
     target_link_libraries(NutPunch PUBLIC winpthread)
 endif()
 
