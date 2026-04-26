@@ -131,7 +131,7 @@ struct Metadata {
             outf++;
         }
 
-        return (int)(out - (char*)rawout);
+        return (int)(out - (char*)outf);
     }
 
     void load(const char* ptr, size_t num_fields) {
@@ -279,7 +279,8 @@ struct Lobby {
 
         static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)
                            + ((size_t)NUTPUNCH_MAX_PLAYERS * (1 + (2 * sizeof(NP_PeerAddr))))
-                           + sizeof(NP_Metadata)] = "BEAT";
+                           + sizeof(NP_Metadata)]
+            = "BEAT";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
         *ptr++ = unlisted;

@@ -64,22 +64,20 @@ typedef struct NP_ENetQueue {
 typedef struct {
     const char identifier[sizeof(NP_Header) + 1];
     void (*const handle)(NP_Message);
-    const int64_t packet_size;
+    const int64_t min_packet_size;
 } NP_MessageType;
 
 static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
     NP_HandleListing(NP_Message), NP_HandleLobbyMetadata(NP_Message), NP_HandleData(NP_Message),
     NP_HandleQueue(NP_Message), NP_HandleDate(NP_Message);
 
-#define NP_ANY_LEN (-1)
-
 static const NP_MessageType NP_MessageTypes[] = {
-    {"PING", NP_HandlePing,          NP_ANY_LEN                                    },
-    {"LIST", NP_HandleListing,       NP_ANY_LEN                                    },
+    {"PING", NP_HandlePing,          1                                             },
+    {"LIST", NP_HandleListing,       0                                             },
     {"LGMA", NP_HandleLobbyMetadata, sizeof(NutPunch_LobbyId) + sizeof(NP_Metadata)},
-    {"DATA", NP_HandleData,          NP_ANY_LEN                                    },
+    {"DATA", NP_HandleData,          0                                             },
     {"GTFO", NP_HandleGTFO,          1                                             },
-    {"BEAT", NP_HandleBeating,       NP_ANY_LEN                                    },
+    {"BEAT", NP_HandleBeating,       sizeof(NP_Beating)                            },
     {"QUEU", NP_HandleQueue,         1 + 2                                         },
     {"DATE", NP_HandleDate,          sizeof(NutPunch_LobbyId)                      },
 };
@@ -522,12 +520,11 @@ static bool NP_AddrNull(ENetAddress addr) {
 }
 
 static void NP_HandlePing(NP_Message msg) {
-    if (msg.len < 1)
-        return;
-
     const uint8_t* ptr = msg.data;
 
     const NutPunch_Peer idx = *ptr++;
+    msg.len--;
+
     if (idx >= NUTPUNCH_MAX_PLAYERS)
         return;
 
@@ -540,9 +537,9 @@ static void NP_HandlePing(NP_Message msg) {
     static NutPunch_PeerFieldDiff changed[NUTPUNCH_MAX_FIELDS] = {0};
     NP_Memzero(changed);
 
-    const size_t num_fields = (msg.len - (ptr - msg.data)) / sizeof(NP_Field);
     size_t changed_count = 0;
-    for (size_t i = 0; i < num_fields; i++) {
+
+    for (size_t i = 0; i < msg.len / sizeof(NP_Field); i++) {
         NP_Field now = ((NP_Field*)ptr)[i];
 
         for (NutPunch_Field* then = NP_LobbyMetadata; then; then = then->next) {
@@ -666,12 +663,6 @@ static void NP_HandleBeating(NP_Message msg) {
     if (msg.from != NP_PuncherPeer)
         return;
 
-    size_t expected_len = sizeof(NP_Beating);
-    if (msg.len < expected_len) {
-        NP_Warn("Invalid beating");
-        return;
-    }
-
     NP_LastBeating = NutPunch_TimeNS();
 
     const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
@@ -680,13 +671,16 @@ static void NP_HandleBeating(NP_Message msg) {
 
     NP_Unlisted = *ptr++;
     NP_LocalPeer = *ptr++;
+    NP_Master = *ptr++;
+    const size_t num_peers = *ptr++;
+    NP_MaxPlayers = *ptr++;
+
     if (NP_LocalPeer >= NUTPUNCH_MAX_PLAYERS) {
         NP_Warn("NutPuncher sent us a junk response?!");
         return;
     }
-    NP_Master = *ptr++;
-    const size_t num_peers = *ptr++;
-    NP_MaxPlayers = *ptr++;
+
+    const NutPunch_Peer new_master = NutPunch_MasterPeer();
 
     // add the join-existing flag after a successful join because otherwise we could get a
     // random-ass disconnection with the "Lobby already exists!" error message.
@@ -696,7 +690,9 @@ static void NP_HandleBeating(NP_Message msg) {
     NP_HeartbeatFlags &= 0xF;
     NP_HeartbeatFlags |= (NutPunch_GetMaxPlayers() - 1) << 4;
 
-    expected_len += num_peers * (1 + (2 * sizeof(NP_PeerAddr)));
+    const size_t expected_len = num_peers * (1 + 2 * sizeof(NP_PeerAddr));
+    msg.len -= sizeof(NP_Beating);
+
     if (msg.len < expected_len) {
         NP_Warn("Bad peer data in beating");
         goto done_getting_beat;
@@ -716,8 +712,7 @@ static void NP_HandleBeating(NP_Message msg) {
             NP_PrintOurAddresses(addrs[i]);
     }
 
-    const size_t num_fields = (msg.len - (ptr - msg.data)) / sizeof(NP_Field);
-    for (size_t i = 0; i < num_fields; i++) {
+    for (size_t i = 0; i < msg.len / sizeof(NP_Field); i++) {
         NP_Field now = ((NP_Field*)ptr)[i];
 
         for (NutPunch_Field* then = NP_LobbyMetadata; then; then = then->next) {
@@ -740,7 +735,6 @@ static void NP_HandleBeating(NP_Message msg) {
     }
 
 done_getting_beat:
-    const NutPunch_Peer new_master = NutPunch_MasterPeer();
     if (old_master != new_master) {
         if (new_master == NutPunch_LocalPeer())
             NP_Info("We're the lobby's master now");
@@ -927,7 +921,7 @@ static void NP_TickENetHost() {
             for (size_t i = 0; i < len; i++) {
                 const NP_MessageType type = NP_MessageTypes[i];
 
-                if (type.packet_size != NP_ANY_LEN && size != type.packet_size)
+                if (size < type.min_packet_size)
                     continue;
                 if (NutPunch_Memcmp(buf, type.identifier, sizeof(NP_Header)))
                     continue;
