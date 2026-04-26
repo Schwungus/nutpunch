@@ -540,7 +540,7 @@ static void NP_HandlePing(NP_Message msg) {
             if (NutPunch_StrNCmp(then->name, now.name, NUTPUNCH_FIELD_NAME_MAX))
                 continue;
 
-            if (NutPunch_StrNCmp(then->data, now.data, NUTPUNCH_FIELD_DATA_MAX))
+            if (!NutPunch_StrNCmp(then->data, now.data, NUTPUNCH_FIELD_DATA_MAX))
                 continue;
 
             NutPunch_PeerFieldDiff* diff = &changed[changed_count++];
