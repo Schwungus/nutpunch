@@ -302,12 +302,14 @@ struct Lobby {
         if (idx == NUTPUNCH_MAX_PLAYERS) {
             for (idx = 0; idx < (NutPunch_Peer)players.size(); idx++) {
                 bool good = true;
+
                 for (const auto& player : players) {
                     if (player.index == idx) {
                         good = false;
                         break;
                     }
                 }
+
                 if (good)
                     break;
             }
@@ -410,16 +412,11 @@ struct Lobby {
     }
 
     NutPunch_Peer master() {
-        if (master_idx < players.size() && players[master_idx])
-            return master_idx;
-        for (master_idx = 0; master_idx < (NutPunch_Peer)players.size(); master_idx++)
-            if (players[master_idx])
-                break;
-        return master_idx;
+        for (const auto& player : players)
+            if (player)
+                return player.index;
+        return NUTPUNCH_MAX_PLAYERS;
     }
-
-  private:
-    NutPunch_Peer master_idx = NUTPUNCH_MAX_PLAYERS;
 };
 
 struct Grindr {
