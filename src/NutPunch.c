@@ -47,12 +47,19 @@ typedef struct {
     NutPunch_Channel chan;
 } NP_Message;
 
-typedef struct NP_PacketQueue {
+typedef struct NP_DataQueue {
     NutPunch_Peer peer;
     void* data;
     size_t len;
-    struct NP_PacketQueue* next;
-} NP_PacketQueue;
+    struct NP_DataQueue* next;
+} NP_DataQueue;
+
+typedef struct NP_ENetQueue {
+    ENetPeer* peer;
+    ENetPacket* packet;
+    struct NP_ENetQueue* next;
+    uint8_t chan;
+} NP_ENetQueue;
 
 typedef struct {
     const char identifier[sizeof(NP_Header) + 1];
@@ -112,7 +119,8 @@ static ENetAddress NP_ServerAddr = {0};
 static char NP_ServerHost[128] = {0};
 
 static NutPunch_Channel NP_ChannelCount = 1;
-static NP_PacketQueue* NP_Unread[NUTPUNCH_MAX_CHANNELS] = {0};
+static NP_DataQueue* NP_Unread[NUTPUNCH_MAX_CHANNELS] = {0};
+static NP_ENetQueue* NP_Pending = NULL;
 
 static bool NP_Unlisted = false;
 
@@ -128,8 +136,12 @@ NP_JustSend(ENetPeer* peer, uint8_t channel, const void* buf, size_t len, uint32
         return;
 
     ENetPacket* packet = enet_packet_create(buf, len, flags);
-    if (enet_peer_send(peer, channel, packet))
-        enet_packet_destroy(packet);
+
+    NP_ENetQueue* last = NP_Pending;
+    for (; last && last->next; last = last->next) {}
+
+    last = *(last ? &last->next : &NP_Pending) = NutPunch_Malloc(sizeof(NP_ENetQueue));
+    last->peer = peer, last->packet = packet, last->chan = channel, last->next = NULL;
 }
 
 static void NP_NukeLobbyDataLite() {
@@ -153,11 +165,18 @@ static void NP_NukeLobbyDataLite() {
 
     for (size_t i = 0; i < NUTPUNCH_MAX_CHANNELS; i++) {
         while (NP_Unread[i]) {
-            NP_PacketQueue* ptr = NP_Unread[i];
+            NP_DataQueue* ptr = NP_Unread[i];
             NP_Unread[i] = ptr->next;
             NutPunch_Free(ptr->data);
             NutPunch_Free(ptr);
         }
+    }
+
+    while (NP_Pending) {
+        NP_ENetQueue* ptr = NP_Pending;
+        NP_Pending->next = ptr->next;
+        enet_packet_destroy(ptr->packet);
+        NutPunch_Free(ptr);
     }
 }
 
@@ -389,18 +408,22 @@ bool NutPunch_QueryMode() {
 }
 
 bool NutPunch_Host(const char* lobby_id) {
-    NP_Mode = NPNM_Normal;
     if (!NP_Connect(lobby_id, true, 0))
         return false;
+
+    NP_Mode = NPNM_Normal;
     NP_Info("Hosting lobby '%s'", NP_LobbyId);
+
     return true;
 }
 
 bool NutPunch_Join(const char* lobby_id) {
-    NP_Mode = NPNM_Normal;
     if (!NP_Connect(lobby_id, true, NP_HB_JoinExisting))
         return false;
+
+    NP_Mode = NPNM_Normal;
     NP_Info("Joining lobby '%s'", NP_LobbyId);
+
     return true;
 }
 
@@ -729,26 +752,16 @@ static void NP_HandleData(NP_Message msg) {
         return;
 
     NP_PeerInfo* const peer = &NP_Peers[peer_idx];
-    NP_PacketQueue* next = NULL;
 
-    if (!NP_Unread[chan]) {
-        NP_Unread[chan] = (NP_PacketQueue*)NutPunch_Malloc(sizeof(NP_PacketQueue));
-        next = NP_Unread[chan];
-    }
+    NP_DataQueue* last = NULL;
+    for (; last && last->next; last = last->next) {}
 
-    for (NP_PacketQueue* cur = NP_Unread[chan]; cur && !next; cur = cur->next) {
-        if (!cur->next) {
-            cur->next = (NP_PacketQueue*)NutPunch_Malloc(sizeof(NP_PacketQueue));
-            next = cur->next;
-            break;
-        }
-    }
+    last = *(last ? &last->next : &NP_Unread[chan])
+        = (NP_DataQueue*)NutPunch_Malloc(sizeof(NP_DataQueue));
 
-    if (next) {
-        next->peer = peer_idx, next->len = msg.len, next->next = NULL;
-        next->data = NutPunch_Malloc(next->len);
-        NutPunch_Memcpy(next->data, msg.data, next->len);
-    }
+    last->peer = peer_idx, last->len = msg.len, last->next = NULL;
+    last->data = NutPunch_Malloc(last->len);
+    NutPunch_Memcpy(last->data, msg.data, last->len);
 }
 
 static void NP_HandleQueue(NP_Message msg) {
@@ -823,6 +836,19 @@ static void NP_SendHeartbeat() {
 }
 
 static void NP_TickENetHost() {
+    NP_ENetQueue* prev = NULL;
+    for (NP_ENetQueue* cur = NP_Pending; cur; cur = cur->next) {
+        if (cur->peer->state != ENET_PEER_STATE_CONNECTED) {
+            prev = cur;
+            continue;
+        }
+
+        if (enet_peer_send(cur->peer, cur->chan, cur->packet))
+            enet_packet_destroy(cur->packet);
+        *(prev ? &prev->next : &NP_Pending) = cur->next;
+        NutPunch_Free(cur);
+    }
+
     ENetEvent event;
 
     while (enet_host_service(NP_ENetHost, &event, 0) > 0) {
@@ -952,7 +978,7 @@ int NutPunch_NextMessage(NutPunch_Channel chan, void* out, int* size) {
         return NUTPUNCH_MAX_PLAYERS;
     }
 
-    NP_PacketQueue* const packet = NP_Unread[chan];
+    NP_DataQueue* const packet = NP_Unread[chan];
 
     if (!packet) {
         NP_Warn("You forgot to check `NutPunch_HasMessage(%d)`", chan);
