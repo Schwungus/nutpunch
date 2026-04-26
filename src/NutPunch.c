@@ -1104,10 +1104,14 @@ bool NutPunch_IsReady() {
 
 const char* NutPunch_Basename(const char* path) {
     size_t len = 0;
-    for (len = 0; path[len]; len++) {}
+
+    while (path[len])
+        len++;
+
     for (size_t i = len - 2; i >= 0; i--)
         if (path[i] == '/' || path[i] == '\\')
             return &path[i + 1];
+
     return path;
 }
 
