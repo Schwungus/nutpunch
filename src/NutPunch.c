@@ -1019,7 +1019,7 @@ void NutPunch_Send(
     NutPunch_Memcpy(buf, "DATA", sizeof(NP_Header));
     NutPunch_Memcpy(ptr, data, size);
 
-    NP_JustSend(NP_Peers[peer].enet, 1 + channel, buf, total_size, flags | NP_Send_Reliably);
+    NP_JustSend(NP_Peers[peer].enet, 1 + channel, buf, total_size, flags);
 }
 
 int NutPunch_PeerCount() {
