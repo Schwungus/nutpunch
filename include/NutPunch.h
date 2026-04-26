@@ -67,10 +67,10 @@ extern "C" {
 #define NUTPUNCH_MAX_SEARCH_FILTERS (8)
 
 /// Maximum length of a metadata field name.
-#define NUTPUNCH_FIELD_NAME_MAX (8)
+#define NUTPUNCH_FIELD_NAME_MAX (16)
 
 /// Maximum volume of data you can store in a metadata field.
-#define NUTPUNCH_FIELD_DATA_MAX (16)
+#define NUTPUNCH_FIELD_DATA_MAX (32)
 
 /// Maximum amount of metadata fields per lobby/player.
 #define NUTPUNCH_MAX_FIELDS (8)
@@ -491,9 +491,7 @@ typedef struct {
 
 typedef struct {
     uint8_t unlisted;
-    NutPunch_Peer local, master, capacity;
-    NP_PeerAddr peers[2][NUTPUNCH_MAX_PLAYERS];
-    NP_Metadata lobby_metadata;
+    NutPunch_Peer local, master, count, capacity;
 } NP_Beating;
 
 typedef struct {
@@ -501,7 +499,6 @@ typedef struct {
     NutPunch_LobbyId lobby;
     NP_HeartbeatFlagsStorage flags;
     NP_PeerAddr same_nat;
-    NP_Metadata lobby_metadata;
 } NP_Heartbeat;
 
 typedef struct {

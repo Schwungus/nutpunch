@@ -119,7 +119,7 @@ struct Metadata {
             fields.insert_or_assign(name, data);
     }
 
-    void dump(void* rawout) const {
+    int dump(void* rawout) const {
         const auto out = reinterpret_cast<char*>(rawout);
         auto outf = reinterpret_cast<NP_Field*>(out);
 
@@ -130,10 +130,12 @@ struct Metadata {
             NutPunch_SNPrintF(outf->data, sizeof(outf->data), "%s", pair.second.c_str());
             outf++;
         }
+
+        return (int)(out - (char*)rawout);
     }
 
-    void load(const char* ptr) {
-        for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+    void load(const char* ptr, size_t num_fields) {
+        for (int i = 0; i < num_fields; i++) {
             const auto field = reinterpret_cast<const NP_Field*>(ptr)[i];
             const std::string name(field.name, strnlen(field.name, NUTPUNCH_FIELD_NAME_MAX)),
                 data(field.data, strnlen(field.data, NUTPUNCH_FIELD_DATA_MAX));
@@ -225,10 +227,10 @@ struct Lobby {
     }
 
     void accept(const std::string& id, ENetPeer* enet, const NP_HeartbeatFlagsStorage flags,
-        const char* meta) {
+        const char* buf, const char* ptr, size_t rcv) {
         ENetAddress same_nat{0, 0};
-        same_nat.host = *(uint32_t*)meta, meta += 4;
-        same_nat.port = ntohs(*(uint16_t*)meta), meta += 2;
+        same_nat.host = *(uint32_t*)ptr, ptr += 4;
+        same_nat.port = ntohs(*(uint16_t*)ptr), ptr += 2;
 
         if (!ntohl(same_nat.host))
             same_nat.host = htonl(0x7f000001);
@@ -267,7 +269,7 @@ struct Lobby {
         if (idx == master()) {
             unlisted = flags & NP_HB_Unlisted;
             capacity = 1 + (flags >> 4);
-            metadata.load(meta);
+            metadata.load(ptr, (rcv - (ptr - buf)) / sizeof(NP_Field));
         }
     }
 
@@ -275,39 +277,40 @@ struct Lobby {
         if (player.id.empty())
             return;
 
-        static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)] = "BEAT";
+        static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)
+                           + ((size_t)NUTPUNCH_MAX_PLAYERS * (1 + (2 * sizeof(NP_PeerAddr))))
+                           + sizeof(NP_Metadata)] = "BEAT";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
         *ptr++ = unlisted;
         *ptr++ = player.index;
         *ptr++ = master();
+        *ptr++ = (NutPunch_Peer)players.size();
         *ptr++ = capacity;
 
-        static constexpr const size_t stride = sizeof(NP_PeerAddr) * 2,
-                                      addrs_size = NUTPUNCH_MAX_PLAYERS * stride;
-        std::memset(ptr, 0, addrs_size);
-
+        static constexpr const size_t stride = 1 + (sizeof(NP_PeerAddr) * 2);
         for (const auto& player : players) {
             if (!player)
                 continue;
 
+            memcpy(ptr, &player.index, 1);
+
             const auto addr = player.enet->address;
-            const size_t off = player.index * stride;
 
             uint16_t port = htons(addr.port);
-            memcpy(ptr + off + 0, &addr.host, 4);
-            memcpy(ptr + off + 4, &port, 2);
+            memcpy(ptr + 1, &addr.host, 4);
+            memcpy(ptr + 5, &port, 2);
 
             port = htons(player.same_nat.port);
-            memcpy(ptr + off + 6, &player.same_nat.host, 4);
-            memcpy(ptr + off + 10, &port, 2);
+            memcpy(ptr + 7, &player.same_nat.host, 4);
+            memcpy(ptr + 11, &port, 2);
+
+            ptr += stride;
         }
-        ptr += addrs_size;
 
-        metadata.dump(ptr);
-        ptr += sizeof(NP_Metadata);
+        ptr += metadata.dump(ptr);
 
-        just_send(player.enet, buf, sizeof(buf), 0);
+        just_send(player.enet, buf, ptr - buf, 0);
     }
 
     void kill_bro(const NutPunch_PeerId id, ENetPeer* enet) {
@@ -554,7 +557,7 @@ static void handle_recv(ENetEvent event) {
         matchmaking.at(queue_id).accept(peer_id, event.peer);
     } else if (rcv >= sizeof(NutPunch_PeerId) && !std::memcmp(buf, "DISC", sizeof(NP_Header))) {
         kill_bro(ptr, event.peer);
-    } else if (rcv == sizeof(NP_Heartbeat) && !std::memcmp(buf, "JOIN", sizeof(NP_Header))) {
+    } else if (rcv >= sizeof(NP_Heartbeat) && !std::memcmp(buf, "JOIN", sizeof(NP_Header))) {
         std::string peer_id(ptr, sizeof(NutPunch_PeerId));
         ptr += sizeof(NutPunch_PeerId);
 
@@ -581,7 +584,7 @@ static void handle_recv(ENetEvent event) {
         }
 
         if (err == NPE_Ok)
-            lobbies[lobby_id].accept(peer_id, event.peer, flags, ptr);
+            lobbies[lobby_id].accept(peer_id, event.peer, flags, buf, ptr, rcv);
         else
             gtfo(event.peer, err);
     } else {
