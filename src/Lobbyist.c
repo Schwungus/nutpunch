@@ -32,17 +32,18 @@ static void handle_lobby_data(const void* raw) {
 
     printf("%.*s has ", (int)sizeof(NutPunch_LobbyId), info->lobby);
 
-    if (!info->count) {
+    if (!info->metadata) {
         printf("no data\n\n");
         return;
     }
 
-    printf("%u fields:\n", info->count);
-    for (int i = 0; i < info->count; i++) {
-        const NutPunch_Field* field = &info->metadata[i];
-        printf("%.*s: %.*s\n", (int)sizeof(field->name), field->name, (int)sizeof(field->data),
-            field->data);
-    }
+    uint8_t count = 0;
+    for (NutPunch_Field* field = info->metadata; field; field = field->next)
+        count++;
+
+    printf("%u fields:\n", count);
+    for (NutPunch_Field* field = info->metadata; field; field = field->next)
+        printf("%s: %s\n", field->name, field->data);
     printf("\n");
 }
 

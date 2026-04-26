@@ -107,105 +107,42 @@ static void gtfo(ENetPeer* peer, NutPunch_ErrorCode error) {
         just_send(peer, buf, sizeof(buf), 0);
 }
 
-struct Field : NutPunch_Field {
-    Field() {
-        reset();
-    }
-
-    explicit operator bool() const {
-        return size && name[0];
-    }
-
-    bool named(const char* name) const {
-        if (!name || !*name || !*this)
-            return false;
-
-        int arg_len = static_cast<int>(std::strlen(name));
-        if (arg_len > NUTPUNCH_FIELD_NAME_MAX)
-            arg_len = NUTPUNCH_FIELD_NAME_MAX;
-
-        int our_len = NUTPUNCH_FIELD_NAME_MAX;
-        for (int i = 1; i < NUTPUNCH_FIELD_NAME_MAX; i++) {
-            if (!this->name[i]) {
-                our_len = i;
-                break;
-            }
-        }
-
-        return our_len == arg_len && !std::memcmp(this->name, name, our_len);
-    }
-
-    bool matches(const NutPunch_Filter& filter) const {
-        const int diff = std::memcmp(data, filter.field.value, size);
-        return match_field_value(diff, filter.comparison);
-    }
-
-    void reset() {
-        std::memset(name, 0, sizeof(name));
-        std::memset(data, 0, sizeof(data));
-        size = 0;
-    }
-};
-
 struct Metadata {
-    Field fields[NUTPUNCH_MAX_FIELDS];
+    std::unordered_map<std::string, std::string> fields;
 
-    Metadata() {
-        reset();
+    Metadata() {}
+
+    void insert(const std::string& name, const std::string& data) {
+        if (name.empty())
+            return;
+        if (fields.size() < NUTPUNCH_MAX_FIELDS)
+            fields.insert_or_assign(name, data);
     }
 
-    Field* find(const char* name) {
-        const int idx = index_of(name);
-        return NUTPUNCH_MAX_FIELDS == idx ? nullptr : &fields[idx];
-    }
+    void dump(void* rawout) const {
+        const auto out = reinterpret_cast<char*>(rawout);
+        auto outf = reinterpret_cast<NP_Field*>(out);
 
-    void insert(const Field& field) {
-        if (!field.size)
-            return;
+        memset(out, 0, sizeof(NP_Metadata));
 
-        const int idx = index_of(field.name);
-        if (NUTPUNCH_MAX_FIELDS == idx)
-            return;
-
-        int name_size = static_cast<int>(std::strlen(field.name));
-        if (name_size > NUTPUNCH_FIELD_NAME_MAX)
-            name_size = NUTPUNCH_FIELD_NAME_MAX;
-
-        int data_size = field.size;
-        if (data_size > NUTPUNCH_FIELD_DATA_MAX)
-            data_size = NUTPUNCH_FIELD_DATA_MAX;
-
-        auto& target = fields[idx];
-        std::memcpy(target.name, field.name, name_size);
-        std::memcpy(target.data, field.data, data_size);
-        target.size = data_size;
+        for (const auto& pair : fields) {
+            NutPunch_SNPrintF(outf->name, sizeof(outf->name), "%s", pair.first.c_str());
+            NutPunch_SNPrintF(outf->data, sizeof(outf->data), "%s", pair.second.c_str());
+            outf++;
+        }
     }
 
     void load(const char* ptr) {
-        for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
-            insert(reinterpret_cast<const Field*>(ptr)[i]);
+        for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
+            const auto field = reinterpret_cast<const NP_Field*>(ptr)[i];
+            const std::string name(field.name, strnlen(field.name, NUTPUNCH_FIELD_NAME_MAX)),
+                data(field.data, strnlen(field.data, NUTPUNCH_FIELD_DATA_MAX));
+            insert(name, data);
+        }
     }
 
     void reset() {
-        std::memset(fields, 0, sizeof(fields));
-    }
-
-  private:
-    int index_of(const char* name) {
-        if (!name || !*name)
-            return NUTPUNCH_MAX_FIELDS;
-
-        // first matching
-        for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
-            if (fields[i].named(name))
-                return i;
-
-        // or first uninitialized
-        for (int i = 0; i < NUTPUNCH_MAX_FIELDS; i++)
-            if (!fields[i])
-                return i;
-
-        return NUTPUNCH_MAX_FIELDS; // or bust
+        fields.clear();
     }
 };
 
@@ -367,8 +304,8 @@ struct Lobby {
         }
         ptr += addrs_size;
 
-        std::memcpy(ptr, &metadata, sizeof(Metadata));
-        ptr += sizeof(Metadata);
+        metadata.dump(ptr);
+        ptr += sizeof(NP_Metadata);
 
         just_send(player.enet, buf, sizeof(buf), 0);
     }
@@ -389,25 +326,29 @@ struct Lobby {
             if (filter.field.alwayszero != 0) {
                 int diff = (uint8_t)filter.special.value;
                 diff -= special(filter.special.index);
+
                 if (match_field_value(diff, filter.comparison))
-                    goto next_filter;
+                    continue;
+
                 return false;
             }
 
-            for (int m = 0; m < NUTPUNCH_MAX_FIELDS; m++) {
-                const auto& field = metadata.fields[m];
-                if (!field.named(filter.field.name))
-                    continue;
-                if (field.matches(filter))
-                    goto next_filter;
-            }
+            const auto& field = filter.field;
+            const std::string name(field.name, strnlen(field.name, NUTPUNCH_FIELD_NAME_MAX));
 
-            return false; // no field matched the filter
-        next_filter:
-            continue;
+            if (!metadata.fields.contains(name))
+                return false;
+
+            const std::string& data = metadata.fields.at(name);
+            const int diff = std::memcmp(
+                data.c_str(), filter.field.value, strnlen(field.value, NUTPUNCH_FIELD_DATA_MAX));
+
+            if (match_field_value(diff, filter.comparison))
+                continue;
+
+            return false;
         }
 
-        // All filters matched.
         return true;
     }
 
@@ -524,7 +465,7 @@ static bool create_lobby(const std::string& id, ENetPeer* peer) {
 }
 
 static void send_lobby_metadata(ENetPeer* peer, const char* target_id) {
-    constexpr const size_t pnrsize = sizeof(NutPunch_LobbyId) + 1 + sizeof(NutPunch_Metadata);
+    constexpr const size_t pnrsize = sizeof(NutPunch_LobbyId) + sizeof(NP_Metadata);
     static uint8_t buf[sizeof(NP_Header) + pnrsize] = "LGMA";
 
     if (!lobbies.contains(target_id))
@@ -536,23 +477,13 @@ static void send_lobby_metadata(ENetPeer* peer, const char* target_id) {
         return;
 
     uint8_t* ptr = buf + sizeof(NP_Header);
+
     std::memcpy(ptr, target_id, sizeof(NutPunch_LobbyId));
     ptr += sizeof(NutPunch_LobbyId);
 
-    uint8_t count = 0;
-    for (const auto& field : lobby.metadata.fields)
-        count += (bool)field;
-    *ptr++ = count;
+    lobby.metadata.dump(ptr);
 
-    for (const auto& field : lobby.metadata.fields) {
-        if (field)
-            std::memcpy(ptr, &field, sizeof(NutPunch_Field));
-        else
-            std::memset(ptr, 0, sizeof(NutPunch_Field));
-        ptr += sizeof(NutPunch_Field);
-    }
-
-    just_send(peer, buf, ptr - buf, 0);
+    just_send(peer, buf, sizeof(buf), 0);
 }
 
 static void send_lobbies(ENetPeer* peer, size_t filter_count, const NutPunch_Filter* filters) {

@@ -1,7 +1,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include <NutPunch.h>
 
@@ -18,8 +17,7 @@ enum {
     CHAN_COUNT,
 };
 
-static const char *const magicKey = "NUTPUNCH", *const lobbyName = "Ligma";
-static const uint8_t magicValue = 66;
+static const char *magicKey = "NUTPUNCH", *magicValue = "TEST", *lobbyName = "Ligma";
 
 static const char* randomNames[]
     = {"Fimon", "Trollga", "Marsoyob", "Ficus", "Caccus", "Skibidi69er", "Caulksucker"};
@@ -60,10 +58,11 @@ static void maybe_join_netgame() {
         return;
     }
 
-    NutPunch_SetLobbyData(magicKey, sizeof(magicValue), &magicValue);
+    NutPunch_SetLobbyData(magicKey, magicValue);
 
     const char* name = randomNames[rand() % nameCount];
-    NutPunch_SetPeerData("NAME", (int)strlen(name) + 1, name);
+    NutPunch_SetPeerData("NAME", name);
+
     NP_Info("We are %s", name);
 }
 
@@ -93,12 +92,12 @@ static void receive_shit() {
     while (NutPunch_HasMessage(CHAN_CHAT)) {
         int size = sizeof(data);
         const int peer = NutPunch_NextMessage(CHAN_CHAT, data, &size);
-        NP_Info("[%s]: %s", (char*)NutPunch_GetPeerData(peer, "NAME", NULL), data);
+        NP_Info("[%s]: %s", NutPunch_GetPeerData(peer, "NAME"), data);
     }
 }
 
 static void chat_with(int idx) {
-    const char* theirName = NutPunch_GetPeerData(idx, "NAME", NULL);
+    const char* theirName = NutPunch_GetPeerData(idx, "NAME");
 
     if (!theirName)
         return;
@@ -145,12 +144,12 @@ static void draw_debug_bits(int status) {
 
 static void greet(const void* raw) {
     NutPunch_Peer peer = *(NutPunch_Peer*)raw;
-    NP_Info("Welcome, %s!", (char*)NutPunch_GetPeerData(peer, "NAME", NULL));
+    NP_Info("Welcome, %s!", NutPunch_GetPeerData(peer, "NAME"));
 }
 
 static void bye(const void* raw) {
     NutPunch_Peer peer = *(NutPunch_Peer*)raw;
-    NP_Info("Farewell, %s!", (char*)NutPunch_GetPeerData(peer, "NAME", NULL));
+    NP_Info("Farewell, %s!", NutPunch_GetPeerData(peer, "NAME"));
 }
 
 int main(int argc, char* argv[]) {

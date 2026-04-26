@@ -113,6 +113,8 @@ extern char NP_LastError[512];
 #define NP_Memzero(array) NutPunch_Memset(array, 0, sizeof(array))
 #define NP_MemzeroRef(ref) NutPunch_Memset(&(ref), 0, sizeof(ref))
 
+#define NutPunch_StrNCmp strncmp
+
 #define NP_Info(...) NutPunch_Log("INFO", __VA_ARGS__)
 #define NP_Warn(...)                                                                               \
     do {                                                                                           \
@@ -137,24 +139,23 @@ typedef char NutPunch_QueueId[16];
 
 typedef uint8_t NutPunch_Channel, NutPunch_Peer;
 
-/// A singular entry of lobby/peer metadata.
-typedef struct {
+/// A linked-list of of lobby/peer metadata.
+typedef struct NutPunch_Field {
     char name[NUTPUNCH_FIELD_NAME_MAX];
     char data[NUTPUNCH_FIELD_DATA_MAX];
-    uint8_t size;
+    struct NutPunch_Field* next;
 } NutPunch_Field;
-
-/// An array of key-value metadata pairs.
-typedef NutPunch_Field NutPunch_Metadata[NUTPUNCH_MAX_FIELDS];
 
 /// A struct containing a comparison between previous and updated metadata.
 typedef struct {
-    NutPunch_Field then, now;
+    char name[NUTPUNCH_FIELD_NAME_MAX];
+    char then[NUTPUNCH_FIELD_DATA_MAX], now[NUTPUNCH_FIELD_DATA_MAX];
 } NutPunch_FieldDiff;
 
 /// Same as `NutPunch_FieldDiff`, but with a peer identifier.
 typedef struct {
-    NutPunch_Field then, now;
+    char name[NUTPUNCH_FIELD_NAME_MAX];
+    char then[NUTPUNCH_FIELD_DATA_MAX], now[NUTPUNCH_FIELD_DATA_MAX];
     NutPunch_Peer peer;
 } NutPunch_PeerFieldDiff;
 
@@ -194,11 +195,10 @@ typedef struct {
     const NutPunch_LobbyInfo* lobbies;
 } NutPunch_LobbyList;
 
-/// A snapshot of a lobby's metadata returned by the nutpuncher.
+/// A snapshot of a lobby's metadata returned by the NutPuncher.
 typedef struct {
     NutPunch_LobbyId lobby;
-    uint8_t count;
-    const NutPunch_Field* metadata;
+    NutPunch_Field* metadata;
 } NutPunch_LobbyMetadata;
 
 /// Comparison operators used in `NutPunch_Filter`s.
@@ -236,9 +236,9 @@ typedef enum {
     NPCB_PeerLeft,
     /// Callback data: the index of the lobby's new master.
     NPCB_NewMaster,
-    /// Callback data: see `NutPunch_FieldChanged`.
+    /// Callback data: see `NutPunch_FieldDiff`.
     NPCB_LobbyMetadataChanged,
-    /// Callback data: see `NutPunch_PeerFieldChanged`.
+    /// Callback data: see `NutPunch_PeerFieldDiff`.
     NPCB_PeerMetadataChanged,
     /// Callback data: see `NutPunch_LobbyList`.
     NPCB_LobbyList,
@@ -325,29 +325,23 @@ void NutPunch_Flush();
 /// Triggers a `NPCB_LobbyMetadata` callback if successful.
 void NutPunch_RequestLobbyData(const NutPunch_LobbyId lobby);
 
-/// Returns metadata from a lobby.
-///
-/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
-/// squeeze into a field.
-const void* NutPunch_GetLobbyData(const char* name, int* size);
+/// Returns metadata from the lobby we're in.
+const char* NutPunch_GetLobbyData(const char* name);
 
-/// Returns metadata from a peer.
-///
-/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
-/// squeeze into a field.
-const void* NutPunch_GetPeerData(NutPunch_Peer peer, const char* name, int* size);
+/// Returns metadata a peer reported to us.
+const char* NutPunch_GetPeerData(NutPunch_Peer peer, const char* name);
 
-/// Sets metadata in the lobby. Doesn't do anything if you're not the master of the lobby.
+/// Sets metadata for the lobby. Doesn't do anything if you aren't the master.
 ///
-/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
-/// squeeze into a field.
-void NutPunch_SetLobbyData(const char* name, int size, const void* data);
+/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the maximum amounts of data you
+/// can squeeze into a field.
+void NutPunch_SetLobbyData(const char* name, const char* data);
 
-/// Sets metadata for the local peer.
+/// Sets metadata for this peer.
 ///
-/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the amount of data you can
-/// squeeze into a field.
-void NutPunch_SetPeerData(const char* name, int size, const void* data);
+/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the maximum amounts of data you
+/// can squeeze into a field.
+void NutPunch_SetPeerData(const char* name, const char* data);
 
 /// Sets the maximum amount of channels this peer can receive from. Packets with an index higher
 /// than or equal to maximum channel count are discarded silently.
@@ -482,6 +476,14 @@ typedef uint8_t NP_Header[4];
 
 #pragma pack(push, 1)
 
+/// The metadata field payload. Don't confuse with `NutPunch_Field`.
+typedef struct {
+    char name[NUTPUNCH_FIELD_NAME_MAX];
+    char data[NUTPUNCH_FIELD_DATA_MAX];
+} NP_Field;
+
+typedef NP_Field NP_Metadata[NUTPUNCH_MAX_FIELDS];
+
 typedef struct {
     uint32_t ip;
     uint16_t port;
@@ -491,7 +493,7 @@ typedef struct {
     uint8_t unlisted;
     NutPunch_Peer local, master, capacity;
     NP_PeerAddr peers[2][NUTPUNCH_MAX_PLAYERS];
-    NutPunch_Metadata metadata;
+    NP_Metadata lobby_metadata;
 } NP_Beating;
 
 typedef struct {
@@ -499,7 +501,7 @@ typedef struct {
     NutPunch_LobbyId lobby;
     NP_HeartbeatFlagsStorage flags;
     NP_PeerAddr same_nat;
-    NutPunch_Metadata lobby_metadata;
+    NP_Metadata lobby_metadata;
 } NP_Heartbeat;
 
 typedef struct {
