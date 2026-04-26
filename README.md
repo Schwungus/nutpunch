@@ -37,11 +37,12 @@ Once you've figured out how the players are to connect to your hole-puncher serv
    2. Check your status by matching the returned value against `NPS_*` constants. `NPS_Online` is what you're looking for normally, but make sure to handle `NPS_Error`. To get a human-readable error description, call `NutPunch_GetLastError()`.
 3. Run the game logic.
 4. Keep in sync with the peers:
-   1. Send datagrams with `NutPunch_Send()`.
-   2. Poll for incoming datagrams with `NutPunch_HasMessage()` and retrieve the datagrams with `NutPunch_NextMessage()`.
+   1. Send messages with `NutPunch_Send()`.
+   2. Poll for incoming messages with `NutPunch_HasMessage()` and retrieve them with `NutPunch_NextMessage()`.
+   3. Set/retrieve lobby or peer metadata with `NutPunch_Set*Data()`/`NutPunch_Get*Data()`.
 5. Repeat steps 2 through 4. You're all Gucci!
 
-Another important aspect of NutPunch networking would be the ability to set peer/lobby metadata in a simplified key-value store fashion. Peer metadata can include e.g. the peer's nickname, their skin spritesheet name, their lives count - anything you can squeeze into 16 bytes, mapped to an 8-byte key. The same applies to lobby metadata: this could be the name of the map you're playing, a seed value to generate the map procedurally, the difficulty level, etc.
+An important aspect of NutPunch networking is the ability to set peer/lobby metadata in a simplified key-value-store fashion. Peer metadata can include e.g. the peer's nickname, their skin spritesheet name, their lives count - anything you can squeeze into a 16-byte null-terminated string, mapped to 8-byte null-terminated string key. The same applies to lobby metadata: this could be the name of the map you're playing, a seed value to generate the map procedurally, the difficulty level, etc.
 
 Call `NutPunch_Set*Data(...)`/`NutPunch_Get*Data(...)` to set/get key-value pairs; replace the asterisk with either `Peer` or `Lobby`. Setting metadata only does anything if you're "in charge" of the metadata object: either you're the lobby's master and want to set the lobby's metadata, or you're trying to set your own metadata as a peer.
 
