@@ -835,7 +835,7 @@ static void NP_SendHeartbeat() {
     NP_JustSend(NP_PuncherPeer, 0, heartbeat, ptr - heartbeat, 0);
 }
 
-static void NP_TickENetHost() {
+static void NP_FlushPendingQueue() {
     NP_ENetQueue* prev = NULL;
     for (NP_ENetQueue* cur = NP_Pending; cur; cur = cur->next) {
         if (cur->peer->state != ENET_PEER_STATE_CONNECTED) {
@@ -848,7 +848,9 @@ static void NP_TickENetHost() {
         *(prev ? &prev->next : &NP_Pending) = cur->next;
         NutPunch_Free(cur);
     }
+}
 
+static void NP_TickENetHost() {
     ENetEvent event;
 
     while (enet_host_service(NP_ENetHost, &event, 0) > 0) {
@@ -916,6 +918,7 @@ static void NP_SendGoodbyes() {
 void NutPunch_Flush() {
     if (NP_Closing)
         NP_SendGoodbyes();
+    NP_FlushPendingQueue();
     if (NP_ENetHost != NULL)
         enet_host_flush(NP_ENetHost);
 }
@@ -934,6 +937,7 @@ static void NP_NetworkUpdate() {
         NP_LastStatus = NPS_Error;
     } else {
         NP_SendHeartbeat();
+        NP_FlushPendingQueue();
         NP_TickENetHost();
     }
 }
