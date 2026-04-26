@@ -533,8 +533,7 @@ static void NP_HandlePing(NP_Message msg) {
     size_t changed_count = 0;
 
     for (size_t i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-        NP_Field now = *(NP_Field*)msg.data;
-        msg.data += sizeof(now);
+        NP_Field now = ((NP_Field*)msg.data)[i];
 
         for (NutPunch_Field* then = NP_LobbyMetadata; then; then = then->next) {
             if (NutPunch_StrNCmp(then->name, now.name, NUTPUNCH_FIELD_NAME_MAX))
@@ -544,10 +543,9 @@ static void NP_HandlePing(NP_Message msg) {
                 continue;
 
             NutPunch_PeerFieldDiff* diff = &changed[changed_count++];
-            diff->peer = idx;
             NutPunch_SNPrintF(diff->name, sizeof(diff->name), "%s", then->name);
             NutPunch_SNPrintF(diff->then, sizeof(diff->then), "%s", then->data);
-            NutPunch_Memcpy(diff->now, now.data, sizeof(diff->now));
+            NutPunch_Memcpy(diff->now, now.data, sizeof(diff->now)), diff->peer = idx;
 
             break;
         }
@@ -685,8 +683,7 @@ static void NP_HandleBeating(NP_Message msg) {
     }
 
     for (size_t i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-        NP_Field now = *(NP_Field*)msg.data;
-        msg.data += sizeof(now);
+        NP_Field now = ((NP_Field*)msg.data)[i];
 
         for (NutPunch_Field* then = NP_LobbyMetadata; then; then = then->next) {
             if (NutPunch_StrNCmp(then->name, now.name, NUTPUNCH_FIELD_NAME_MAX))
@@ -739,18 +736,10 @@ static void NP_HandleLobbyMetadata(NP_Message msg) {
     NutPunch_Memcpy(info.lobby, msg.data, sizeof(info.lobby)), msg.data += sizeof(info.lobby);
     info.metadata = NULL;
 
-    for (size_t i = 0; i < NUTPUNCH_MAX_FIELDS; i++) {
-        if (!msg.data[0])
-            break;
-
+    for (size_t i = 0; msg.data[0] && i < NUTPUNCH_MAX_FIELDS; i++) {
         NutPunch_Field* field = NutPunch_Malloc(sizeof(*field));
         field->next = info.metadata, info.metadata = field;
-
-        NutPunch_Memcpy(field->name, msg.data, NUTPUNCH_FIELD_NAME_MAX);
-        msg.data += NUTPUNCH_FIELD_NAME_MAX;
-
-        NutPunch_Memcpy(field->data, msg.data, NUTPUNCH_FIELD_DATA_MAX);
-        msg.data += NUTPUNCH_FIELD_DATA_MAX;
+        NutPunch_Memcpy(field, msg.data, sizeof(NP_Field)), msg.data += sizeof(NP_Field);
     }
 
     NP_HandleEventCb(NPCB_LobbyMetadata, &info);
