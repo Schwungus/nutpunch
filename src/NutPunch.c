@@ -78,7 +78,7 @@ static const NP_MessageType NP_MessageTypes[] = {
     {"DATA", NP_HandleData,          0                                             },
     {"GTFO", NP_HandleGTFO,          1                                             },
     {"BEAT", NP_HandleBeating,       sizeof(NP_Beating)                            },
-    {"QUEU", NP_HandleQueue,         1 + 2                                         },
+    {"QUEU", NP_HandleQueue,         1 + 1                                         },
     {"DATE", NP_HandleDate,          sizeof(NutPunch_LobbyId)                      },
 };
 
@@ -805,7 +805,7 @@ static void NP_HandleQueue(NP_Message msg) {
     if (msg.from != NP_PuncherPeer)
         return;
     NP_QueueTime = *msg.data++;
-    NP_QueueCount = ntohs(*(uint16_t*)msg.data);
+    NP_QueueCount = *msg.data++;
 }
 
 static void NP_HandleDate(NP_Message msg) {

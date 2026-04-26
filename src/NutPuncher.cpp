@@ -407,19 +407,18 @@ struct Grindr {
         while (players.size() >= match) // highly unlikely to loop but i like taking it rough :)
             LETSGOO();
 
-        const auto num_players = players.size();
+        const size_t num_players = players.size();
         if (!num_players)
             return;
 
-        static uint8_t buf[sizeof(NP_Header) + sizeof(uint8_t) + sizeof(uint16_t)] = "QUEU";
+        static uint8_t buf[sizeof(NP_Header) + 1 + 1] = "QUEU";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
         const NutPunch_Clock since = elapsed(last_match),
                              diff = KEEP_QUEUE_FOR > since ? KEEP_QUEUE_FOR - since : 0;
-        *ptr++ = diff / NUTPUNCH_SEC;
 
-        *(uint16_t*)ptr = htons(num_players - 1);
-        ptr += sizeof(uint16_t);
+        *ptr++ = (uint8_t)std::min(NutPunch_Clock(255), diff / NUTPUNCH_SEC);
+        *ptr++ = (uint8_t)std::min(size_t(255), num_players - 1);
 
         for (const auto& [id, p] : players)
             just_send(p.enet, buf, sizeof(buf), 0);
