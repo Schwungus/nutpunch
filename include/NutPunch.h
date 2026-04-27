@@ -515,7 +515,15 @@ const char* NutPunch_Basename(const char* path);
 #define NUTPUNCH_MS (NUTPUNCH_SEC / ((NutPunch_Clock)1000))
 
 typedef uint64_t NutPunch_Clock;
-NutPunch_Clock NutPunch_TimeNS();
+
+#if !defined(NutPunch_TimeNS)
+#include <time.h>
+NutPunch_Clock NutPunch_TimeNS() {
+    struct timespec ts = {0};
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (NutPunch_Clock)ts.tv_sec * NUTPUNCH_SEC + (NutPunch_Clock)ts.tv_nsec;
+}
+#endif
 
 typedef struct sockaddr_in NP_SockAddr;
 
@@ -587,7 +595,6 @@ enum {
 
 #ifndef NUTPUNCH_NOSTD
 #include <stdarg.h>
-#include <time.h> // TODO: abstract away
 #endif
 
 typedef struct {
@@ -1774,12 +1781,6 @@ const char* NutPunch_Basename(const char* path) {
             return &path[i + 1];
 
     return path;
-}
-
-NutPunch_Clock NutPunch_TimeNS() {
-    struct timespec ts = {0};
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return (NutPunch_Clock)ts.tv_sec * NUTPUNCH_SEC + (NutPunch_Clock)ts.tv_nsec;
 }
 
 #ifndef NUTPUNCH_WINDOSE
