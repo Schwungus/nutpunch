@@ -370,7 +370,7 @@ fail:
     return false;
 }
 
-static bool NP_MakeNonblocking(NP_Sock sock) {
+bool NP_MakeNonblocking(NP_Sock sock) {
 #ifdef NUTPUNCH_WINDOSE
     u_long argp = 1;
     return !ioctlsocket(sock, FIONBIO, &argp);
@@ -379,7 +379,7 @@ static bool NP_MakeNonblocking(NP_Sock sock) {
 #endif
 }
 
-static bool NP_MakeReuseAddr(NP_Sock sock) {
+bool NP_MakeReuseAddr(NP_Sock sock) {
 #ifdef NUTPUNCH_WINDOSE
     const u_long argp = 1;
 #else

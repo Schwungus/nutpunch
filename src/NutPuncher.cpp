@@ -32,9 +32,11 @@
 #include <vector>
 
 extern "C" {
-extern void NP_NukeSocket(NP_Sock*);
 extern bool NP_AddrNull(NP_SockAddr), NP_AddrEq(NP_SockAddr, NP_SockAddr);
 extern int NP_UglyRecvfrom(NP_SockAddr*, void*, int);
+
+bool NP_MakeReuseAddr(NP_Sock), NP_MakeNonblocking(NP_Sock);
+extern void NP_NukeSocket(NP_Sock*);
 }
 
 static constexpr const NutPunch_Clock KEEP_QUEUE_FOR = 20 * NUTPUNCH_SEC;
@@ -637,6 +639,20 @@ int main(int argc, char*[]) {
 
     std::srand(NutPunch_TimeNS());
     Guard _linganguliguliguli;
+
+    SOCK = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (SOCK == NUTPUNCH_INVALID_SOCKET || !NP_MakeNonblocking(SOCK) || !NP_MakeReuseAddr(SOCK))
+        return EXIT_FAILURE;
+
+    {
+        NP_SockAddr local = {0};
+        local.sin_family = AF_INET;
+        local.sin_port = htons(NUTPUNCH_SERVER_PORT);
+        local.sin_addr.s_addr = htonl(INADDR_ANY);
+
+        if (bind(SOCK, (struct sockaddr*)&local, sizeof(local)))
+            return EXIT_FAILURE;
+    }
 
     constexpr const NutPunch_Clock MIN_DELTA = NUTPUNCH_SEC / 30;
     NP_Info("Running on port %d", NUTPUNCH_SERVER_PORT);
