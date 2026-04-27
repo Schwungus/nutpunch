@@ -107,7 +107,7 @@ typedef int64_t NP_Sock;
 #define NUTPUNCH_MAX_CHANNELS (30)
 
 /// Maximum amount of bytes a packet fragment can hold.
-#define NUTPUNCH_FRAGMENT_SIZE (1024)
+#define NUTPUNCH_FRAGMENT_SIZE (1024) // TODO: actually implement fragmenting
 
 /// How many times to attempt resending a reliable packet.
 #define NUTPUNCH_MAX_RETRIES (16)
@@ -687,8 +687,10 @@ static NutPunch_Field *NP_LobbyMetadata = NULL, *NP_PeerMetadata = NULL;
 static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, bool reliable) {
     const int prefix = 4;
 
-    if (len > NUTPUNCH_FRAGMENT_SIZE)
+    if (prefix + len > NUTPUNCH_FRAGMENT_SIZE) {
+        NP_Warn("Ignoring a huge packet");
         return;
+    }
 
     static uint32_t counter = 0;
 

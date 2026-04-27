@@ -94,6 +94,8 @@ static bool match_field_value(const int diff, const int flags) {
 
 static void just_send(NP_SockAddr addr, const void* buf, size_t len) {
     const int prefix = 4;
+    if (prefix + len > NUTPUNCH_FRAGMENT_SIZE)
+        return; // womp womp womp
 
     const auto prepend = std::make_unique<char[]>(prefix + len);
     *reinterpret_cast<uint32_t*>(prepend.get()) = 0;
