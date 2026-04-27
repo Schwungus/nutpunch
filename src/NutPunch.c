@@ -318,6 +318,7 @@ static void NP_SetVar(NutPunch_Field** fields, const char* name, const char* dat
 
 static int NP_DumpMetadata(void* raw_out, const NutPunch_Field* fields) {
     char* out = raw_out;
+
     for (; fields; fields = fields->next) {
         NutPunch_Memcpy(out, fields, sizeof(NP_Field));
         out += sizeof(NP_Field);
@@ -708,9 +709,11 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     NP_SockAddr pub = {0}, same_nat = {0};
 
     if (data) {
+        pub.sin_family = AF_INET;
         pub.sin_addr.s_addr = *(uint32_t*)data, data += 4;
         pub.sin_port = *(uint16_t*)data, data += 2;
 
+        same_nat.sin_family = AF_INET;
         same_nat.sin_addr.s_addr = *(uint32_t*)data, data += 4;
         same_nat.sin_port = *(uint16_t*)data, data += 2;
     }
@@ -1067,17 +1070,18 @@ static void NP_NetworkUpdate() {
 
     const NutPunch_Clock now = NutPunch_TimeNS();
 
-    if (now - NP_LastBeating >= NUTPUNCH_TIMEOUT_INTERVAL * NUTPUNCH_MS) {
-        NP_Warn("NutPuncher timed out");
-        NP_LastStatus = NPS_Error;
-        return;
-    }
-
     for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
         if (i != NutPunch_LocalPeer() && NutPunch_PeerAlive(i)
             && now - NP_Peers[i].last_ping >= NUTPUNCH_TIMEOUT_INTERVAL * NUTPUNCH_MS)
         {
             NP_KillPeer(i);
+        }
+    }
+
+    if (NP_Mode != NPNM_Query) {
+        if (now - NP_LastBeating >= NUTPUNCH_TIMEOUT_INTERVAL * NUTPUNCH_MS) {
+            NP_Warn("NutPuncher timed out");
+            NP_LastStatus = NPS_Error;
         }
     }
 }
