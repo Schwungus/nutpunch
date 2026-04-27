@@ -1785,15 +1785,27 @@ const char* NutPunch_Basename(const char* path) {
 
 #ifndef NUTPUNCH_WINDOSE
 
+#ifndef NUTPUNCH_NOSTD
+
 #include <errno.h>
 
 void NP_SleepMs(int ms) {
     // Stolen from: <https://stackoverflow.com/a/1157217>
     struct timespec ts = {0};
-    ts.tv_sec = ms / 1000, ts.tv_nsec = (ms % 1000) * (NUTPUNCH_SEC / 1000);
+    ts.tv_sec = ms / 1000, ts.tv_nsec = (ms % 1000) * NUTPUNCH_MS;
     int res = 0;
     do { res = nanosleep(&ts, &ts); } while (res && errno == EINTR);
 }
+
+#else
+
+void NP_SleepMs(int ms) {
+    NutPunch_Clock start = NutPunch_TimeNS();
+    NutPunch_Clock time = ms * NUTPUNCH_MS;
+    while ((NutPunch_TimeNS() - start) < time) {}
+}
+
+#endif // NUTPUNCH_NOSTD
 
 #endif // NUTPUNCH_WINDOSE
 
