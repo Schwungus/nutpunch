@@ -8,24 +8,18 @@ set(BUILD_SHARED_LIBS OFF)
 include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)
 
-FetchContent_Declare(enet
-    GIT_REPOSITORY https://github.com/lsalzman/enet.git
-    GIT_TAG 8be2368a8001f28db44e81d5939de5e613025023)
-FetchContent_MakeAvailable(enet)
-
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 add_library(NutPunch
     ${CMAKE_CURRENT_SOURCE_DIR}/include/NutPunch.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/NutPunch.c)
 target_include_directories(NutPunch PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${enet_SOURCE_DIR}/include) # HACK: enet's CMakeLists.txt is ancient & borked
+    ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(NutPunch PUBLIC enet)
 
 if(WIN32)
     # pthreads required for `clock_gettime`
-    target_link_libraries(NutPunch PUBLIC winpthread)
+    target_link_libraries(NutPunch PUBLIC ws2_32 winpthread)
 endif()
 
 option(NUTPUNCH_BUILD_TEST "Build NutPunch test binary?")

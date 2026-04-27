@@ -35,31 +35,69 @@
 
 #include "NutPunch.h"
 
+#ifdef NUTPUNCH_WINDOSE
+
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
+typedef SOCKET NP_Sock;
+#define NUTPUNCH_INVALID_SOCKET INVALID_SOCKET
+
+#define NP_SockError() WSAGetLastError()
+#define NP_WouldBlock WSAEWOULDBLOCK
+#define NP_ConnReset WSAECONNRESET
+#define NP_TooFat WSAEMSGSIZE
+
+#else
+
+// everything non-winsoque comes from <https://stackoverflow.com/a/28031039>
+
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <netdb.h>
+
+#include <errno.h>
+#include <fcntl.h>
+
+typedef int64_t NP_Sock;
+#define NUTPUNCH_INVALID_SOCKET (-1)
+
+#define NP_SockError() errno
+#define NP_WouldBlock EWOULDBLOCK
+#define NP_ConnReset ECONNRESET
+#define NP_TooFat EMSGSIZE
+
+#endif
+
 typedef struct {
     NutPunch_Field* metadata;
-    ENetPeer *enet, *pub_tmp, *same_nat_tmp;
+    NP_SockAddr public, same_nat;
 } NP_PeerInfo;
 
 typedef struct {
-    ENetPeer* from;
+    NP_SockAddr from;
     int len;
     const uint8_t* data;
     NutPunch_Channel chan;
 } NP_Message;
 
-typedef struct NP_DataQueue {
+typedef struct NP_IncomingData {
     NutPunch_Peer peer;
     void* data;
     size_t len;
-    struct NP_DataQueue* next;
-} NP_DataQueue;
+    struct NP_IncomingData* next;
+} NP_IncomingData;
 
-typedef struct NP_ENetQueue {
-    ENetPeer* peer;
-    ENetPacket* packet;
-    struct NP_ENetQueue* next;
-    uint8_t chan;
-} NP_ENetQueue;
+typedef struct NP_OutgoingPacket {
+    NP_SockAddr destination;
+    void* data;
+    size_t len;
+    struct NP_OutgoingPacket* next;
+    uint32_t flags;
+} NP_OutgoingPacket;
 
 typedef struct {
     const char identifier[sizeof(NP_Header) + 1];
@@ -97,6 +135,8 @@ char NP_LastError[512] = "";
 static bool NP_InitDone = false, NP_Closing = false;
 static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
+static NP_Sock NP_Socket = NUTPUNCH_INVALID_SOCKET;
+
 static char NP_LobbyId[sizeof(NutPunch_LobbyId) + 1] = {0};
 static NutPunch_PeerId NP_PeerId = {0};
 static NutPunch_QueueId NP_QueueId = {0};
@@ -107,15 +147,12 @@ static NutPunch_Peer NP_LocalPeer = NUTPUNCH_MAX_PLAYERS, NP_Master = NUTPUNCH_M
 
 static NutPunch_Callback NP_Callbacks[NPCB_Count] = {0};
 
-static ENetHost* NP_ENetHost = NULL;
-static ENetPeer* NP_PuncherPeer = NULL;
-
-static ENetAddress NP_ServerAddr = {0};
+static NP_SockAddr NP_ServerAddr = {0};
 static char NP_ServerHost[128] = {0};
 
 static NutPunch_Channel NP_ChannelCount = 1;
-static NP_DataQueue* NP_Unread[NUTPUNCH_MAX_CHANNELS] = {0};
-static NP_ENetQueue* NP_Pending = NULL;
+static NP_IncomingData* NP_Unread[NUTPUNCH_MAX_CHANNELS] = {0};
+static NP_OutgoingPacket* NP_Pending = NULL;
 
 static bool NP_Unlisted = false;
 
@@ -125,22 +162,25 @@ static int NP_QueueCount = 0, NP_QueueTime = 0;
 
 static NutPunch_Field *NP_LobbyMetadata = NULL, *NP_PeerMetadata = NULL;
 
-static void
-NP_JustSend(ENetPeer* peer, uint8_t channel, const void* buf, size_t len, uint32_t flags) {
-    if (!peer)
-        return;
-
-    flags &= ~ENET_PACKET_FLAG_NO_ALLOCATE;
-    ENetPacket* packet = enet_packet_create(buf, len, flags);
-
-    if (!packet)
-        return;
-
-    NP_ENetQueue* last = NP_Pending;
+static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, uint32_t flags) {
+    NP_OutgoingPacket* last = NP_Pending;
     for (; last && last->next; last = last->next) {}
 
-    last = *(last ? &last->next : &NP_Pending) = NutPunch_Malloc(sizeof(NP_ENetQueue));
-    last->peer = peer, last->packet = packet, last->chan = channel, last->next = NULL;
+    last = *(last ? &last->next : &NP_Pending) = NutPunch_Malloc(sizeof(*last));
+    last->destination = destination, last->flags = flags, last->next = NULL, last->len = len;
+    last->data = NutPunch_Malloc(len), NutPunch_Memcpy(last->data, data, len);
+}
+
+static void NP_NukeSocket(NP_Sock* sock) {
+    if (*sock == NUTPUNCH_INVALID_SOCKET)
+        return;
+#ifdef NUTPUNCH_WINDOSE
+    shutdown(*sock, SD_BOTH);
+    closesocket(*sock);
+#else
+    close(*sock);
+#endif
+    *sock = NUTPUNCH_INVALID_SOCKET;
 }
 
 static void NP_NukeLobbyDataLite() {
@@ -156,27 +196,19 @@ static void NP_NukeLobbyDataLite() {
 
     for (size_t i = 0; i < NUTPUNCH_MAX_CHANNELS; i++) {
         while (NP_Unread[i]) {
-            NP_DataQueue* ptr = NP_Unread[i];
+            NP_IncomingData* ptr = NP_Unread[i];
             NP_Unread[i] = ptr->next;
-            NutPunch_Free(ptr->data);
-            NutPunch_Free(ptr);
+            NutPunch_Free(ptr->data), NutPunch_Free(ptr);
         }
     }
 
     while (NP_Pending) {
-        NP_ENetQueue* ptr = NP_Pending;
+        NP_OutgoingPacket* ptr = NP_Pending;
         NP_Pending = ptr->next;
-        enet_packet_destroy(ptr->packet);
-        NutPunch_Free(ptr);
+        NutPunch_Free(ptr->data), NutPunch_Free(ptr);
     }
 
-    if (NP_PuncherPeer)
-        enet_peer_disconnect_now(NP_PuncherPeer, 0);
-    NP_PuncherPeer = NULL;
-
-    if (NP_ENetHost)
-        enet_host_destroy(NP_ENetHost);
-    NP_ENetHost = NULL;
+    NP_NukeSocket(&NP_Socket);
 }
 
 static void NP_NukeMetadata(NutPunch_Field** metadata) {
@@ -790,11 +822,11 @@ static void NP_HandleData(NP_Message msg) {
 
     NP_PeerInfo* const peer = &NP_Peers[peer_idx];
 
-    NP_DataQueue* last = NULL;
+    NP_IncomingData* last = NULL;
     for (; last && last->next; last = last->next) {}
 
     last = *(last ? &last->next : &NP_Unread[chan])
-        = (NP_DataQueue*)NutPunch_Malloc(sizeof(NP_DataQueue));
+        = (NP_IncomingData*)NutPunch_Malloc(sizeof(NP_IncomingData));
 
     last->peer = peer_idx, last->len = msg.len, last->next = NULL;
     last->data = NutPunch_Malloc(last->len);
@@ -1007,7 +1039,7 @@ int NutPunch_NextMessage(NutPunch_Channel chan, void* out, int* size) {
         return NUTPUNCH_MAX_PLAYERS;
     }
 
-    NP_DataQueue* const packet = NP_Unread[chan];
+    NP_IncomingData* const packet = NP_Unread[chan];
 
     if (!packet) {
         NP_Warn("You forgot to check `NutPunch_HasMessage(%d)`", chan);

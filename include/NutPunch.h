@@ -26,8 +26,6 @@
 #ifndef NUTPUNCH_H
 #define NUTPUNCH_H
 
-#include <enet/enet.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -242,18 +240,6 @@ typedef enum {
 
 typedef void (*NutPunch_Callback)(const void*);
 
-typedef enum {
-    /// Set this flag to send a reliable packet. This means the packet will be periodically resent
-    /// until delivery is confirmed by the target peer.
-    NP_Send_Reliably = ENET_PACKET_FLAG_RELIABLE,
-
-    /// Set this flag to disable the default behavior of sequencing every non-reliable packet.
-    ///
-    /// Sequencing ensures the packets arrive in the order they were sent and discards them
-    /// otherwise.
-    NP_Send_Unsequenced = ENET_PACKET_FLAG_UNSEQUENCED,
-} NutPunch_SendFlags;
-
 /// Sets a custom NutPuncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
 
@@ -449,6 +435,8 @@ const char* NutPunch_Basename(const char* path);
 
 typedef uint64_t NutPunch_Clock;
 NutPunch_Clock NutPunch_TimeNS();
+
+typedef struct sockaddr_in NP_SockAddr;
 
 typedef uint8_t NP_NetMode;
 enum {
