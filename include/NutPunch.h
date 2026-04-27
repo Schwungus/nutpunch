@@ -110,10 +110,11 @@ typedef int64_t NP_Sock;
 #define NUTPUNCH_FRAGMENT_SIZE (1024)
 
 /// How many times to attempt resending a reliable packet.
-#define NUTPUNCH_MAX_RETRIES (8)
+#define NUTPUNCH_MAX_RETRIES (16)
 
-/// How many milliseconds to wait before resending a reliable packet.
-#define NUTPUNCH_RETRY_INTERVAL ((NutPunch_Clock)250)
+/// Initial amount of milliseconds to wait before resending a reliable packet.
+/// The retransmission time will also increase by this much after resending.
+#define NUTPUNCH_RETRY_INTERVAL ((NutPunch_Clock)200)
 
 /// How many milliseconds to wait for a peer or the NutPuncher to respond before timing out.
 #define NUTPUNCH_TIMEOUT_INTERVAL ((NutPunch_Clock)5000)
@@ -1519,7 +1520,8 @@ static void NP_FlushPendingQueue() {
         if (cur->retries < 0) {
             send = nuke = true;
         } else if (cur->last_retry) {
-            const bool due = now - cur->last_retry > NUTPUNCH_RETRY_INTERVAL * NUTPUNCH_MS;
+            const bool due = now - cur->last_retry
+                             > (NUTPUNCH_RETRY_INTERVAL * (cur->retries + 1)) * NUTPUNCH_MS;
             nuke = cur->acked || due && cur->retries++ > NUTPUNCH_MAX_RETRIES;
             send = due && !nuke;
         } else {
@@ -1530,8 +1532,7 @@ static void NP_FlushPendingQueue() {
             cur->last_retry = now;
 
             struct sockaddr* dest = (struct sockaddr*)&cur->destination;
-            for (int times = cur->retries < 0 ? 1 : 3; times > 0; times--)
-                sendto(NP_Socket, (char*)cur->data, cur->len, 0, dest, sizeof(cur->destination));
+            sendto(NP_Socket, (char*)cur->data, cur->len, 0, dest, sizeof(cur->destination));
         }
 
         if (nuke) {
