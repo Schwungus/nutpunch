@@ -675,6 +675,15 @@ static int NP_QueueCount = 0, NP_QueueTime = 0;
 
 static NutPunch_Field *NP_LobbyMetadata = NULL, *NP_PeerMetadata = NULL;
 
+static const char* NP_FormatSockaddr(NP_SockAddr addr) {
+    static char buf[64] = "";
+
+    const char* s = inet_ntoa(addr.sin_addr);
+    NutPunch_SNPrintF(buf, sizeof(buf), "[%s]:%d", s, ntohs(addr.sin_port));
+
+    return buf;
+}
+
 static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, bool reliable) {
     const int prefix = 4;
 
@@ -697,6 +706,8 @@ static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, b
     last->len = prefix + (int)len, last->data = (uint8_t*)NutPunch_Malloc(prefix + len);
     NutPunch_Memcpy(last->data + prefix, data, len);
     *(uint32_t*)last->data = htonl(last->id);
+
+    NP_Trace("GONNA SEND %i BYTES TO %s", last->len, NP_FormatSockaddr(destination));
 }
 
 static void NP_JustSpam(NP_SockAddr destination, const void* data, size_t len, bool reliable) {
@@ -785,6 +796,8 @@ static void NP_LazyInit() {
     NutPunch_Log("| For troubleshooting multiplayer connectivity, please visit: |\n");
     NutPunch_Log("|    https://github.com/Schwungus/nutpunch#troubleshooting    |\n");
     NutPunch_Log("'-------------------------------------------------------------'\n");
+
+    NP_Trace("TRACE OK");
 }
 
 void NutPunch_Shutdown() {
@@ -1132,15 +1145,6 @@ const char* NutPunch_GetLastError() {
 static void NP_HandleEventCb(NutPunch_CallbackEvent event, const void* data) {
     if (NP_Callbacks[event])
         NP_Callbacks[event](data);
-}
-
-static const char* NP_FormatSockaddr(NP_SockAddr addr) {
-    static char buf[64] = "";
-
-    const char* s = inet_ntoa(addr.sin_addr);
-    NutPunch_SNPrintF(buf, sizeof(buf), "[%s]:%d", s, ntohs(addr.sin_port));
-
-    return buf;
 }
 
 static void NP_KillPeer(NutPunch_Peer peer) {
