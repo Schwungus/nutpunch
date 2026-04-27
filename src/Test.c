@@ -116,9 +116,6 @@ static void send_shit() {
     data[1] = (uint8_t)(players[NutPunch_LocalPeer()].y);
 
     for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-        if (!NutPunch_PeerAlive(i))
-            continue;
-
         NutPunch_Send(CHAN_GAME, i, data, sizeof(data));
         if (poor_key_pressed(POOR_T))
             chat_with(i);

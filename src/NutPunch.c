@@ -151,6 +151,11 @@ static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, b
     *(uint32_t*)last->data = htonl(last->id);
 }
 
+static void NP_JustSpam(NP_SockAddr destination, const void* data, size_t len, bool reliable) {
+    for (int times = 5; times > 0; times--)
+        NP_JustSend(destination, data, len, reliable);
+}
+
 void NP_NukeSocket(NP_Sock* sock) {
     if (*sock == NUTPUNCH_INVALID_SOCKET)
         return;
@@ -969,8 +974,10 @@ static void NP_FlushPendingQueue() {
 
         if (send) {
             cur->last_retry = now;
-            sendto(NP_Socket, cur->data, cur->len, 0, (struct sockaddr*)&cur->destination,
-                sizeof(cur->destination));
+
+            struct sockaddr* dest = (struct sockaddr*)&cur->destination;
+            for (int times = cur->retries < 0 ? 1 : 3; times > 0; times--)
+                sendto(NP_Socket, cur->data, cur->len, 0, dest, sizeof(cur->destination));
         }
 
         if (nuke) {
@@ -1017,7 +1024,7 @@ static void NP_ReceiveShit() {
         if (id) { // ackies
             static uint8_t acky[sizeof(NP_Header) + 4] = "ACKY";
             *(uint32_t*)(acky + sizeof(NP_Header)) = htonl(id);
-            NP_JustSend(addr, acky, sizeof(acky), false);
+            NP_JustSpam(addr, acky, sizeof(acky), false);
         }
 
         for (size_t i = 0; i < sizeof(NP_MessageTypes) / sizeof(*NP_MessageTypes); i++) {
@@ -1047,9 +1054,7 @@ static void NP_SendGoodbyes() {
 
     static uint8_t bye[sizeof(NP_Header) + sizeof(NutPunch_PeerId)] = "DISC";
     NutPunch_Memcpy(bye + sizeof(NP_Header), NP_PeerId, sizeof(NutPunch_PeerId));
-
-    for (int i = 0; i < 10; i++)
-        NP_JustSend(NP_ServerAddr, bye, sizeof(bye), false);
+    NP_JustSpam(NP_ServerAddr, bye, sizeof(bye), false);
 }
 
 void NutPunch_Flush() {
@@ -1154,8 +1159,11 @@ int NutPunch_NextMessage(NutPunch_Channel chan, void* out, int* size) {
 
 static void NP_SendPro(
     NutPunch_Channel channel, NutPunch_Peer peer, const void* data, int size, bool reliable) {
-    if (!NutPunch_PeerAlive(peer) || size <= 0 || channel >= NUTPUNCH_MAX_CHANNELS)
+    if (!NutPunch_PeerAlive(peer) || NutPunch_LocalPeer() == peer || size <= 0
+        || channel >= NUTPUNCH_MAX_CHANNELS || channel >= NP_ChannelCount)
+    {
         return;
+    }
 
     const size_t total_size = sizeof(NP_Header) + 1 + size;
     uint8_t *buf = NutPunch_Malloc(total_size), *ptr = buf + sizeof(NP_Header);
