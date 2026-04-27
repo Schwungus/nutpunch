@@ -516,13 +516,8 @@ const char* NutPunch_Basename(const char* path);
 
 typedef uint64_t NutPunch_Clock;
 
-#if !defined(NutPunch_TimeNS)
-#include <time.h>
-NutPunch_Clock NutPunch_TimeNS() {
-    struct timespec ts = {0};
-    clock_gettime(CLOCK_REALTIME, &ts);
-    return (NutPunch_Clock)ts.tv_sec * NUTPUNCH_SEC + (NutPunch_Clock)ts.tv_nsec;
-}
+#ifndef NutPunch_TimeNS
+NutPunch_Clock NutPunch_TimeNS();
 #endif
 
 typedef struct sockaddr_in NP_SockAddr;
@@ -1789,6 +1784,7 @@ const char* NutPunch_Basename(const char* path) {
 
 #include <errno.h>
 
+// we only use this internally actually...
 void NP_SleepMs(int ms) {
     // Stolen from: <https://stackoverflow.com/a/1157217>
     struct timespec ts = {0};
@@ -1797,17 +1793,21 @@ void NP_SleepMs(int ms) {
     do { res = nanosleep(&ts, &ts); } while (res && errno == EINTR);
 }
 
-#else
-
-void NP_SleepMs(int ms) {
-    NutPunch_Clock start = NutPunch_TimeNS();
-    NutPunch_Clock time = ms * NUTPUNCH_MS;
-    while ((NutPunch_TimeNS() - start) < time) {}
-}
-
 #endif // NUTPUNCH_NOSTD
 
 #endif // NUTPUNCH_WINDOSE
+
+#ifndef NutPunch_TimeNS
+
+#include <time.h>
+
+NutPunch_Clock NutPunch_TimeNS() {
+    struct timespec ts = {0};
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (NutPunch_Clock)ts.tv_sec * NUTPUNCH_SEC + (NutPunch_Clock)ts.tv_nsec;
+}
+
+#endif // NutPunch_TimeNS
 
 #endif // NUTPUNCH_IMPLEMENTATION
 
