@@ -1626,7 +1626,10 @@ void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
 }
 
 static void NP_NetworkUpdate() {
-    NP_SendHeartbeat();
+    if (NP_Closing)
+        NP_SendGoodbyes();
+    else
+        NP_SendHeartbeat();
     NP_ReceiveShit();
     NP_FlushPendingQueue();
 
