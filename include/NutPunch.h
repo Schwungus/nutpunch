@@ -125,19 +125,17 @@ typedef int64_t NP_Sock;
 #include <stdio.h> // IWYU pragma: export
 #endif
 
-/// Set this pointer to NULL to use the default NutPunch logger, or override the NutPunch logger by
-/// supplying your own logging function.
-///
-/// NutPunch breaks its logging output into lines for you. On the most basic level, all you need to
-/// do to implement a logger is to supply a varargs `printf` implementation.
-extern void (*NP_Logger)(const char*, ...);
-
-extern void NP_DefaultLogger(const char*, ...);
 extern char NP_LastError[512];
 
-#define NutPunch_Log(level, fmt, ...)                                                              \
-    ((NP_Logger ? NP_Logger : NP_DefaultLogger)(                                                   \
-        level " (%s:%d) " fmt "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__))
+#ifndef NutPunch_Log
+#include <stdio.h>
+#define NutPunch_Log(msg, ...)                                                                     \
+    do {                                                                                           \
+        fprintf(                                                                                   \
+            stdout, "(%s:%d) " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);    \
+        fflush(stdout);                                                                            \
+    } while (0)
+#endif
 
 #ifndef NutPunch_SNPrintF
 #include <stdio.h>
@@ -174,12 +172,18 @@ extern char NP_LastError[512];
 
 #define NutPunch_StrNCmp strncmp
 
-#define NP_Info(...) NutPunch_Log("INFO", __VA_ARGS__)
+#define NP_Info(...) NutPunch_Log("INFO: " __VA_ARGS__)
 #define NP_Warn(...)                                                                               \
     do {                                                                                           \
-        NutPunch_Log("WARN", __VA_ARGS__);                                                         \
+        NutPunch_Log("WARN: " __VA_ARGS__);                                                        \
         NutPunch_SNPrintF(NP_LastError, sizeof(NP_LastError), ##__VA_ARGS__);                      \
     } while (0)
+
+#ifdef NUTPUNCH_TRACING
+#define NP_Trace(...) NutPunch_Log("TRACE: " __VA_ARGS__)
+#else // clang-format off
+#define NP_Trace(...) do {} while (0)
+#endif // clang-format on
 
 #ifdef NUTPUNCH_WINDOSE
 #define NP_SleepMs Sleep
