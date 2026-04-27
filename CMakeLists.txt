@@ -15,7 +15,6 @@ add_library(NutPunch
     ${CMAKE_CURRENT_SOURCE_DIR}/src/NutPunch.c)
 target_include_directories(NutPunch PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(NutPunch PUBLIC enet)
 
 if(WIN32)
     # pthreads required for `clock_gettime`

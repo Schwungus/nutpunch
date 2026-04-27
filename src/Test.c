@@ -1,8 +1,8 @@
+#include <NutPunch.h>
+
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-#include <NutPunch.h>
 
 #define POOR_IMPLEMENTATION
 #include <poormans.h>
@@ -104,7 +104,7 @@ static void chat_with(int idx) {
 
     static char buf[96] = {0};
     const int size = NutPunch_SNPrintF(buf, sizeof(buf), "Hi, %s!", theirName);
-    NutPunch_Send(CHAN_CHAT, idx, NP_Send_Reliably, buf, size + 1);
+    NutPunch_SendReliably(CHAN_CHAT, idx, buf, size + 1);
 }
 
 static void send_shit() {
@@ -119,7 +119,7 @@ static void send_shit() {
         if (!NutPunch_PeerAlive(i))
             continue;
 
-        NutPunch_Send(CHAN_GAME, i, NP_Send_Unsequenced, data, sizeof(data));
+        NutPunch_Send(CHAN_GAME, i, data, sizeof(data));
         if (poor_key_pressed(POOR_T))
             chat_with(i);
     }

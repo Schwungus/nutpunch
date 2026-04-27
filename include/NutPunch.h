@@ -31,7 +31,43 @@ extern "C" {
 #endif
 
 #if defined(_WIN32) || defined(_WIN64)
+
 #define NUTPUNCH_WINDOSE
+
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
+#include <windows.h>
+
+typedef SOCKET NP_Sock;
+#define NUTPUNCH_INVALID_SOCKET INVALID_SOCKET
+
+#define NP_SockError() WSAGetLastError()
+#define NP_WouldBlock WSAEWOULDBLOCK
+#define NP_ConnReset WSAECONNRESET
+#define NP_TooFat WSAEMSGSIZE
+
+#else
+
+// everything non-winsoque comes from <https://stackoverflow.com/a/28031039>
+
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
+#include <netdb.h>
+
+#include <errno.h>
+#include <fcntl.h>
+
+typedef int64_t NP_Sock;
+#define NUTPUNCH_INVALID_SOCKET (-1)
+
+#define NP_SockError() errno
+#define NP_WouldBlock EWOULDBLOCK
+#define NP_ConnReset ECONNRESET
+#define NP_TooFat EMSGSIZE
+
 #endif
 
 /// The default NutPuncher instance. It's public, so feel free to [ab]use it.
@@ -63,11 +99,17 @@ extern "C" {
 /// Maximum amount of metadata fields per lobby/player.
 #define NUTPUNCH_MAX_FIELDS (8)
 
-/// How many milliseconds to wait before resending a reliable packet.
-#define NUTPUNCH_BOUNCE_INTERVAL ((NutPunch_Clock)250)
-
 /// The maximum amount of channels a NutPunch host can send to/receive on.
 #define NUTPUNCH_MAX_CHANNELS (30)
+
+/// Maximum amount of bytes a packet fragment can hold.
+#define NUTPUNCH_FRAGMENT_SIZE (1024)
+
+/// How many times to attempt resending a reliable packet.
+#define NUTPUNCH_MAX_RETRIES (3)
+
+/// How many milliseconds to wait before resending a reliable packet.
+#define NUTPUNCH_RETRY_INTERVAL ((NutPunch_Clock)250)
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -129,7 +171,7 @@ typedef uint8_t NutPunch_Channel, NutPunch_Peer;
 
 /// A linked-list of of lobby/peer metadata.
 typedef struct NutPunch_Field {
-    char name[NUTPUNCH_FIELD_NAME_MAX];
+    char name[NUTPUNCH_FIELD_NAME_MAX]; // TODO: typedef these bad boys...
     char data[NUTPUNCH_FIELD_DATA_MAX];
     struct NutPunch_Field* next;
 } NutPunch_Field;
@@ -345,9 +387,13 @@ bool NutPunch_HasMessage(NutPunch_Channel);
 /// `size` will crash your entire program.
 int NutPunch_NextMessage(NutPunch_Channel, void* out, int* size);
 
-/// Sends data on the specified channel, to the specified peer, with the specified flags. Use 0 or
-/// bitwise-or one or more `NP_Send_*` constants to assemble the flags argument.
-void NutPunch_Send(NutPunch_Channel, NutPunch_Peer, uint32_t, const void*, int);
+/// Sends data on the specified channel, to the specified peer. See `NutPunch_SendReliably` for
+/// reliable packet delivery.
+void NutPunch_Send(NutPunch_Channel, NutPunch_Peer, const void*, int);
+
+/// Sends data on the specified channel, to the specified peer, expecting the remote side to
+/// acknowledge the fact of reception. Resends the packet up to `NUTPUNCH_MAX_RETRIES` times.
+void NutPunch_SendReliably(NutPunch_Channel, NutPunch_Peer, const void*, int);
 
 /// Counts how many "live" peers we have a route to, including our local peer.
 ///
