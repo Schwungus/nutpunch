@@ -94,17 +94,19 @@ static bool match_field_value(const int diff, const int flags) {
 
 static void just_send(NP_SockAddr addr, const void* buf, size_t len) {
     const int prefix = 4;
+
     if (prefix + len > NUTPUNCH_FRAGMENT_SIZE)
         return; // womp womp womp
+
+    if (NP_AddrNull(addr) || SOCK == NUTPUNCH_INVALID_SOCKET)
+        return;
 
     const auto prepend = std::make_unique<char[]>(prefix + len);
     *reinterpret_cast<uint32_t*>(prepend.get()) = 0;
     memcpy(prepend.get() + prefix, buf, len);
 
-    if (!NP_AddrNull(addr) && SOCK != NUTPUNCH_INVALID_SOCKET) {
-        const auto shit = (const struct sockaddr*)&addr;
-        sendto(SOCK, prepend.get(), prefix + (int)len, 0, shit, sizeof(addr));
-    }
+    const auto shit = (const struct sockaddr*)&addr;
+    sendto(SOCK, prepend.get(), prefix + (int)len, 0, shit, sizeof(addr));
 }
 
 static void gtfo(NP_SockAddr addr, NutPunch_ErrorCode error) {
