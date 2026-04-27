@@ -181,9 +181,10 @@ extern char NP_LastError[512];
 
 #ifdef NUTPUNCH_TRACING
 #define NP_Trace(...) NutPunch_Log("TRACE: " __VA_ARGS__)
-#else // clang-format off
-#define NP_Trace(...) do {} while (0)
-#endif // clang-format on
+#else
+#define NP_Trace(...)                                                                              \
+    do { (__VA_ARGS__); } while (0) // evaluating the args for consistency's sake
+#endif
 
 #ifdef NUTPUNCH_WINDOSE
 #define NP_SleepMs Sleep
