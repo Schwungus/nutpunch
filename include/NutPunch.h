@@ -110,13 +110,13 @@ typedef int64_t NP_Sock;
 #define NUTPUNCH_FRAGMENT_SIZE (1024)
 
 /// How many times to attempt resending a reliable packet.
-#define NUTPUNCH_MAX_RETRIES (3)
+#define NUTPUNCH_MAX_RETRIES (8)
 
 /// How many milliseconds to wait before resending a reliable packet.
 #define NUTPUNCH_RETRY_INTERVAL ((NutPunch_Clock)250)
 
 /// How many milliseconds to wait for a peer or the NutPuncher to respond before timing out.
-#define NUTPUNCH_TIMEOUT_INTERVAL ((NutPunch_Clock)3000)
+#define NUTPUNCH_TIMEOUT_INTERVAL ((NutPunch_Clock)5000)
 
 #ifndef NUTPUNCH_NOSTD
 #include <stdbool.h>
