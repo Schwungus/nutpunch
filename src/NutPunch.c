@@ -38,6 +38,7 @@
 typedef struct {
     NutPunch_Field* metadata;
     NP_SockAddr address;
+    NutPunch_Clock last_ping;
 } NP_PeerInfo;
 
 typedef struct {
@@ -56,9 +57,11 @@ typedef struct NP_IncomingData {
 typedef struct NP_OutgoingPacket {
     NP_SockAddr destination;
     void* data;
-    size_t len;
     struct NP_OutgoingPacket* next;
-    uint32_t flags;
+    int len, retries;
+    NutPunch_Clock last_retry;
+    bool acked;
+    uint32_t id;
 } NP_OutgoingPacket;
 
 typedef struct {
@@ -69,9 +72,10 @@ typedef struct {
 
 static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
     NP_HandleListing(NP_Message), NP_HandleLobbyMetadata(NP_Message), NP_HandleData(NP_Message),
-    NP_HandleQueue(NP_Message), NP_HandleDate(NP_Message);
+    NP_HandleQueue(NP_Message), NP_HandleDate(NP_Message), NP_HandleAcky(NP_Message);
 
 static const NP_MessageType NP_MessageTypes[] = {
+    {"ACKY", NP_HandleAcky,          4                                             },
     {"PING", NP_HandlePing,          1                                             },
     {"LIST", NP_HandleListing,       0                                             },
     {"LGMA", NP_HandleLobbyMetadata, sizeof(NutPunch_LobbyId) + sizeof(NP_Metadata)},
@@ -98,6 +102,7 @@ static bool NP_InitDone = false, NP_Closing = false;
 static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
 static NP_Sock NP_Socket = NUTPUNCH_INVALID_SOCKET;
+static NutPunch_Clock NP_LastBeating = 0;
 
 static char NP_LobbyId[sizeof(NutPunch_LobbyId) + 1] = {0};
 static NutPunch_PeerId NP_PeerId = {0};
@@ -124,13 +129,26 @@ static int NP_QueueCount = 0, NP_QueueTime = 0;
 
 static NutPunch_Field *NP_LobbyMetadata = NULL, *NP_PeerMetadata = NULL;
 
-static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, uint32_t flags) {
+static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, bool reliable) {
+    const int prefix = 4;
+
+    if (len > NUTPUNCH_FRAGMENT_SIZE)
+        return;
+
+    static uint32_t counter = 0;
+
     NP_OutgoingPacket* last = NP_Pending;
     for (; last && last->next; last = last->next) {}
 
     last = *(last ? &last->next : &NP_Pending) = NutPunch_Malloc(sizeof(*last));
-    last->destination = destination, last->flags = flags, last->next = NULL, last->len = len;
-    last->data = NutPunch_Malloc(len), NutPunch_Memcpy(last->data, data, len);
+    last->destination = destination, last->next = NULL;
+    last->retries = reliable ? 0 : -1, last->last_retry = 0, last->acked = false;
+
+    // prefixing the entire packet with an id...
+    last->id = reliable ? counter++ : 0;
+    last->len = prefix + (int)len, last->data = NutPunch_Malloc(prefix + len);
+    NutPunch_Memcpy(last->data + prefix, data, len);
+    *(uint32_t*)last->data = htonl(last->id);
 }
 
 void NP_NukeSocket(NP_Sock* sock) {
@@ -315,7 +333,7 @@ void NutPunch_RequestLobbyData(const NutPunch_LobbyId lobby) {
     static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "LIST";
     NutPunch_Memcpy(buf + sizeof(NP_Header), lobby, sizeof(NutPunch_LobbyId));
 
-    NP_JustSend(NP_ServerAddr, buf, sizeof(buf), 0);
+    NP_JustSend(NP_ServerAddr, buf, sizeof(buf), false);
 }
 
 const char* NutPunch_GetLobbyData(const char* name) {
@@ -450,6 +468,9 @@ static bool NP_Connect(const char* lobby_id, bool sane, NP_HeartbeatFlagsStorage
 
     if (lobby_id)
         NutPunch_SNPrintF(NP_LobbyId, sizeof(NP_LobbyId), "%s", lobby_id);
+
+    NP_LastBeating = NutPunch_TimeNS();
+
     return true;
 }
 
@@ -548,7 +569,7 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
         ptr += filter_count * sizeof(NutPunch_Filter);
     }
 
-    NP_JustSend(NP_ServerAddr, query, ptr - query, 0);
+    NP_JustSend(NP_ServerAddr, query, ptr - query, false);
 }
 
 const char* NutPunch_GetLastError() {
@@ -599,8 +620,9 @@ static void NP_HandlePing(NP_Message msg) {
         return;
 
     const bool was_dead = !NutPunch_PeerAlive(idx);
+
     NP_PeerInfo* const peer = &NP_Peers[idx];
-    peer->address = msg.from;
+    peer->address = msg.from, peer->last_ping = NutPunch_TimeNS();
 
     static NutPunch_PeerFieldDiff changed[NUTPUNCH_MAX_FIELDS] = {0};
     NP_Memzero(changed);
@@ -665,7 +687,7 @@ static void NP_HandleGTFO(NP_Message msg) {
     NP_LastStatus = NPS_Error;
 }
 
-static void NP_PrintOurAddresses(const uint8_t* data) {
+static void NP_PrintOurAddress(const uint8_t* data) {
     NP_SockAddr addr = {0};
     addr.sin_addr.s_addr = *(uint32_t*)data, data += 4;
     addr.sin_port = ntohs(*(uint16_t*)data), data += 2;
@@ -680,10 +702,7 @@ static NutPunch_Peer NP_FindPeer(NP_SockAddr addr) {
 }
 
 static void NP_SendPings(int idx, const uint8_t* data) {
-    if (NP_Socket == NUTPUNCH_INVALID_SOCKET)
-        return;
-
-    if (idx == NP_LocalPeer)
+    if (NP_Socket == NUTPUNCH_INVALID_SOCKET || idx == NP_LocalPeer)
         return;
 
     NP_SockAddr pub = {0}, same_nat = {0};
@@ -709,9 +728,8 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     *ptr++ = NP_LocalPeer;
     ptr += NP_DumpMetadata(ptr, NP_PeerMetadata);
 
-    const int len = (int)(ptr - ping);
-    NP_JustSend(pub, ping, len, 0);
-    NP_JustSend(same_nat, ping, len, 0);
+    NP_JustSend(pub, ping, ptr - ping, false);
+    NP_JustSend(same_nat, ping, ptr - ping, false);
 }
 
 static void NP_HandleBeating(NP_Message msg) {
@@ -762,7 +780,7 @@ static void NP_HandleBeating(NP_Message msg) {
     for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
         NP_SendPings(i, addrs[i]);
         if (i == NP_LocalPeer && just_joined && addrs[i])
-            NP_PrintOurAddresses(addrs[i]);
+            NP_PrintOurAddress(addrs[i]);
     }
 
     for (size_t i = 0; i < msg.len / sizeof(NP_Field); i++) {
@@ -793,6 +811,8 @@ done_getting_beat:
             NP_Info("We're the lobby's master now");
         NP_HandleEventCb(NPCB_NewMaster, &new_master);
     }
+
+    NP_LastBeating = NutPunch_TimeNS();
 }
 
 static void NP_HandleListing(NP_Message msg) {
@@ -866,6 +886,11 @@ static void NP_HandleDate(NP_Message msg) {
     }
 }
 
+static void NP_HandleAcky(NP_Message msg) {
+    for (NP_OutgoingPacket* cur = NP_Pending; cur; cur = cur->next)
+        cur->acked |= (cur->id == ntohl(*(uint32_t*)msg.data));
+}
+
 static void NP_SendHeartbeat() {
     if (NP_Socket == NUTPUNCH_INVALID_SOCKET)
         return;
@@ -917,61 +942,92 @@ static void NP_SendHeartbeat() {
         return;
     }
 
-    NP_JustSend(NP_ServerAddr, heartbeat, ptr - heartbeat, 0);
+    NP_JustSend(NP_ServerAddr, heartbeat, ptr - heartbeat, false);
 }
 
 static void NP_FlushPendingQueue() {
+    if (NP_Socket == NUTPUNCH_INVALID_SOCKET)
+        return;
+
+    const NutPunch_Clock now = NutPunch_TimeNS();
+
     for (NP_OutgoingPacket *prev = NULL, *cur = NP_Pending; cur; cur = cur->next) {
-        if (false) {
-            prev = cur;
-            continue;
+        bool send = false, nuke = false;
+
+        if (cur->retries < 0) {
+            send = nuke = true;
+        } else if (cur->last_retry) {
+            const bool due = now - cur->last_retry > NUTPUNCH_RETRY_INTERVAL * NUTPUNCH_MS;
+            nuke = cur->acked || due && cur->retries++ > NUTPUNCH_MAX_RETRIES;
+            send = due && !nuke;
+        } else {
+            send = true, nuke = false;
         }
 
-        // TODO: FUCK.
+        if (send) {
+            cur->last_retry = now;
+            sendto(NP_Socket, cur->data, cur->len, 0, (struct sockaddr*)&cur->destination,
+                sizeof(cur->destination));
+        }
 
-        *(prev ? &prev->next : &NP_Pending) = cur->next;
-        NutPunch_Free(cur);
+        if (nuke) {
+            *(prev ? &prev->next : &NP_Pending) = cur->next;
+            NutPunch_Free(cur->data), NutPunch_Free(cur);
+        } else {
+            prev = cur;
+        }
     }
 }
 
-int NP_UglyRecvfrom(NP_SockAddr* addr, void* buf, int size) {
+static int NP_UglyRecvFrom(NP_SockAddr* addr, void* buf, int buf_size) {
     socklen_t addr_size = sizeof(*addr);
     struct sockaddr* const shit_addr = (struct sockaddr*)addr;
-    return recvfrom(NP_Socket, (char*)buf, size, 0, shit_addr, &addr_size);
+    return recvfrom(NP_Socket, (char*)buf, buf_size, 0, shit_addr, &addr_size);
 }
 
 static void NP_ReceiveShit() {
+    const int prefix = 4;
+
     for (;;) {
         NP_SockAddr addr = {0};
         static uint8_t buf[NUTPUNCH_FRAGMENT_SIZE] = {0};
-        int size = NP_UglyRecvfrom(&addr, buf, sizeof(buf));
+        int size = NP_UglyRecvFrom(&addr, buf, sizeof(buf));
 
         if (size < 0) {
-            if (NP_SockError() != NP_WouldBlock) {
+            if (NP_SockError() != NP_WouldBlock && NP_SockError() != NP_TooFat
+                && NP_SockError() != NP_ConnReset)
+            {
                 NutPunch_Reset();
                 NP_Warn("Things went haywire while receiving");
                 NP_LastStatus = NPS_Error;
             }
 
-            return;
+            break;
         }
 
-        size -= (int)sizeof(NP_Header);
+        size -= prefix + (int)sizeof(NP_Header);
 
         if (size < 0)
-            return; // junk
+            continue; // junk
+
+        uint32_t id = ntohl(*(uint32_t*)buf);
+        if (id) { // ackies
+            static uint8_t acky[sizeof(NP_Header) + 4] = "ACKY";
+            *(uint32_t*)(acky + sizeof(NP_Header)) = htonl(id);
+            NP_JustSend(addr, acky, sizeof(acky), false);
+        }
 
         for (size_t i = 0; i < sizeof(NP_MessageTypes) / sizeof(*NP_MessageTypes); i++) {
             const NP_MessageType type = NP_MessageTypes[i];
 
             if (size < type.min_packet_size)
                 continue;
-            if (NutPunch_Memcmp(buf, type.identifier, sizeof(NP_Header)))
+            if (NutPunch_Memcmp(buf + prefix, type.identifier, sizeof(NP_Header)))
                 continue;
 
             NP_Message msg = {0};
             msg.from = addr, msg.len = size;
-            msg.data = (uint8_t*)(buf + sizeof(NP_Header));
+            msg.data = (uint8_t*)(buf + prefix + sizeof(NP_Header));
             type.handle(msg);
 
             break;
@@ -990,7 +1046,7 @@ static void NP_SendGoodbyes() {
     NutPunch_Memcpy(bye + sizeof(NP_Header), NP_PeerId, sizeof(NutPunch_PeerId));
 
     for (int i = 0; i < 10; i++)
-        NP_JustSend(NP_ServerAddr, bye, sizeof(bye), 0);
+        NP_JustSend(NP_ServerAddr, bye, sizeof(bye), false);
 }
 
 void NutPunch_Flush() {
@@ -1008,6 +1064,22 @@ static void NP_NetworkUpdate() {
     NP_SendHeartbeat();
     NP_ReceiveShit();
     NP_FlushPendingQueue();
+
+    const NutPunch_Clock now = NutPunch_TimeNS();
+
+    if (now - NP_LastBeating >= NUTPUNCH_TIMEOUT_INTERVAL * NUTPUNCH_MS) {
+        NP_Warn("NutPuncher timed out");
+        NP_LastStatus = NPS_Error;
+        return;
+    }
+
+    for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
+        if (i != NutPunch_LocalPeer() && NutPunch_PeerAlive(i)
+            && now - NP_Peers[i].last_ping >= NUTPUNCH_TIMEOUT_INTERVAL * NUTPUNCH_MS)
+        {
+            NP_KillPeer(i);
+        }
+    }
 }
 
 NutPunch_UpdateStatus NutPunch_Update() {

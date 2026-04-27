@@ -111,6 +111,9 @@ typedef int64_t NP_Sock;
 /// How many milliseconds to wait before resending a reliable packet.
 #define NUTPUNCH_RETRY_INTERVAL ((NutPunch_Clock)250)
 
+/// How many milliseconds to wait for a peer or the NutPuncher to respond before timing out.
+#define NUTPUNCH_TIMEOUT_INTERVAL ((NutPunch_Clock)3000)
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -517,6 +520,15 @@ typedef struct {
     uint8_t unlisted;
     NutPunch_Peer local, master, count, capacity;
 } NP_Beating;
+
+typedef struct {
+    NP_Beating base;
+    struct {
+        NutPunch_Peer index;
+        NP_PeerAddr pub, same_nat;
+    } peers[NUTPUNCH_MAX_PLAYERS];
+    NP_Metadata lobby_metadata;
+} NP_BeatingAppend;
 
 typedef struct {
     NutPunch_PeerId peer;

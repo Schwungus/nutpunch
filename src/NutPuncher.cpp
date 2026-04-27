@@ -27,17 +27,18 @@
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 extern "C" {
 extern bool NP_AddrNull(NP_SockAddr), NP_AddrEq(NP_SockAddr, NP_SockAddr);
-extern int NP_UglyRecvfrom(NP_SockAddr*, void*, int);
-
 bool NP_MakeReuseAddr(NP_Sock), NP_MakeNonblocking(NP_Sock);
 extern void NP_NukeSocket(NP_Sock*);
 }
+
+static constexpr const NutPunch_Clock PEER_TIMEOUT = 3000 * NUTPUNCH_MS;
 
 static constexpr const NutPunch_Clock KEEP_QUEUE_FOR = 20 * NUTPUNCH_SEC;
 
@@ -48,7 +49,7 @@ static constexpr const size_t MAX_LOBBIES = 512;
 
 static NP_Sock SOCK = NUTPUNCH_INVALID_SOCKET;
 
-static NutPunch_Clock elapsed(NutPunch_Clock start) {
+static NutPunch_Clock elapsed(NutPunch_Clock start = 0) {
     return NutPunch_TimeNS() - start;
 }
 
@@ -97,8 +98,16 @@ static bool match_field_value(const int diff, const int flags) {
 }
 
 static void just_send(NP_SockAddr addr, const void* buf, size_t len) {
-    if (!NP_AddrNull(addr) && SOCK != NUTPUNCH_INVALID_SOCKET)
-        sendto(SOCK, (const char*)buf, (int)len, 0, (const struct sockaddr*)&addr, sizeof(addr));
+    const int prefix = 4;
+
+    const auto prepend = std::make_unique<char[]>(prefix + len);
+    *reinterpret_cast<uint32_t*>(prepend.get()) = 0;
+    memcpy(prepend.get() + prefix, buf, len);
+
+    if (!NP_AddrNull(addr) && SOCK != NUTPUNCH_INVALID_SOCKET) {
+        const auto shit = (const struct sockaddr*)&addr;
+        sendto(SOCK, prepend.get(), prefix + (int)len, 0, shit, sizeof(addr));
+    }
 }
 
 static void gtfo(NP_SockAddr addr, NutPunch_ErrorCode error) {
@@ -154,14 +163,26 @@ struct Player {
     NutPunch_Peer index = 0;
     NP_SockAddr pub, same_nat;
     std::string id;
+    NutPunch_Clock last_beat;
 
     Player(NutPunch_Peer index, NP_SockAddr pub, NP_SockAddr same_nat, const std::string& id)
-        : index(index), pub(pub), same_nat(same_nat), id(id) {}
+        : index(index), pub(pub), same_nat(same_nat), id(id), last_beat(elapsed()) {}
 
-    explicit operator bool() const {
-        return !id.empty() && !NP_AddrNull(pub);
+    void beat() {
+        last_beat = elapsed();
     }
 };
+
+static void cleanup_players_list(std::vector<Player>& players) {
+    std::erase_if(players, [](const auto& player) {
+        if (elapsed(player.last_beat) >= PEER_TIMEOUT) {
+            NP_Info("%s timed out", player.id.c_str());
+            return true;
+        }
+
+        return false;
+    });
+}
 
 struct Lobby {
     const std::string id;
@@ -181,7 +202,7 @@ struct Lobby {
     void update() {
         for (auto& player : players)
             beat(player);
-        std::erase_if(players, [](const auto& player) { return !player; });
+        cleanup_players_list(players);
     }
 
     int special(uint8_t idx) const {
@@ -201,7 +222,7 @@ struct Lobby {
 
     NutPunch_Peer index_of(const std::string& id) const {
         for (size_t i = 0; i < players.size(); i++)
-            if (players[i] && id == players[i].id)
+            if (id == players[i].id)
                 return i;
         return NUTPUNCH_MAX_PLAYERS;
     }
@@ -246,11 +267,18 @@ struct Lobby {
                 return;
             }
 
-            players.emplace_back(idx, same_nat, pub, id);
+            players.emplace_back(idx, pub, same_nat, id);
         }
 
         if (just_joined)
             NP_Info("Player %d joined lobby '%s'", idx + 1, fmt_id());
+
+        for (auto& player : players) {
+            if (player.id == id) {
+                player.beat();
+                break;
+            }
+        }
 
         if (idx == master()) {
             unlisted = flags & NP_HB_Unlisted;
@@ -260,13 +288,7 @@ struct Lobby {
     }
 
     void beat(Player& player) {
-        if (player.id.empty())
-            return;
-
-        static uint8_t buf[sizeof(NP_Header) + sizeof(NP_Beating)
-                           + ((size_t)NUTPUNCH_MAX_PLAYERS * (1 + (2 * sizeof(NP_PeerAddr))))
-                           + sizeof(NP_Metadata)]
-            = "BEAT";
+        static uint8_t buf[sizeof(NP_Header) + sizeof(NP_BeatingAppend)] = "BEAT";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
         *ptr++ = unlisted;
@@ -276,9 +298,6 @@ struct Lobby {
         *ptr++ = capacity;
 
         for (const auto& player : players) {
-            if (!player)
-                continue;
-
             memcpy(ptr++, &player.index, 1);
 
             memcpy(ptr, &player.pub.sin_addr.s_addr, 4), ptr += 4;
@@ -297,7 +316,7 @@ struct Lobby {
         std::erase_if(players, [id, pub](const auto& player) {
             if (player.id != id && !NP_AddrEq(player.pub, pub))
                 return false;
-            NP_Info("Player %s disconnected", player.id.c_str());
+            NP_Info("Player %s disconnected gracefully", player.id.c_str());
             return true;
         });
     }
@@ -337,12 +356,12 @@ struct Lobby {
 
     NutPunch_Peer master() {
         for (const auto& player : players)
-            if (player)
-                return player.index;
+            return player.index;
         return NUTPUNCH_MAX_PLAYERS;
     }
 };
 
+// TODO: fucking nuke.
 struct Grindr {
     const std::string queue_id;
     NutPunch_Clock last_match = NutPunch_TimeNS();
@@ -437,7 +456,7 @@ static bool create_lobby(const std::string& id, NP_SockAddr pub) {
     // Match against existing peers to prevent creating multiple lobbies with the same master.
     for (const auto& [lobby_id, lobby] : lobbies) {
         for (const auto& player : lobby.players)
-            if (player && NP_AddrEq(player.pub, pub))
+            if (NP_AddrEq(player.pub, pub))
                 return true; // fuck you...
     }
 
@@ -511,10 +530,12 @@ static void kill_bro(const NutPunch_PeerId peer_id, NP_SockAddr pub) {
 }
 
 static void handle_recv(NP_SockAddr pub, const char* buf, int rcv) {
-    rcv -= (int)sizeof(NP_Header);
+    rcv -= 4 + (int)sizeof(NP_Header);
     if (rcv < 0)
         return; // junk...
 
+    // we completely ignore the packet id on the NutPuncher side for now
+    buf += 4;
     const char* ptr = buf + sizeof(NP_Header);
 
     if (!std::memcmp(buf, "LIST", sizeof(NP_Header))) {
@@ -574,17 +595,24 @@ static void handle_recv(NP_SockAddr pub, const char* buf, int rcv) {
 }
 
 static void receive() {
+    static char buf[NUTPUNCH_FRAGMENT_SIZE] = {0};
+
     for (;;) {
         NP_SockAddr addr = {0};
-        static char buf[NUTPUNCH_FRAGMENT_SIZE] = {0};
-        int size = NP_UglyRecvfrom(&addr, buf, sizeof(buf));
+        socklen_t addr_size = sizeof(addr);
+        int size = recvfrom(SOCK, (char*)buf, sizeof(buf), 0, (struct sockaddr*)&addr, &addr_size);
 
         if (size < 0) {
-            if (NP_SockError() == NP_WouldBlock)
-                break;
-        } else {
-            handle_recv(addr, buf, size);
+            if (NP_SockError() != NP_WouldBlock && NP_SockError() != NP_TooFat
+                && NP_SockError() != NP_ConnReset)
+            {
+                NP_Warn("recvfrom fail: %d", NP_SockError());
+            }
+
+            break;
         }
+
+        handle_recv(addr, buf, size);
     }
 }
 
