@@ -1626,10 +1626,7 @@ void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
 }
 
 static void NP_NetworkUpdate() {
-    if (NP_Closing)
-        NP_SendGoodbyes();
-    else
-        NP_SendHeartbeat();
+    NP_SendHeartbeat();
     NP_ReceiveShit();
     NP_FlushPendingQueue();
 
@@ -1671,7 +1668,7 @@ NutPunch_UpdateStatus NutPunch_Update() {
 void NutPunch_Disconnect() {
     NP_Info("Disconnecting from lobby (if any)");
     if (NutPunch_IsOnline()) // send a disconnection packet too
-        NP_Closing = true, NP_NetworkUpdate();
+        NP_Closing = true, NutPunch_Flush();
     NutPunch_Reset();
 }
 
