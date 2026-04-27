@@ -1,7 +1,8 @@
-#include <NutPunch.h>
-
 #include <stdio.h>
 #include <stdlib.h>
+
+#define NUTPUNCH_IMPLEMENTATION
+#include <NutPunch.h>
 
 #ifdef NUTPUNCH_WINDOSE
 #include <conio.h>

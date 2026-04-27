@@ -1,8 +1,9 @@
-#include <NutPunch.h>
-
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#define NUTPUNCH_IMPLEMENTATION
+#include <NutPunch.h>
 
 #define POOR_IMPLEMENTATION
 #include <poormans.h>

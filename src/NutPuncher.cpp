@@ -23,8 +23,6 @@
 //
 // For more information, please refer to <https://unlicense.org>
 
-#include "NutPunch.h"
-
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -32,11 +30,8 @@
 #include <unordered_map>
 #include <vector>
 
-extern "C" {
-extern bool NP_AddrNull(NP_SockAddr), NP_AddrEq(NP_SockAddr, NP_SockAddr);
-bool NP_MakeReuseAddr(NP_Sock), NP_MakeNonblocking(NP_Sock);
-extern void NP_NukeSocket(NP_Sock*);
-}
+#define NUTPUNCH_IMPLEMENTATION
+#include <NutPunch.h>
 
 static constexpr const NutPunch_Clock PEER_TIMEOUT = 3000 * NUTPUNCH_MS;
 

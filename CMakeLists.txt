@@ -10,15 +10,14 @@ set(FETCHCONTENT_QUIET FALSE)
 
 set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-add_library(NutPunch
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/NutPunch.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/NutPunch.c)
-target_include_directories(NutPunch PUBLIC
+add_library(NutPunch INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/NutPunch.h)
+target_include_directories(NutPunch INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if(WIN32)
     # pthreads required for `clock_gettime`
-    target_link_libraries(NutPunch PUBLIC ws2_32 winpthread)
+    target_link_libraries(NutPunch INTERFACE ws2_32 winpthread)
 endif()
 
 option(NUTPUNCH_BUILD_TEST "Build NutPunch test binary?")
