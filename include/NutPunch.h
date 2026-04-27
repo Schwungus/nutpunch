@@ -641,16 +641,6 @@ static const NP_MessageType NP_MessageTypes[] = {
     {"DATE", NP_HandleDate,          sizeof(NutPunch_LobbyId)                      },
 };
 
-void NP_DefaultLogger(const char* fmt, ...) {
-    va_list args = {0};
-    va_start(args, fmt);
-    vfprintf(stdout, fmt, args);
-    va_end(args);
-
-    fflush(stdout);
-}
-
-void (*NP_Logger)(const char*, ...) = NULL;
 char NP_LastError[512] = "";
 
 static bool NP_InitDone = false, NP_Closing = false;
@@ -790,11 +780,10 @@ static void NP_LazyInit() {
 
     NP_ResetImpl();
 
-    void (*const print)(const char*, ...) = (NP_Logger ? NP_Logger : NP_DefaultLogger);
-    print(".-------------------------------------------------------------.\n");
-    print("| For troubleshooting multiplayer connectivity, please visit: |\n");
-    print("|    https://github.com/Schwungus/nutpunch#troubleshooting    |\n");
-    print("'-------------------------------------------------------------'\n");
+    NutPunch_Log(".-------------------------------------------------------------.\n");
+    NutPunch_Log("| For troubleshooting multiplayer connectivity, please visit: |\n");
+    NutPunch_Log("|    https://github.com/Schwungus/nutpunch#troubleshooting    |\n");
+    NutPunch_Log("'-------------------------------------------------------------'\n");
 }
 
 void NutPunch_Shutdown() {
