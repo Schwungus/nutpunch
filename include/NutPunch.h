@@ -183,8 +183,7 @@ extern char NP_LastError[512];
 #ifdef NUTPUNCH_TRACING
 #define NP_Trace(...) NutPunch_Log("TRACE: " __VA_ARGS__)
 #else
-#define NP_Trace(...)                                                                              \
-    do { (__VA_ARGS__); } while (0) // evaluating the args for consistency's sake
+#define NP_Trace(...)
 #endif
 
 #ifdef NUTPUNCH_WINDOSE
@@ -1552,17 +1551,23 @@ static void NP_ReceiveShit() {
         int size = NP_UglyRecvFrom(&addr, buf, sizeof(buf));
 
         if (size < 0) {
-            if (NP_SockError() != NP_WouldBlock && NP_SockError() != NP_TooFat
-                && NP_SockError() != NP_ConnReset)
-            {
+            switch (NP_SockError()) {
+            case NP_WouldBlock:
+            case NP_TooFat:
+            case NP_ConnReset:
+                break;
+
+            default:
                 NutPunch_Reset();
                 NP_Warn("Things went haywire while receiving");
                 NP_LastStatus = NPS_Error;
+                break;
             }
 
             break;
         }
 
+        NP_Trace("RECEIVED %i BYTES FROM %s", size, NP_FormatSockaddr(addr));
         size -= prefix + (int)sizeof(NP_Header);
 
         if (size < 0)
