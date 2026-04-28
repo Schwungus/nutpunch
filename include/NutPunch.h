@@ -740,19 +740,16 @@ static void NP_NukePeer(NutPunch_Peer peer) {
     NP_MemzeroRef(*ptr);
 }
 
-static void NP_NukeAllPeers() {
-    for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-        NP_NukePeer(i);
-}
-
 static void NP_NukeLobbyDataLite() {
     NP_Closing = NP_Unlisted = false;
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
-    NP_NukeAllPeers();
 
     NP_Mode = NPNM_Normal;
     NP_HeartbeatFlags = NP_QueueCount = NP_QueueTime = 0;
     NP_LobbyId[0] = 0;
+
+    for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+        NP_NukePeer(i);
 
     NutPunch_SetMaxPlayers(NUTPUNCH_MAX_PLAYERS);
 
@@ -781,9 +778,7 @@ static void NP_NukeLobbyData() {
 
 static void NP_ResetImpl() {
     NP_NukeLobbyData();
-
     NP_MemzeroRef(NP_ServerAddr);
-    NP_NukeAllPeers();
     NP_LastStatus = NPS_Idle;
 }
 
