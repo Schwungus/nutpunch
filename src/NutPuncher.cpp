@@ -470,17 +470,14 @@ static void send_lobby_metadata(NP_SockAddr pub, const char* target_id) {
 
     const auto& lobby = lobbies.at(target_id);
 
-    if (lobby.unlisted)
-        return;
-
     uint8_t* ptr = buf + sizeof(NP_Header);
 
     std::memcpy(ptr, target_id, sizeof(NutPunch_LobbyId));
     ptr += sizeof(NutPunch_LobbyId);
 
-    lobby.metadata.dump(ptr);
+    ptr += lobby.metadata.dump(ptr);
 
-    just_send(pub, buf, sizeof(buf));
+    just_send(pub, buf, ptr - buf);
 }
 
 static void send_lobbies(NP_SockAddr pub, size_t filter_count, const NutPunch_Filter* filters) {

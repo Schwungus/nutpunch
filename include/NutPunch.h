@@ -624,19 +624,19 @@ typedef struct {
 } NP_MessageType;
 
 static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
-    NP_HandleListing(NP_Message), NP_HandleLobbyMetadata(NP_Message), NP_HandleData(NP_Message),
+    NP_HandleListing(NP_Message), NP_HandleLobbyData(NP_Message), NP_HandleData(NP_Message),
     NP_HandleQueue(NP_Message), NP_HandleDate(NP_Message), NP_HandleAcky(NP_Message);
 
 static const NP_MessageType NP_MessageTypes[] = {
-    {"ACKY", NP_HandleAcky,          4                                             },
-    {"PING", NP_HandlePing,          1                                             },
-    {"LIST", NP_HandleListing,       0                                             },
-    {"LGMA", NP_HandleLobbyMetadata, sizeof(NutPunch_LobbyId) + sizeof(NP_Metadata)},
-    {"DATA", NP_HandleData,          1                                             },
-    {"GTFO", NP_HandleGTFO,          1                                             },
-    {"BEAT", NP_HandleBeating,       sizeof(NP_Beating)                            },
-    {"QUEU", NP_HandleQueue,         1 + 1                                         },
-    {"DATE", NP_HandleDate,          sizeof(NutPunch_LobbyId)                      },
+    {"ACKY", NP_HandleAcky,      4                       },
+    {"PING", NP_HandlePing,      1                       },
+    {"LIST", NP_HandleListing,   0                       },
+    {"LGMA", NP_HandleLobbyData, sizeof(NutPunch_LobbyId)},
+    {"DATA", NP_HandleData,      1                       },
+    {"GTFO", NP_HandleGTFO,      1                       },
+    {"BEAT", NP_HandleBeating,   sizeof(NP_Beating)      },
+    {"QUEU", NP_HandleQueue,     1 + 1                   },
+    {"DATE", NP_HandleDate,      sizeof(NutPunch_LobbyId)},
 };
 
 char NP_LastError[512] = "";
@@ -1385,16 +1385,17 @@ static void NP_HandleListing(NP_Message msg) {
     NP_HandleEventCb(NPCB_LobbyList, &list);
 }
 
-static void NP_HandleLobbyMetadata(NP_Message msg) {
+static void NP_HandleLobbyData(NP_Message msg) {
     if (!NP_AddrEq(msg.from, NP_ServerAddr))
         return;
 
     NutPunch_LobbyMetadata info = {0};
 
-    NutPunch_Memcpy(info.lobby, msg.data, sizeof(info.lobby)), msg.data += sizeof(info.lobby);
-    info.metadata = NULL;
+    NutPunch_Memcpy(info.lobby, msg.data, sizeof(info.lobby));
+    msg.data += sizeof(NutPunch_LobbyId);
+    msg.len -= sizeof(NutPunch_LobbyId);
 
-    for (size_t i = 0; msg.data[0] && i < NUTPUNCH_MAX_FIELDS; i++) {
+    for (size_t i = 0; i < (msg.len / sizeof(NP_Field)); i++) {
         NutPunch_Field* field = (NutPunch_Field*)NutPunch_Malloc(sizeof(*field));
         field->next = info.metadata, info.metadata = field;
         NutPunch_Memcpy(field, msg.data, sizeof(NP_Field)), msg.data += sizeof(NP_Field);
