@@ -709,9 +709,9 @@ static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, b
     NP_Trace("GONNA SEND %i BYTES TO %s", last->len, NP_FormatSockaddr(destination));
 }
 
-static void NP_JustSpam(NP_SockAddr destination, const void* data, size_t len, bool reliable) {
+static void NP_JustSpam(NP_SockAddr destination, const void* data, size_t len) {
     for (int times = 5; times > 0; times--)
-        NP_JustSend(destination, data, len, reliable);
+        NP_JustSend(destination, data, len, false);
 }
 
 void NP_NukeSocket(NP_Sock* sock) {
@@ -1134,7 +1134,7 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
         ptr += filter_count * sizeof(NutPunch_Filter);
     }
 
-    NP_JustSpam(NP_ServerAddr, query, ptr - query, false);
+    NP_JustSpam(NP_ServerAddr, query, ptr - query);
 }
 
 const char* NutPunch_GetLastError() {
@@ -1580,7 +1580,7 @@ static void NP_ReceiveShit() {
         if (id) { // ackies
             static uint8_t acky[sizeof(NP_Header) + 4] = "ACKY";
             *(uint32_t*)(acky + sizeof(NP_Header)) = htonl(id);
-            NP_JustSpam(addr, acky, sizeof(acky), false);
+            NP_JustSpam(addr, acky, sizeof(acky));
         }
 
         for (size_t i = 0; i < sizeof(NP_MessageTypes) / sizeof(*NP_MessageTypes); i++) {
@@ -1610,7 +1610,7 @@ static void NP_SendGoodbyes() {
 
     static uint8_t bye[sizeof(NP_Header) + sizeof(NutPunch_PeerId)] = "DISC";
     NutPunch_Memcpy(bye + sizeof(NP_Header), NP_PeerId, sizeof(NutPunch_PeerId));
-    NP_JustSpam(NP_ServerAddr, bye, sizeof(bye), false);
+    NP_JustSpam(NP_ServerAddr, bye, sizeof(bye));
 }
 
 void NutPunch_Flush() {
