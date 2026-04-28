@@ -155,23 +155,24 @@ extern char NP_LastError[512];
 
 #endif // NutPunch_{Malloc,Free}
 
-#if !defined(NutPunch_Memcpy) && !defined(NutPunch_Memset) && !defined(NutPunch_Memcmp)
+#if !defined(NutPunch_Memcpy) && !defined(NutPunch_Memset) && !defined(NutPunch_Memcmp)            \
+    && !defined(NutPunch_StrNCmp)
 
 #include <string.h>
 #define NutPunch_Memcpy memcpy
 #define NutPunch_Memset memset
 #define NutPunch_Memcmp memcmp
+#define NutPunch_StrNCmp strncmp
 
-#elif !defined(NutPunch_Memcpy) || !defined(NutPunch_Memset) || !defined(NutPunch_Memcmp)
+#elif !defined(NutPunch_Memcpy) || !defined(NutPunch_Memset) || !defined(NutPunch_Memcmp)          \
+    || !defined(NutPunch_StrNCmp)
 
-#error Define NutPunch_Mem{cpy,set,cmp} together!
+#error Define NutPunch_Mem{cpy,set,cmp} & NutPunch_StrNCmp together!
 
 #endif // NutPunch_Mem*
 
 #define NP_Memzero(array) NutPunch_Memset(array, 0, sizeof(array))
 #define NP_MemzeroRef(ref) NutPunch_Memset(&(ref), 0, sizeof(ref))
-
-#define NutPunch_StrNCmp strncmp
 
 #define NP_Info(...) NutPunch_Log("INFO: " __VA_ARGS__)
 #define NP_Warn(...)                                                                               \
@@ -586,10 +587,6 @@ enum {
 
 // BATSHIT CRAZY BATSHIT!!!
 #ifdef NUTPUNCH_IMPLEMENTATION
-
-#ifndef NUTPUNCH_NOSTD
-#include <stdarg.h>
-#endif
 
 typedef struct {
     NutPunch_Field* metadata;
@@ -1787,13 +1784,11 @@ const char* NutPunch_Basename(const char* path) {
     return path;
 }
 
-#ifndef NUTPUNCH_WINDOSE
-
-#ifndef NUTPUNCH_NOSTD
+// internally used `Sleep` polyfill. we only really use it in the NutPuncher & test binaries.
+#if !defined(NUTPUNCH_WINDOSE) && !defined(NUTPUNCH_NOSTD)
 
 #include <errno.h>
 
-// we only use this internally actually...
 void NP_SleepMs(int ms) {
     // Stolen from: <https://stackoverflow.com/a/1157217>
     struct timespec ts = {0};
@@ -1802,11 +1797,9 @@ void NP_SleepMs(int ms) {
     do { res = nanosleep(&ts, &ts); } while (res && errno == EINTR);
 }
 
-#endif // NUTPUNCH_NOSTD
+#endif // NP_SleepMs
 
-#endif // NUTPUNCH_WINDOSE
-
-#ifndef NutPunch_TimeNS
+#if !defined(NUTPUNCH_NOSTD) && !defined(NutPunch_TimeNS)
 
 #include <time.h>
 
@@ -1815,6 +1808,10 @@ NutPunch_Clock NutPunch_TimeNS() {
     clock_gettime(CLOCK_REALTIME, &ts);
     return (NutPunch_Clock)ts.tv_sec * NUTPUNCH_SEC + (NutPunch_Clock)ts.tv_nsec;
 }
+
+#else
+
+#error You have to define NutPunch_TimeNS in order to use NUTPUNCH_NOSTD!
 
 #endif // NutPunch_TimeNS
 
