@@ -133,8 +133,6 @@ struct Metadata {
         const auto out = reinterpret_cast<char*>(rawout);
         auto outf = reinterpret_cast<NP_Field*>(out);
 
-        memset(out, 0, sizeof(NP_Metadata));
-
         for (const auto& pair : fields) {
             NutPunch_SNPrintF(outf->name, sizeof(outf->name), "%s", pair.first.c_str());
             NutPunch_SNPrintF(outf->data, sizeof(outf->data), "%s", pair.second.c_str());
