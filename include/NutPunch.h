@@ -1132,7 +1132,7 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
         ptr += filter_count * sizeof(NutPunch_Filter);
     }
 
-    NP_JustSend(NP_ServerAddr, query, ptr - query, false);
+    NP_JustSpam(NP_ServerAddr, query, ptr - query, false);
 }
 
 const char* NutPunch_GetLastError() {
