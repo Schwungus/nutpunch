@@ -698,11 +698,13 @@ static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, b
     last->destination = destination, last->next = NULL;
     last->retries = reliable ? 0 : -1, last->last_retry = 0, last->acked = false;
 
+    last->id = reliable ? ++counter : 0;
+    last->len = prefix + (int)len;
+
     // prefixing the entire packet with an id...
-    last->id = reliable ? counter++ : 0;
-    last->len = prefix + (int)len, last->data = (uint8_t*)NutPunch_Malloc(prefix + len);
-    NutPunch_Memcpy(last->data + prefix, data, len);
+    last->data = (uint8_t*)NutPunch_Malloc(last->len);
     *(uint32_t*)last->data = htonl(last->id);
+    NutPunch_Memcpy(last->data + prefix, data, len);
 
     NP_Trace("GONNA SEND %i BYTES TO %s", last->len, NP_FormatSockaddr(destination));
 }
