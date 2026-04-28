@@ -306,7 +306,8 @@ struct Lobby {
             memcpy(ptr, &player.same_nat.sin_port, 2), ptr += 2;
         }
 
-        ptr += metadata.dump(ptr);
+        ptr += metadata.dump(ptr); // FIXME: OVERFLOWS HERE!!!
+        NP_Info("DAMN %llu", ptr - buf);
 
         just_send(player.pub, buf, ptr - buf);
     }

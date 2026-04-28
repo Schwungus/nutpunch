@@ -1292,7 +1292,9 @@ static void NP_HandleBeating(NP_Message msg) {
     if (!NP_AddrEq(msg.from, NP_ServerAddr))
         return;
 
-    const bool just_joined = NP_LocalPeer == NUTPUNCH_MAX_PLAYERS;
+    NP_Trace("GOT BEATEN!!!");
+
+    const bool just_joined = NutPunch_LocalPeer() == NUTPUNCH_MAX_PLAYERS;
     const NutPunch_Peer old_master = NutPunch_MasterPeer();
     const uint8_t* ptr = msg.data;
 
@@ -1303,6 +1305,7 @@ static void NP_HandleBeating(NP_Message msg) {
     NP_MaxPlayers = *ptr++;
 
     if (NP_LocalPeer >= NUTPUNCH_MAX_PLAYERS) {
+        NP_LocalPeer = NUTPUNCH_MAX_PLAYERS;
         NP_Warn("NutPuncher sent us a junk response?!");
         return;
     }
@@ -1552,20 +1555,16 @@ static void NP_ReceiveShit() {
         int size = NP_UglyRecvFrom(&addr, buf, sizeof(buf));
 
         if (size < 0) {
-            switch (NP_SockError()) {
-            case NP_WouldBlock:
-            case NP_TooFat:
-            case NP_ConnReset:
+            if (NP_SockError() == NP_WouldBlock) {
                 break;
-
-            default:
+            } else if (NP_SockError() == NP_TooFat || NP_SockError() == NP_ConnReset) {
+                continue;
+            } else {
                 NutPunch_Reset();
-                NP_Warn("Things went haywire while receiving");
+                NP_Warn("Things went haywire while receiving: %d", NP_SockError());
                 NP_LastStatus = NPS_Error;
                 break;
             }
-
-            break;
         }
 
         NP_Trace("RECEIVED %i BYTES FROM %s", size, NP_FormatSockaddr(addr));
