@@ -130,8 +130,7 @@ struct Metadata {
     }
 
     int dump(void* rawout) const {
-        const auto out = reinterpret_cast<char*>(rawout);
-        auto outf = reinterpret_cast<NP_Field*>(out);
+        auto outf = reinterpret_cast<NP_Field*>(rawout);
 
         for (const auto& pair : fields) {
             NutPunch_SNPrintF(outf->name, sizeof(outf->name), "%s", pair.first.c_str());
@@ -139,7 +138,7 @@ struct Metadata {
             outf++;
         }
 
-        return (int)(out - (char*)outf);
+        return (int)((char*)outf - (char*)rawout);
     }
 
     void load(const char* ptr, size_t num_fields) {
@@ -295,7 +294,7 @@ struct Lobby {
         *ptr++ = capacity;
 
         for (const auto& player : players) {
-            memcpy(ptr++, &player.index, 1);
+            *ptr++ = player.index;
 
             memcpy(ptr, &player.pub.sin_addr.s_addr, 4), ptr += 4;
             memcpy(ptr, &player.pub.sin_port, 2), ptr += 2;
