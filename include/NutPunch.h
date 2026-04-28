@@ -789,10 +789,10 @@ static void NP_LazyInit() {
 
     NP_ResetImpl();
 
-    NutPunch_Log(".-------------------------------------------------------------.\n");
-    NutPunch_Log("| For troubleshooting multiplayer connectivity, please visit: |\n");
-    NutPunch_Log("|    https://github.com/Schwungus/nutpunch#troubleshooting    |\n");
-    NutPunch_Log("'-------------------------------------------------------------'\n");
+    NutPunch_Log(".-------------------------------------------------------------.");
+    NutPunch_Log("| For troubleshooting multiplayer connectivity, please visit: |");
+    NutPunch_Log("|    https://github.com/Schwungus/nutpunch#troubleshooting    |");
+    NutPunch_Log("'-------------------------------------------------------------'");
 
     NP_Trace("TRACE OK");
 }
