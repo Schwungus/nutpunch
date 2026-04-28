@@ -102,7 +102,7 @@ static void just_send(NP_SockAddr addr, const void* buf, size_t len) {
         return;
 
     const auto prepend = std::make_unique<char[]>(prefix + len);
-    *reinterpret_cast<uint32_t*>(prepend.get()) = 0;
+    *reinterpret_cast<uint32_t*>(prepend.get()) = htonl(0);
     memcpy(prepend.get() + prefix, buf, len);
 
     const auto shit = (const struct sockaddr*)&addr;
