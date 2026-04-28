@@ -830,15 +830,6 @@ void NutPunch_SetServerAddr(const char* hostname) {
     NutPunch_SNPrintF(NP_ServerHost, sizeof(NP_ServerHost), "%s", hostname);
 }
 
-static int NP_FieldNameSize(const char* name) {
-    if (!name)
-        return 0;
-    for (int i = 0; i < NUTPUNCH_FIELD_NAME_MAX; i++)
-        if (!name[i])
-            return i;
-    return NUTPUNCH_FIELD_NAME_MAX;
-}
-
 static NutPunch_Field* NP_GetPeerFields(NutPunch_Peer peer) {
     if (NutPunch_IsOnline() && peer == NutPunch_LocalPeer())
         return NP_PeerMetadata;
