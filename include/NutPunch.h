@@ -1720,11 +1720,14 @@ static void NP_SendPro(
     }
 
     const size_t total_size = sizeof(NP_Header) + 1 + size;
-    uint8_t *buf = (uint8_t*)NutPunch_Malloc(total_size), *ptr = buf + sizeof(NP_Header);
+    uint8_t* const buf = (uint8_t*)NutPunch_Malloc(total_size);
+    uint8_t* ptr = buf + sizeof(NP_Header);
 
     NutPunch_Memcpy(buf, "DATA", sizeof(NP_Header));
     *ptr++ = channel, NutPunch_Memcpy(ptr, data, size);
     NP_JustSend(NP_Peers[peer].address, buf, total_size, reliable);
+
+    NutPunch_Free(buf);
 }
 
 void NutPunch_Send(NutPunch_Channel channel, NutPunch_Peer peer, const void* data, int size) {
