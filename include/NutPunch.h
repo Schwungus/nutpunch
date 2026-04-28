@@ -1188,7 +1188,7 @@ static void NP_HandlePing(NP_Message msg) {
     for (size_t i = 0; i < msg.len / sizeof(NP_Field); i++) {
         NP_Field now = ((NP_Field*)ptr)[i];
 
-        for (NutPunch_Field* then = NP_LobbyMetadata; then; then = then->next) {
+        for (NutPunch_Field* then = peer->metadata; then; then = then->next) {
             if (NutPunch_StrNCmp(then->name, now.name, NUTPUNCH_FIELD_NAME_MAX))
                 continue;
 
