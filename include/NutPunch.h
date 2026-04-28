@@ -726,10 +726,29 @@ void NP_NukeSocket(NP_Sock* sock) {
     *sock = NUTPUNCH_INVALID_SOCKET;
 }
 
+static void NP_NukeMetadata(NutPunch_Field** metadata) {
+    while (metadata && *metadata) {
+        NutPunch_Field* ptr = *metadata;
+        *metadata = ptr->next;
+        NutPunch_Free(ptr);
+    }
+}
+
+static void NP_NukePeer(NutPunch_Peer peer) {
+    NP_PeerInfo* ptr = &NP_Peers[peer];
+    NP_NukeMetadata(&ptr->metadata);
+    NP_MemzeroRef(*ptr);
+}
+
+static void NP_NukeAllPeers() {
+    for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+        NP_NukePeer(i);
+}
+
 static void NP_NukeLobbyDataLite() {
     NP_Closing = NP_Unlisted = false;
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
-    NP_Memzero(NP_Peers);
+    NP_NukeAllPeers();
 
     NP_Mode = NPNM_Normal;
     NP_HeartbeatFlags = NP_QueueCount = NP_QueueTime = 0;
@@ -754,14 +773,6 @@ static void NP_NukeLobbyDataLite() {
     NP_NukeSocket(&NP_Socket);
 }
 
-static void NP_NukeMetadata(NutPunch_Field** metadata) {
-    while (metadata && *metadata) {
-        NutPunch_Field* ptr = *metadata;
-        *metadata = ptr->next;
-        NutPunch_Free(ptr);
-    }
-}
-
 static void NP_NukeLobbyData() {
     NP_NukeLobbyDataLite();
     NP_NukeMetadata(&NP_LobbyMetadata);
@@ -771,7 +782,8 @@ static void NP_NukeLobbyData() {
 static void NP_ResetImpl() {
     NP_NukeLobbyData();
 
-    NP_MemzeroRef(NP_ServerAddr), NP_Memzero(NP_Peers);
+    NP_MemzeroRef(NP_ServerAddr);
+    NP_NukeAllPeers();
     NP_LastStatus = NPS_Idle;
 }
 
@@ -1153,9 +1165,7 @@ static void NP_KillPeer(NutPunch_Peer peer) {
     if (NutPunch_PeerAlive(peer))
         NP_HandleEventCb(NPCB_PeerLeft, &peer);
 
-    NP_PeerInfo* ptr = &NP_Peers[peer];
-    NP_NukeMetadata(&ptr->metadata);
-    NP_MemzeroRef(*ptr);
+    NP_NukePeer(peer);
 }
 
 bool NP_AddrNull(NP_SockAddr addr) {
