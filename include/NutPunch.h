@@ -550,9 +550,7 @@ typedef uint8_t NP_Header[4];
 typedef struct {
     NutPunch_FieldName name;
     NutPunch_FieldValue data;
-} NP_Field;
-
-typedef NP_Field NP_Metadata[NUTPUNCH_MAX_FIELDS];
+} NP_Field, NP_Metadata[NUTPUNCH_MAX_FIELDS];
 
 typedef struct {
     uint32_t ip;
