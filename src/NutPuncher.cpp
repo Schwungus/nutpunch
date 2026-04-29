@@ -128,31 +128,65 @@ struct Metadata {
 
     Metadata() {}
 
-    void insert(const std::string& name, const std::string& data) {
+    bool insert(const std::string& name, const std::string& data) {
         if (name.empty())
-            return;
-        if (fields.size() < NUTPUNCH_MAX_FIELDS)
-            fields.insert_or_assign(name, data);
+            return false;
+        if (fields.size() >= NUTPUNCH_MAX_FIELDS)
+            return false;
+        fields.insert_or_assign(name, data);
+        return true;
     }
 
     int dump(void* rawout) const {
-        auto outf = reinterpret_cast<NP_Field*>(rawout);
+        auto out = reinterpret_cast<char*>(rawout);
 
         for (const auto& pair : fields) {
-            NutPunch_SNPrintF(outf->name, sizeof(outf->name), "%s", pair.first.c_str());
-            NutPunch_SNPrintF(outf->data, sizeof(outf->data), "%s", pair.second.c_str());
-            outf++;
+            const char *name = pair.first.c_str(), *data = pair.second.c_str();
+
+            auto len = pair.first.length() + 1;
+            NutPunch_SNPrintF(out, len, "%s", name);
+            out += len;
+
+            len = pair.second.length() + 1;
+            NutPunch_SNPrintF(out, len, "%s", data);
+            out += len;
         }
 
-        return (int)((char*)outf - (char*)rawout);
+        return (int)(out - (char*)rawout);
     }
 
-    void load(const char* ptr, size_t num_fields) {
-        for (int i = 0; i < num_fields; i++) {
-            const auto field = reinterpret_cast<const NP_Field*>(ptr)[i];
-            const std::string name(field.name, strnlen(field.name, NUTPUNCH_FIELD_NAME_MAX)),
-                data(field.data, strnlen(field.data, NUTPUNCH_FIELD_DATA_MAX));
-            insert(name, data);
+    void load(const char* ptr, size_t len) {
+        const char *start = ptr, *out = ptr;
+
+        char name[NUTPUNCH_FIELD_NAME_MAX] = {0}, data[NUTPUNCH_FIELD_DATA_MAX] = {0};
+        int readcur = 0;
+        bool readval = false;
+        while ((out - start) < len) {
+            if (*out == '\0') {
+                readval = !readval;
+                readcur = 0;
+
+                if (readval) {
+                    NutPunch_Memset(data, 0, sizeof(data));
+                } else {
+                    if (insert(name, data))
+                        NP_Trace("\"%s\" = \"%s\"", name, data);
+                    NutPunch_Memset(name, 0, sizeof(name));
+                }
+
+                ++out;
+                continue;
+            }
+
+            if (readval) {
+                if (readcur < (NUTPUNCH_FIELD_DATA_MAX - 1))
+                    data[readcur] = *out;
+            } else {
+                if (readcur < (NUTPUNCH_FIELD_NAME_MAX - 1))
+                    name[readcur] = *out;
+            }
+            ++readcur;
+            ++out;
         }
     }
 
@@ -235,11 +269,11 @@ struct Lobby {
 
     void accept(const std::string& id, const NP_HeartbeatFlagsStorage flags, Message msg) {
         NP_SockAddr same_nat = {0};
-        const char* const start = msg.data;
 
         same_nat.sin_family = AF_INET;
         same_nat.sin_addr.s_addr = *(uint32_t*)msg.data, msg.data += 4;
         same_nat.sin_port = *(uint16_t*)msg.data, msg.data += 2;
+        msg.len -= 6;
 
         if (!ntohl(same_nat.sin_addr.s_addr))
             same_nat.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -286,7 +320,7 @@ struct Lobby {
         if (index_of(id) == master()) {
             unlisted = flags & NP_HB_Unlisted;
             capacity = 1 + (flags >> 4);
-            metadata.load(msg.data, (msg.len - (msg.data - start)) / sizeof(NP_Field));
+            metadata.load(msg.data, msg.len);
         }
     }
 
@@ -565,12 +599,15 @@ static void handle_disc(Message msg) {
 static void handle_join(Message msg) {
     std::string peer_id(msg.data, sizeof(NutPunch_PeerId));
     msg.data += sizeof(NutPunch_PeerId);
+    msg.len -= sizeof(NutPunch_PeerId);
 
     std::string lobby_id(msg.data, strnlen(msg.data, sizeof(NutPunch_LobbyId)));
     msg.data += sizeof(NutPunch_LobbyId);
+    msg.len -= sizeof(NutPunch_LobbyId);
 
     auto flags = *(const NP_HeartbeatFlagsStorage*)msg.data;
     msg.data += sizeof(flags);
+    msg.len -= sizeof(flags);
 
     NutPunch_ErrorCode err = NPE_Ok;
 
