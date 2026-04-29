@@ -888,20 +888,18 @@ static bool NP_SetVar(NutPunch_Field** fields, const char* name, const char* dat
     return true;
 }
 
-static int NP_DumpMetadata(void* raw_out, const NutPunch_Field* fields) {
-    char* out = (char*)raw_out;
+static int NP_DumpMetadata(void* start, const NutPunch_Field* fields) {
+    char* out = (char*)start;
 
     for (; fields; fields = fields->next) {
         int len = NutPunch_StrNLen(fields->name, NUTPUNCH_FIELD_NAME_MAX - 1) + 1;
-        NutPunch_SNPrintF(out, len, "%s", fields->name);
-        out += len;
+        NutPunch_SNPrintF(out, len, "%s", fields->name), out += len;
 
         len = NutPunch_StrNLen(fields->data, NUTPUNCH_FIELD_DATA_MAX - 1) + 1;
-        NutPunch_SNPrintF(out, len, "%s", fields->data);
-        out += len;
+        NutPunch_SNPrintF(out, len, "%s", fields->data), out += len;
     }
 
-    return (int)(out - (char*)raw_out);
+    return (int)(out - (char*)start);
 }
 
 void NutPunch_RequestLobbyData(const NutPunch_LobbyId lobby) {
