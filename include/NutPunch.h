@@ -94,12 +94,6 @@ typedef int64_t NP_Sock;
 /// The maximum amount of filters you can pass to `NutPunch_FindLobbies`.
 #define NUTPUNCH_MAX_SEARCH_FILTERS (8)
 
-/// Maximum length of a metadata field name.
-#define NUTPUNCH_FIELD_NAME_MAX (16)
-
-/// Maximum volume of data you can store in a metadata field.
-#define NUTPUNCH_FIELD_DATA_MAX (32)
-
 /// Maximum amount of metadata fields per lobby/player.
 #define NUTPUNCH_MAX_FIELDS (8)
 
@@ -210,26 +204,32 @@ typedef char NutPunch_LobbyId[16];
 /// An identifier used in matchmaking for matching you with other peers on the same queue.
 typedef char NutPunch_QueueId[16];
 
+/// As much as you can fit inside the name of a metadata field including the null terminator.
+typedef char NutPunch_FieldName[16];
+
+/// As much as you can fit inside the data of a metadata field including the null terminator.
+typedef char NutPunch_FieldValue[32];
+
 typedef uint8_t NutPunch_Channel, NutPunch_Peer;
 
 /// A linked-list of of lobby/peer metadata.
 typedef struct NutPunch_Field {
-    char name[NUTPUNCH_FIELD_NAME_MAX]; // TODO: typedef these bad boys...
-    char data[NUTPUNCH_FIELD_DATA_MAX];
+    NutPunch_FieldName name;
+    NutPunch_FieldValue data;
     struct NutPunch_Field* next;
 } NutPunch_Field;
 
 /// A struct containing a comparison between previous and updated metadata.
 typedef struct {
-    char name[NUTPUNCH_FIELD_NAME_MAX];
-    char then[NUTPUNCH_FIELD_DATA_MAX], now[NUTPUNCH_FIELD_DATA_MAX];
+    NutPunch_FieldName name;
+    NutPunch_FieldValue then, now;
 } NutPunch_FieldDiff;
 
 /// Same as `NutPunch_FieldDiff`, but with a peer identifier.
 typedef struct {
     NutPunch_Peer peer;
-    char name[NUTPUNCH_FIELD_NAME_MAX];
-    char then[NUTPUNCH_FIELD_DATA_MAX], now[NUTPUNCH_FIELD_DATA_MAX];
+    NutPunch_FieldName name;
+    NutPunch_FieldValue then, now;
 } NutPunch_PeerFieldDiff;
 
 /// Special fields you can query inside `NutPunch_Filter`s.
@@ -245,8 +245,8 @@ typedef struct {
     union {
         struct {
             uint8_t alwayszero;
-            char name[NUTPUNCH_FIELD_NAME_MAX];
-            char value[NUTPUNCH_FIELD_DATA_MAX];
+            NutPunch_FieldName name;
+            NutPunch_FieldValue value;
         } field;
         struct {
             uint8_t index;
@@ -394,14 +394,14 @@ const char* NutPunch_GetPeerData(NutPunch_Peer peer, const char* name);
 
 /// Sets metadata for the lobby. Doesn't do anything if you aren't the master.
 ///
-/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the maximum amounts of data you
-/// can squeeze into a field.
+/// See `NutPunch_FieldName` and `NutPunch_FieldValue` for the maximum amounts of data you can
+/// squeeze inside a field.
 void NutPunch_SetLobbyData(const char* name, const char* data);
 
 /// Sets metadata for this peer.
 ///
-/// See `NUTPUNCH_FIELD_NAME_MAX` and `NUTPUNCH_FIELD_DATA_MAX` for the maximum amounts of data you
-/// can squeeze into a field.
+/// See `NutPunch_FieldName` and `NutPunch_FieldValue` for the maximum amounts of data you can
+/// squeeze inside a field.
 void NutPunch_SetPeerData(const char* name, const char* data);
 
 /// Sets the maximum amount of channels this peer can receive from. Packets with an index higher
@@ -548,8 +548,8 @@ typedef uint8_t NP_Header[4];
 
 /// The metadata field payload. Don't confuse with `NutPunch_Field`.
 typedef struct {
-    char name[NUTPUNCH_FIELD_NAME_MAX];
-    char data[NUTPUNCH_FIELD_DATA_MAX];
+    NutPunch_FieldName name;
+    NutPunch_FieldValue data;
 } NP_Field;
 
 typedef NP_Field NP_Metadata[NUTPUNCH_MAX_FIELDS];
@@ -854,7 +854,7 @@ static const char* NP_GetVar(const NutPunch_Field* fields, const char* name) {
         return NULL;
 
     for (const NutPunch_Field* ptr = fields; ptr; ptr = ptr->next)
-        if (!NutPunch_StrNCmp(name, ptr->name, NUTPUNCH_FIELD_NAME_MAX))
+        if (!NutPunch_StrNCmp(name, ptr->name, sizeof(NutPunch_FieldName)))
             return ptr->data;
 
     return NULL;
@@ -868,7 +868,7 @@ static bool NP_SetVar(NutPunch_Field** fields, const char* name, const char* dat
     NutPunch_Field* target = *fields;
 
     for (; target; target = target->next)
-        if (!NutPunch_StrNCmp(target->name, name, NUTPUNCH_FIELD_NAME_MAX))
+        if (!NutPunch_StrNCmp(target->name, name, sizeof(NutPunch_FieldName)))
             break;
 
     if (!target) {
@@ -892,10 +892,10 @@ static int NP_DumpMetadata(void* start, const NutPunch_Field* fields) {
     char* out = (char*)start;
 
     for (; fields; fields = fields->next) {
-        int len = NutPunch_StrNLen(fields->name, NUTPUNCH_FIELD_NAME_MAX - 1) + 1;
+        int len = NutPunch_StrNLen(fields->name, sizeof(NutPunch_FieldName) - 1) + 1;
         NutPunch_SNPrintF(out, len, "%s", fields->name), out += len;
 
-        len = NutPunch_StrNLen(fields->data, NUTPUNCH_FIELD_DATA_MAX - 1) + 1;
+        len = NutPunch_StrNLen(fields->data, sizeof(NutPunch_FieldValue) - 1) + 1;
         NutPunch_SNPrintF(out, len, "%s", fields->data), out += len;
     }
 
@@ -1188,7 +1188,9 @@ static const char* NP_ReadUntilNull(
 
 static void NP_LoadMetadata(const void* raw_out, size_t len, NutPunch_Field** fields) {
     const char *const start = (char*)raw_out, *out = (char*)raw_out;
-    char name[NUTPUNCH_FIELD_NAME_MAX], data[NUTPUNCH_FIELD_DATA_MAX];
+
+    NutPunch_FieldName name;
+    NutPunch_FieldValue data;
 
     while (out < start + len) {
         out = NP_ReadUntilNull(name, sizeof(name), start, out, len);

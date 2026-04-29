@@ -157,7 +157,9 @@ struct Metadata {
 
     void load(const char* ptr, size_t len) {
         const char *start = ptr, *out = ptr;
-        char name[NUTPUNCH_FIELD_NAME_MAX], data[NUTPUNCH_FIELD_DATA_MAX];
+
+        NutPunch_FieldName name;
+        NutPunch_FieldValue data;
 
         while (out < start + len) {
             out = NP_ReadUntilNull(name, sizeof(name), start, out, len);
@@ -351,14 +353,14 @@ struct Lobby {
             }
 
             const auto& field = filter.field;
-            const std::string name(field.name, strnlen(field.name, NUTPUNCH_FIELD_NAME_MAX));
+            const std::string name(field.name, strnlen(field.name, sizeof(NutPunch_FieldName)));
 
             if (!metadata.fields.contains(name))
                 return false;
 
             const std::string& data = metadata.fields.at(name);
-            const int diff = std::memcmp(
-                data.c_str(), filter.field.value, strnlen(field.value, NUTPUNCH_FIELD_DATA_MAX));
+            const int diff = std::memcmp(data.c_str(), filter.field.value,
+                strnlen(field.value, sizeof(NutPunch_FieldValue)));
 
             if (match_field_value(diff, filter.comparison))
                 continue;
