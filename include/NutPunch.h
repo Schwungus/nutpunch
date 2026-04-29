@@ -349,6 +349,12 @@ bool NutPunch_Host(const char* lobby_id);
 /// `false` if a network error occurs and `true` otherwise.
 bool NutPunch_EnterQueue(const char* queue_id);
 
+/// Returns the ping to the NutPuncher in milliseconds (0 ms if offline or querying).
+int NutPunch_ServerPing();
+
+/// Returns the ping to a peer in milliseconds (0 ms if offline or local/invalid peer).
+int NutPunch_PeerPing(NutPunch_Peer);
+
 /// Returns the remaining time before getting kicked out of a queue in seconds.
 int NutPunch_QueueTime();
 
@@ -1088,6 +1094,18 @@ bool NutPunch_EnterQueue(const char* queue_id) {
         NutPunch_SNPrintF(NP_QueueId, sizeof(NP_QueueId), "%s", queue_id);
 
     return true;
+}
+
+int NutPunch_ServerPing() {
+    if (!NutPunch_IsOnline() || NP_Mode == NPNM_Query)
+        return 0;
+    return (int)((NutPunch_TimeNS() - NP_LastBeating) / NUTPUNCH_MS);
+}
+
+int NutPunch_PeerPing(NutPunch_Peer idx) {
+    if (!NutPunch_IsReady() || idx == NutPunch_LocalPeer() || !NutPunch_PeerAlive(idx))
+        return 0;
+    return (int)((NutPunch_TimeNS() - NP_Peers[idx].last_ping) / NUTPUNCH_MS);
 }
 
 int NutPunch_QueueTime() {
