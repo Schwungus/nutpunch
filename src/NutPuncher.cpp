@@ -48,6 +48,12 @@ static NutPunch_Clock elapsed(NutPunch_Clock start = 0) {
     return NutPunch_TimeNS() - start;
 }
 
+struct Message {
+    NP_SockAddr from;
+    const char* data;
+    int len;
+};
+
 struct Lobby;
 static std::unordered_map<std::string, Lobby> lobbies;
 
@@ -227,13 +233,13 @@ struct Lobby {
         return index_of(id) != NUTPUNCH_MAX_PLAYERS;
     }
 
-    void accept(const std::string& id, NP_SockAddr pub, const NP_HeartbeatFlagsStorage flags,
-        const char* buf, const char* ptr, size_t rcv) {
+    void accept(const std::string& id, const NP_HeartbeatFlagsStorage flags, Message msg) {
         NP_SockAddr same_nat = {0};
+        const char* const start = msg.data;
 
         same_nat.sin_family = AF_INET;
-        same_nat.sin_addr.s_addr = *(uint32_t*)ptr, ptr += 4;
-        same_nat.sin_port = *(uint16_t*)ptr, ptr += 2;
+        same_nat.sin_addr.s_addr = *(uint32_t*)msg.data, msg.data += 4;
+        same_nat.sin_port = *(uint16_t*)msg.data, msg.data += 2;
 
         if (!ntohl(same_nat.sin_addr.s_addr))
             same_nat.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -259,11 +265,12 @@ struct Lobby {
             just_joined = true;
 
             if (idx >= NUTPUNCH_MAX_PLAYERS) {
-                gtfo(pub, NPE_LobbyFull);
+                gtfo(msg.from, NPE_LobbyFull);
                 return;
             }
 
-            players.emplace_back(idx, pub, same_nat, id);
+            players.emplace_back(idx, msg.from, same_nat, id);
+            idx = index_of(id);
         }
 
         if (just_joined)
@@ -279,7 +286,7 @@ struct Lobby {
         if (idx == master()) {
             unlisted = flags & NP_HB_Unlisted;
             capacity = 1 + (flags >> 4);
-            metadata.load(ptr, (rcv - (ptr - buf)) / sizeof(NP_Field));
+            metadata.load(msg.data, (msg.len - (msg.data - start)) / sizeof(NP_Field));
         }
     }
 
@@ -522,6 +529,66 @@ static void kill_bro(const NutPunch_PeerId peer_id, NP_SockAddr pub) {
     }
 }
 
+struct Packet {
+    const char* const header;
+    void (*const handle)(Message msg);
+    const size_t min_size;
+};
+
+static void handle_list(Message msg) {
+    if (msg.len == sizeof(NutPunch_LobbyId)) {
+        send_lobby_metadata(msg.from, msg.data);
+    } else if (msg.len % sizeof(NutPunch_Filter) == 0) {
+        const auto filtars = reinterpret_cast<const NutPunch_Filter*>(msg.data);
+        send_lobbies(msg.from, msg.len / sizeof(NutPunch_Filter), filtars);
+    } else {
+        // junk...
+    }
+}
+
+static void handle_find(Message msg) {
+    std::string peer_id(msg.data, sizeof(NutPunch_PeerId));
+    msg.data += sizeof(NutPunch_PeerId);
+
+    std::string queue_id(msg.data, sizeof(NutPunch_QueueId));
+    msg.data += sizeof(NutPunch_QueueId);
+
+    if (!matchmaking.contains(queue_id))
+        matchmaking.emplace(queue_id, Grindr(queue_id));
+    matchmaking.at(queue_id).accept(peer_id, msg.from);
+}
+
+static void handle_disc(Message msg) {
+    kill_bro(msg.data, msg.from);
+}
+
+static void handle_join(Message msg) {
+    std::string peer_id(msg.data, sizeof(NutPunch_PeerId));
+    msg.data += sizeof(NutPunch_PeerId);
+
+    std::string lobby_id(msg.data, strnlen(msg.data, sizeof(NutPunch_LobbyId)));
+    msg.data += sizeof(NutPunch_LobbyId);
+
+    auto flags = *(const NP_HeartbeatFlagsStorage*)msg.data;
+    msg.data += sizeof(flags);
+
+    NutPunch_ErrorCode err = NPE_Ok;
+
+    if (lobbies.count(lobby_id)) {
+        if (!(flags & (NP_HB_JoinExisting | NP_HB_Queue)) && !lobbies[lobby_id].has(peer_id))
+            err = NPE_LobbyExists;
+    } else if (flags & NP_HB_JoinExisting) {
+        err = NPE_NoSuchLobby;
+    } else if (!create_lobby(lobby_id, msg.from)) {
+        return;
+    }
+
+    if (err == NPE_Ok)
+        lobbies[lobby_id].accept(peer_id, flags, msg);
+    else
+        gtfo(msg.from, err);
+}
+
 static void handle_recv(NP_SockAddr pub, const char* buf, int rcv) {
     rcv -= 4 + (int)sizeof(NP_Header);
     if (rcv < 0)
@@ -529,61 +596,19 @@ static void handle_recv(NP_SockAddr pub, const char* buf, int rcv) {
 
     // we completely ignore the packet id on the NutPuncher side for now
     buf += 4;
-    const char* ptr = buf + sizeof(NP_Header);
 
-    if (!std::memcmp(buf, "LIST", sizeof(NP_Header))) {
-        if (rcv == sizeof(NutPunch_LobbyId)) {
-            send_lobby_metadata(pub, ptr);
-        } else if (rcv % sizeof(NutPunch_Filter) == 0) {
-            const auto filtars = reinterpret_cast<const NutPunch_Filter*>(ptr);
-            send_lobbies(pub, rcv / sizeof(NutPunch_Filter), filtars);
-        } else {
-            // junk...
-        }
-    } else if (rcv == sizeof(NP_Find) && !std::memcmp(buf, "FIND", sizeof(NP_Header))) {
-        std::string peer_id(ptr, sizeof(NutPunch_PeerId));
-        ptr += sizeof(NutPunch_PeerId);
+    constexpr const Packet packets[] = {
+        {"LIST", handle_list, 0                      },
+        {"FIND", handle_find, sizeof(NP_Find)        },
+        {"DISC", handle_disc, sizeof(NutPunch_PeerId)},
+        {"JOIN", handle_join, sizeof(NP_Heartbeat)   },
+    };
 
-        std::string queue_id(ptr, sizeof(NutPunch_QueueId));
-        ptr += sizeof(NutPunch_QueueId);
-
-        if (!matchmaking.contains(queue_id))
-            matchmaking.emplace(queue_id, Grindr(queue_id));
-        matchmaking.at(queue_id).accept(peer_id, pub);
-    } else if (rcv >= sizeof(NutPunch_PeerId) && !std::memcmp(buf, "DISC", sizeof(NP_Header))) {
-        kill_bro(ptr, pub);
-    } else if (rcv >= sizeof(NP_Heartbeat) && !std::memcmp(buf, "JOIN", sizeof(NP_Header))) {
-        std::string peer_id(ptr, sizeof(NutPunch_PeerId));
-        ptr += sizeof(NutPunch_PeerId);
-
-        size_t len = 0;
-        for (; len < sizeof(NutPunch_LobbyId); len++)
-            if (!ptr[len])
-                break;
-
-        std::string lobby_id(ptr, len);
-        ptr += sizeof(NutPunch_LobbyId);
-
-        auto flags = *(const NP_HeartbeatFlagsStorage*)ptr;
-        ptr += sizeof(flags);
-
-        NutPunch_ErrorCode err = NPE_Ok;
-
-        if (lobbies.count(lobby_id)) {
-            if (!(flags & (NP_HB_JoinExisting | NP_HB_Queue)) && !lobbies[lobby_id].has(peer_id))
-                err = NPE_LobbyExists;
-        } else if (flags & NP_HB_JoinExisting) {
-            err = NPE_NoSuchLobby;
-        } else if (!create_lobby(lobby_id, pub)) {
+    for (const auto& packet : packets) {
+        if (rcv >= packet.min_size && !memcmp(buf, packet.header, sizeof(NP_Header))) {
+            packet.handle({pub, buf + sizeof(NP_Header), rcv});
             return;
         }
-
-        if (err == NPE_Ok)
-            lobbies[lobby_id].accept(peer_id, pub, flags, buf, ptr, rcv);
-        else
-            gtfo(pub, err);
-    } else {
-        // most likely junk...
     }
 }
 
