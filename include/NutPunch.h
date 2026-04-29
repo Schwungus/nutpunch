@@ -1186,15 +1186,15 @@ static const char* NP_ReadUntilNull(
     return in + 1;
 }
 
-static void NP_LoadMetadata(const void* raw_out, size_t len, NutPunch_Field** fields) {
-    const char *const start = (char*)raw_out, *out = (char*)raw_out;
+static void NP_LoadMetadata(const void* raw_in, size_t len, NutPunch_Field** fields) {
+    const char *const start = (char*)raw_in, *in = (char*)raw_in;
 
     NutPunch_FieldName name;
     NutPunch_FieldValue data;
 
-    while (out < start + len) {
-        out = NP_ReadUntilNull(name, sizeof(name), start, out, len);
-        out = NP_ReadUntilNull(data, sizeof(data), start, out, len);
+    while (in < start + len) {
+        in = NP_ReadUntilNull(name, sizeof(name), start, in, len);
+        in = NP_ReadUntilNull(data, sizeof(data), start, in, len);
 
         if (NP_SetVar(fields, name, data))
             NP_Trace("\"%s\" = \"%s\"", name, data);

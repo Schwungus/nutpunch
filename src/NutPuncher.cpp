@@ -156,14 +156,14 @@ struct Metadata {
     }
 
     void load(const char* ptr, size_t len) {
-        const char *start = ptr, *out = ptr;
+        const char *start = ptr, *in = ptr;
 
         NutPunch_FieldName name;
         NutPunch_FieldValue data;
 
-        while (out < start + len) {
-            out = NP_ReadUntilNull(name, sizeof(name), start, out, len);
-            out = NP_ReadUntilNull(data, sizeof(data), start, out, len);
+        while (in < start + len) {
+            in = NP_ReadUntilNull(name, sizeof(name), start, in, len);
+            in = NP_ReadUntilNull(data, sizeof(data), start, in, len);
 
             if (insert(name, data))
                 NP_Trace("\"%s\" = \"%s\"", name, data);
