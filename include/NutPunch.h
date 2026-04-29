@@ -1789,6 +1789,7 @@ const char* NutPunch_Basename(const char* path) {
 #if !defined(NUTPUNCH_WINDOSE) && !defined(NUTPUNCH_NOSTD)
 
 #include <errno.h>
+#include <time.h>
 
 void NP_SleepMs(int ms) {
     // Stolen from: <https://stackoverflow.com/a/1157217>
@@ -1810,7 +1811,7 @@ NutPunch_Clock NutPunch_TimeNS() {
     return (NutPunch_Clock)ts.tv_sec * NUTPUNCH_SEC + (NutPunch_Clock)ts.tv_nsec;
 }
 
-#else
+#elif defined(NUTPUNCH_NOSTD) && !defined(NutPunch_TimeNS)
 
 #error You have to define NutPunch_TimeNS in order to use NUTPUNCH_NOSTD!
 
