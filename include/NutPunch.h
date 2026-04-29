@@ -1447,8 +1447,10 @@ static void NP_HandleData(NP_Message msg) {
 
     NP_PeerInfo* const peer = &NP_Peers[peer_idx];
 
-    NP_IncomingData* last = NULL;
-    for (; last && last->next; last = last->next) {}
+    NP_IncomingData* last = NP_Unread[chan];
+    if (last)
+        while (last->next)
+            last = last->next;
 
     last = *(last ? &last->next : &NP_Unread[chan])
         = (NP_IncomingData*)NutPunch_Malloc(sizeof(NP_IncomingData));
