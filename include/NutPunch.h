@@ -192,7 +192,7 @@ extern char NP_LastError[512];
 #else
 #define NP_Trace(...)                                                                              \
     do {                                                                                           \
-    } while (0);
+    } while (0)
 #endif
 
 #ifdef NUTPUNCH_WINDOSE
@@ -1177,38 +1177,27 @@ bool NP_AddrEq(NP_SockAddr a, NP_SockAddr b) {
     return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port;
 }
 
+static const char* NP_ReadUntilNull(
+    char* out, size_t bufsize, const char* const start, const char* in, const size_t len) {
+    NutPunch_Memset(out, 0, bufsize);
+
+    for (size_t i = 0; in - start < len && *in; i++, in++)
+        if (i < bufsize - 1)
+            out[i] = *in;
+
+    return in + 1;
+}
+
 static void NP_LoadMetadata(const void* raw_out, size_t len, NutPunch_Field** fields) {
-    const char *start = (char*)raw_out, *out = (char*)raw_out;
+    const char *const start = (char*)raw_out, *out = (char*)raw_out;
+    char name[NUTPUNCH_FIELD_NAME_MAX], data[NUTPUNCH_FIELD_DATA_MAX];
 
-    char name[NUTPUNCH_FIELD_NAME_MAX] = {0}, data[NUTPUNCH_FIELD_DATA_MAX] = {0};
-    int readcur = 0;
-    bool readval = false;
-    while ((out - start) < len) {
-        if (*out == '\0') {
-            readval = !readval;
-            readcur = 0;
+    while (out < start + len) {
+        out = NP_ReadUntilNull(name, sizeof(name), start, out, len);
+        out = NP_ReadUntilNull(data, sizeof(data), start, out, len);
 
-            if (readval) {
-                NutPunch_Memset(data, 0, sizeof(data));
-            } else {
-                if (NP_SetVar(fields, name, data))
-                    NP_Trace("\"%s\" = \"%s\"", name, data);
-                NutPunch_Memset(name, 0, sizeof(name));
-            }
-
-            ++out;
-            continue;
-        }
-
-        if (readval) {
-            if (readcur < (NUTPUNCH_FIELD_DATA_MAX - 1))
-                data[readcur] = *out;
-        } else {
-            if (readcur < (NUTPUNCH_FIELD_NAME_MAX - 1))
-                name[readcur] = *out;
-        }
-        ++readcur;
-        ++out;
+        if (NP_SetVar(fields, name, data))
+            NP_Trace("\"%s\" = \"%s\"", name, data);
     }
 }
 

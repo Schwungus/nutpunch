@@ -157,36 +157,14 @@ struct Metadata {
 
     void load(const char* ptr, size_t len) {
         const char *start = ptr, *out = ptr;
+        char name[NUTPUNCH_FIELD_NAME_MAX], data[NUTPUNCH_FIELD_DATA_MAX];
 
-        char name[NUTPUNCH_FIELD_NAME_MAX] = {0}, data[NUTPUNCH_FIELD_DATA_MAX] = {0};
-        int readcur = 0;
-        bool readval = false;
-        while ((out - start) < len) {
-            if (*out == '\0') {
-                readval = !readval;
-                readcur = 0;
+        while (out < start + len) {
+            out = NP_ReadUntilNull(name, sizeof(name), start, out, len);
+            out = NP_ReadUntilNull(data, sizeof(data), start, out, len);
 
-                if (readval) {
-                    NutPunch_Memset(data, 0, sizeof(data));
-                } else {
-                    if (insert(name, data))
-                        NP_Trace("\"%s\" = \"%s\"", name, data);
-                    NutPunch_Memset(name, 0, sizeof(name));
-                }
-
-                ++out;
-                continue;
-            }
-
-            if (readval) {
-                if (readcur < (NUTPUNCH_FIELD_DATA_MAX - 1))
-                    data[readcur] = *out;
-            } else {
-                if (readcur < (NUTPUNCH_FIELD_NAME_MAX - 1))
-                    name[readcur] = *out;
-            }
-            ++readcur;
-            ++out;
+            if (insert(name, data))
+                NP_Trace("\"%s\" = \"%s\"", name, data);
         }
     }
 
