@@ -55,8 +55,8 @@ int main(int argc, char* argv[]) {
         NutPunch_SetServerAddr(argv[1]);
     }
 
-    NutPunch_Register(NPCB_LobbyList, handle_lobby_list);
-    NutPunch_Register(NPCB_LobbyMetadata, handle_lobby_data);
+    NutPunch_Register(NPCB_FoundLobbies, handle_lobby_list);
+    NutPunch_Register(NPCB_FoundLobbyMetadata, handle_lobby_data);
 
     NutPunch_QueryMode();
     int threshold = 150, refresh = threshold;
