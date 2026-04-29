@@ -576,16 +576,13 @@ static void handle_disc(Message msg) {
 
 static void handle_join(Message msg) {
     std::string peer_id(msg.data, sizeof(NutPunch_PeerId));
-    msg.data += sizeof(NutPunch_PeerId);
-    msg.len -= sizeof(NutPunch_PeerId);
+    msg.data += sizeof(NutPunch_PeerId), msg.len -= sizeof(NutPunch_PeerId);
 
     std::string lobby_id(msg.data, strnlen(msg.data, sizeof(NutPunch_LobbyId)));
-    msg.data += sizeof(NutPunch_LobbyId);
-    msg.len -= sizeof(NutPunch_LobbyId);
+    msg.data += sizeof(NutPunch_LobbyId), msg.len -= sizeof(NutPunch_LobbyId);
 
     auto flags = *(const NP_HeartbeatFlagsStorage*)msg.data;
-    msg.data += sizeof(flags);
-    msg.len -= sizeof(flags);
+    msg.data += sizeof(flags), msg.len -= sizeof(flags);
 
     NutPunch_ErrorCode err = NPE_Ok;
 

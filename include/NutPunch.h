@@ -1383,8 +1383,7 @@ static void NP_HandleLobbyData(NP_Message msg) {
     NutPunch_LobbyMetadata info = {0};
 
     NutPunch_Memcpy(info.lobby, msg.data, sizeof(info.lobby));
-    msg.data += sizeof(NutPunch_LobbyId);
-    msg.len -= sizeof(NutPunch_LobbyId);
+    msg.data += sizeof(NutPunch_LobbyId), msg.len -= sizeof(NutPunch_LobbyId);
 
     NP_LoadMetadata(msg.data, msg.len, &info.metadata);
     NP_HandleEventCb(NPCB_LobbyMetadata, &info);
