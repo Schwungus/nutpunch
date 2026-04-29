@@ -1623,6 +1623,7 @@ NutPunch_UpdateStatus NutPunch_Update() {
 
     if (NP_Mode != NPNM_Query) {
         if (NutPunch_TimeNS() - NP_LastBeating >= NUTPUNCH_TIMEOUT_INTERVAL * NUTPUNCH_MS) {
+            NutPunch_Reset();
             NP_Warn("NutPuncher timed out");
             NP_LastStatus = NPS_Error;
             return NP_LastStatus;
