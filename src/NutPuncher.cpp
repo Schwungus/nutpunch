@@ -244,11 +244,12 @@ struct Lobby {
         if (!ntohl(same_nat.sin_addr.s_addr))
             same_nat.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-        NutPunch_Peer idx = index_of(id);
         bool just_joined = false;
 
-        if (idx == NUTPUNCH_MAX_PLAYERS) {
-            for (idx = 0; idx < (NutPunch_Peer)players.size(); idx++) {
+        if (index_of(id) == NUTPUNCH_MAX_PLAYERS) {
+            NutPunch_Peer idx = 0;
+
+            for (; idx < (NutPunch_Peer)players.size(); idx++) {
                 bool good = true;
 
                 for (const auto& player : players) {
@@ -270,11 +271,10 @@ struct Lobby {
             }
 
             players.emplace_back(idx, msg.from, same_nat, id);
-            idx = index_of(id);
         }
 
         if (just_joined)
-            NP_Info("Player %d joined lobby '%s'", idx + 1, fmt_id());
+            NP_Info("Player %d joined lobby '%s'", index_of(id) + 1, fmt_id());
 
         for (auto& player : players) {
             if (player.id == id) {
@@ -283,7 +283,7 @@ struct Lobby {
             }
         }
 
-        if (idx == master()) {
+        if (index_of(id) == master()) {
             unlisted = flags & NP_HB_Unlisted;
             capacity = 1 + (flags >> 4);
             metadata.load(msg.data, (msg.len - (msg.data - start)) / sizeof(NP_Field));
@@ -319,7 +319,7 @@ struct Lobby {
         std::erase_if(players, [id, pub](const auto& player) {
             if (player.id != id && !NP_AddrEq(player.pub, pub))
                 return false;
-            NP_Info("Player %s disconnected gracefully", player.id.c_str());
+            NP_Info("Player %d disconnected gracefully", player.index + 1);
             return true;
         });
     }
