@@ -1503,42 +1503,6 @@ static void NP_SendHeartbeat() {
     NP_JustSend(NP_ServerAddr, heartbeat, ptr - heartbeat, false);
 }
 
-static void NP_FlushPendingQueue() {
-    if (NP_Socket == NUTPUNCH_INVALID_SOCKET)
-        return;
-
-    const NutPunch_Clock now = NutPunch_TimeNS();
-
-    for (NP_OutgoingPacket *prev = NULL, *cur = NP_Pending; cur; cur = cur->next) {
-        bool send = false, nuke = false;
-
-        if (cur->retries < 0) {
-            send = nuke = true;
-        } else if (cur->last_retry) {
-            const bool due = now - cur->last_retry
-                             > (NUTPUNCH_RETRY_INTERVAL * (cur->retries + 1)) * NUTPUNCH_MS;
-            nuke = cur->acked || due && cur->retries++ > NUTPUNCH_MAX_RETRIES;
-            send = due && !nuke;
-        } else {
-            send = true, nuke = false;
-        }
-
-        if (send) {
-            cur->last_retry = now;
-
-            struct sockaddr* dest = (struct sockaddr*)&cur->destination;
-            sendto(NP_Socket, (char*)cur->data, cur->len, 0, dest, sizeof(cur->destination));
-        }
-
-        if (nuke) {
-            *(prev ? &prev->next : &NP_Pending) = cur->next;
-            NutPunch_Free(cur->data), NutPunch_Free(cur);
-        } else {
-            prev = cur;
-        }
-    }
-}
-
 static int NP_UglyRecvFrom(NP_SockAddr* addr, void* buf, int buf_size) {
     socklen_t addr_size = sizeof(*addr);
     struct sockaddr* const shit_addr = (struct sockaddr*)addr;
@@ -1610,9 +1574,42 @@ static void NP_SendGoodbyes() {
 }
 
 void NutPunch_Flush() {
+    if (NP_Socket == NUTPUNCH_INVALID_SOCKET)
+        return;
+
     if (NP_Closing)
         NP_SendGoodbyes();
-    NP_FlushPendingQueue();
+
+    const NutPunch_Clock now = NutPunch_TimeNS();
+
+    for (NP_OutgoingPacket *prev = NULL, *cur = NP_Pending; cur; cur = cur->next) {
+        bool send = false, nuke = false;
+
+        if (cur->retries < 0) {
+            send = nuke = true;
+        } else if (cur->last_retry) {
+            const bool due = now - cur->last_retry
+                             > (NUTPUNCH_RETRY_INTERVAL * (cur->retries + 1)) * NUTPUNCH_MS;
+            nuke = cur->acked || due && cur->retries++ > NUTPUNCH_MAX_RETRIES;
+            send = due && !nuke;
+        } else {
+            send = true, nuke = false;
+        }
+
+        if (send) {
+            cur->last_retry = now;
+
+            struct sockaddr* dest = (struct sockaddr*)&cur->destination;
+            sendto(NP_Socket, (char*)cur->data, cur->len, 0, dest, sizeof(cur->destination));
+        }
+
+        if (nuke) {
+            *(prev ? &prev->next : &NP_Pending) = cur->next;
+            NutPunch_Free(cur->data), NutPunch_Free(cur);
+        } else {
+            prev = cur;
+        }
+    }
 }
 
 void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
@@ -1620,26 +1617,14 @@ void NutPunch_Register(NutPunch_CallbackEvent event, NutPunch_Callback cb) {
         NP_Callbacks[event] = cb;
 }
 
-static void NP_NetworkUpdate() {
-    NP_SendHeartbeat();
-    NP_ReceiveShit();
-    NP_FlushPendingQueue();
-
-    const NutPunch_Clock now = NutPunch_TimeNS();
+static void NP_TimeOutPeers() {
+    const NutPunch_Clock now = NutPunch_TimeNS(), timeout = NUTPUNCH_TIMEOUT_INTERVAL * NUTPUNCH_MS;
 
     for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-        if (i != NutPunch_LocalPeer() && NutPunch_PeerAlive(i)
-            && now - NP_Peers[i].last_ping >= NUTPUNCH_TIMEOUT_INTERVAL * NUTPUNCH_MS)
-        {
-            NP_KillPeer(i);
-        }
-    }
+        const NP_PeerInfo* p = &NP_Peers[i];
 
-    if (NP_Mode != NPNM_Query) {
-        if (now - NP_LastBeating >= NUTPUNCH_TIMEOUT_INTERVAL * NUTPUNCH_MS) {
-            NP_Warn("NutPuncher timed out");
-            NP_LastStatus = NPS_Error;
-        }
+        if (i != NutPunch_LocalPeer() && p->last_ping && now - p->last_ping >= timeout)
+            NP_KillPeer(i);
     }
 }
 
@@ -1649,8 +1634,19 @@ NutPunch_UpdateStatus NutPunch_Update() {
     if (NP_LastStatus == NPS_Idle || NP_Socket == NUTPUNCH_INVALID_SOCKET)
         return NPS_Idle;
 
+    if (NP_Mode != NPNM_Query) {
+        if (NutPunch_TimeNS() - NP_LastBeating >= NUTPUNCH_TIMEOUT_INTERVAL * NUTPUNCH_MS) {
+            NP_Warn("NutPuncher timed out");
+            NP_LastStatus = NPS_Error;
+            return NP_LastStatus;
+        }
+    }
+
     NP_LastStatus = NPS_Online;
-    NP_NetworkUpdate();
+    NP_TimeOutPeers();
+    NP_SendHeartbeat();
+    NP_ReceiveShit();
+    NutPunch_Flush();
 
     if (NP_LastStatus == NPS_Error) {
         NutPunch_Disconnect();
