@@ -121,11 +121,14 @@ SDL3 example:
 #define NUTPUNCH_NOSTD
 
 #define NutPunch_SNPrintF SDL_snprintf
+#define NutPunch_StrNCmp SDL_strncmp
+#define NutPunch_StrNLen SDL_strnlen
 #define NutPunch_Memcmp SDL_memcmp
 #define NutPunch_Memset SDL_memset
 #define NutPunch_Memcpy SDL_memcpy
 #define NutPunch_Malloc SDL_malloc
 #define NutPunch_Free SDL_free
+#define NutPunch_TimeNS SDL_GetTicksNS
 
 #include <NutPunch.h>
 ```
