@@ -202,8 +202,12 @@ static void cleanup_players_list(std::vector<Player>& players) {
 
 struct Lobby {
     const std::string id;
-    bool unlisted = false;
-    uint8_t capacity = NUTPUNCH_MAX_PLAYERS;
+
+    uint8_t capacity = 1; // HACK: capacity is set to 1 when the lobby is created, but then it's set
+                          // to the actual value when the host joins and heartbeats
+
+    bool unlisted = true; // same hack here...
+
     std::vector<Player> players;
     Metadata metadata;
 
@@ -263,7 +267,7 @@ struct Lobby {
         if (index_of(id) == NUTPUNCH_MAX_PLAYERS) {
             NutPunch_Peer idx = 0;
 
-            for (; idx < (NutPunch_Peer)players.size(); idx++) {
+            for (; idx < capacity; idx++) {
                 bool good = true;
 
                 for (const auto& player : players) {
@@ -279,7 +283,7 @@ struct Lobby {
 
             just_joined = true;
 
-            if (idx >= NUTPUNCH_MAX_PLAYERS) {
+            if (idx >= capacity) {
                 gtfo(msg.from, NPE_LobbyFull);
                 return;
             }
