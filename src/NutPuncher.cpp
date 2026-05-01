@@ -40,7 +40,7 @@ static constexpr const NutPunch_Clock KEEP_QUEUE_FOR = 20 * NUTPUNCH_SEC;
 /// a little debouncing delay to prevent recreating a grindr queue right after timing it out.
 static constexpr const NutPunch_Clock GRINDR_DEBOUNCE = 3 * NUTPUNCH_SEC;
 
-static constexpr const size_t MAX_LOBBIES = 512;
+static constexpr const size_t MAX_LOBBIES = 1024;
 
 static NP_Sock SOCK = NUTPUNCH_INVALID_SOCKET;
 
