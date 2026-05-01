@@ -607,6 +607,8 @@ static void handle_join(Message msg) {
     } else if (lobbies.size() >= MAX_LOBBIES) {
         err = NPE_NoSuchLobby;
         NP_Warn("Reached lobby limit");
+    } else {
+        create_lobby(lobby_id, game_id, msg.from);
     }
 
     if (err != NPE_Ok) {
@@ -614,7 +616,6 @@ static void handle_join(Message msg) {
         return;
     }
 
-    create_lobby(lobby_id, game_id, msg.from);
     auto& lobby = lobbies.at(lobby_id);
 
     if (lobby.game == game_id)
