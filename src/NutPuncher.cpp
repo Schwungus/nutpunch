@@ -52,6 +52,24 @@ struct Message {
     NP_SockAddr from;
     const char* data;
     int len;
+
+    std::string read(size_t count) {
+        const char* x = data;
+        data += count, len -= (int)count;
+        return std::string(x, count);
+    }
+
+    std::string read0term(size_t n) {
+        const char* x = data;
+        data += n, len -= (int)n;
+        return std::string(x, strnlen(x, n));
+    }
+
+    template <typename T> T read() {
+        const char* x = data;
+        data += sizeof(T), len -= (int)sizeof(T);
+        return *(const T*)x;
+    }
 };
 
 struct Lobby;
@@ -201,7 +219,7 @@ static void cleanup_players_list(std::vector<Player>& players) {
 }
 
 struct Lobby {
-    const std::string id;
+    const std::string id, game;
 
     uint8_t capacity = 1; // HACK: capacity is set to 1 when the lobby is created, but then it's set
                           // to the actual value when the host joins and heartbeats
@@ -211,9 +229,9 @@ struct Lobby {
     std::vector<Player> players;
     Metadata metadata;
 
-    Lobby() {}
+    Lobby() {} // only needed for stuffing this in a vector
 
-    Lobby(const std::string& id) : id(id) {}
+    Lobby(const std::string& id, const std::string& game) : id(id), game(game) {}
 
     const char* fmt_id() const {
         return fmt_lobby_id(id);
@@ -255,9 +273,8 @@ struct Lobby {
         NP_SockAddr same_nat = {0};
 
         same_nat.sin_family = AF_INET;
-        same_nat.sin_addr.s_addr = *(uint32_t*)msg.data, msg.data += 4;
-        same_nat.sin_port = *(uint16_t*)msg.data, msg.data += 2;
-        msg.len -= 6;
+        same_nat.sin_addr.s_addr = msg.read<uint32_t>();
+        same_nat.sin_port = msg.read<uint16_t>();
 
         if (!ntohl(same_nat.sin_addr.s_addr))
             same_nat.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -384,12 +401,12 @@ struct Lobby {
 
 // TODO: fucking nuke.
 struct Grindr {
-    const std::string queue_id;
+    const std::string game_id;
     NutPunch_Clock last_match = NutPunch_TimeNS();
     std::unordered_map<std::string, Player> players;
     bool closing = false;
 
-    Grindr(const std::string& queue_id) : queue_id(queue_id) {}
+    Grindr(const std::string& game_id) : game_id(game_id) {}
 
     explicit operator bool() const {
         return elapsed(last_match) <= KEEP_QUEUE_FOR + GRINDR_DEBOUNCE;
@@ -402,7 +419,7 @@ struct Grindr {
         players.emplace(peer_id, Player(0, pub, {0}, peer_id));
         closing = false;
 
-        NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), queue_id.c_str());
+        NP_Info("QUEUE: Added peer '%s' (%s)", peer_id.c_str(), game_id.c_str());
     }
 
     void update() {
@@ -467,26 +484,19 @@ struct Grindr {
 
 static std::unordered_map<std::string, Grindr> matchmaking;
 
-static bool create_lobby(const std::string& id, NP_SockAddr pub) {
-    if (lobbies.size() >= MAX_LOBBIES) {
-        gtfo(pub, NPE_NoSuchLobby);
-        NP_Warn("Reached lobby limit");
-        return false;
-    }
-
+static void create_lobby(const std::string& id, const std::string& game, NP_SockAddr pub) {
     // Match against existing peers to prevent creating multiple lobbies with the same master.
     for (const auto& [lobby_id, lobby] : lobbies) {
         for (const auto& player : lobby.players)
             if (NP_AddrEq(player.pub, pub))
-                return true; // fuck you...
+                return; // fuck you...
     }
 
-    lobbies.insert({id, Lobby(id)});
+    lobbies.insert({id, Lobby(id, game)});
     NP_Info("Created lobby '%s'", fmt_lobby_id(id));
-    return true;
 }
 
-static void send_lobby_metadata(NP_SockAddr pub, const char* target_id) {
+static void send_lobby_metadata(NP_SockAddr pub, const std::string& target_id) {
     constexpr const size_t pnrsize = sizeof(NutPunch_LobbyId) + sizeof(NP_Metadata);
     static uint8_t buf[sizeof(NP_Header) + pnrsize] = "LGMA";
 
@@ -497,7 +507,7 @@ static void send_lobby_metadata(NP_SockAddr pub, const char* target_id) {
 
     uint8_t* ptr = buf + sizeof(NP_Header);
 
-    std::memcpy(ptr, target_id, sizeof(NutPunch_LobbyId));
+    std::memcpy(ptr, target_id.data(), sizeof(NutPunch_LobbyId));
     ptr += sizeof(NutPunch_LobbyId);
 
     ptr += lobby.metadata.dump(ptr);
@@ -505,7 +515,8 @@ static void send_lobby_metadata(NP_SockAddr pub, const char* target_id) {
     just_send(pub, buf, ptr - buf);
 }
 
-static void send_lobbies(NP_SockAddr pub, size_t filter_count, const NutPunch_Filter* filters) {
+static void send_lobbies(
+    NP_SockAddr pub, const std::string& game, size_t filter_count, const NutPunch_Filter* filters) {
     constexpr const size_t fuckyou = NUTPUNCH_MAX_SEARCH_RESULTS * sizeof(NutPunch_LobbyInfo);
     static uint8_t buf[sizeof(NP_Header) + fuckyou] = "LIST"; // BITCH REFORMATS EVERY COMMIT
 
@@ -516,7 +527,7 @@ static void send_lobbies(NP_SockAddr pub, size_t filter_count, const NutPunch_Fi
     size_t count = 0;
 
     for (const auto& [id, lobby] : lobbies) {
-        if (lobby.unlisted || !lobby.match_against(filters, filter_count))
+        if (lobby.unlisted || lobby.game != game || !lobby.match_against(filters, filter_count))
             continue;
 
         std::memcpy(ptr, id.data(), std::strlen(lobby.fmt_id()));
@@ -553,27 +564,27 @@ struct Packet {
     const size_t min_size;
 };
 
+static void handle_ligma(Message msg) {
+    send_lobby_metadata(msg.from, msg.read0term(sizeof(NutPunch_LobbyId)));
+}
+
 static void handle_list(Message msg) {
-    if (msg.len == sizeof(NutPunch_LobbyId)) {
-        send_lobby_metadata(msg.from, msg.data);
-    } else if (msg.len % sizeof(NutPunch_Filter) == 0) {
+    const auto game = msg.read0term(sizeof(NutPunch_GameId));
+
+    if (msg.len % sizeof(NutPunch_Filter) == 0) {
         const auto filtars = reinterpret_cast<const NutPunch_Filter*>(msg.data);
-        send_lobbies(msg.from, msg.len / sizeof(NutPunch_Filter), filtars);
-    } else {
-        // junk...
+        send_lobbies(msg.from, game, msg.len / sizeof(NutPunch_Filter), filtars);
     }
 }
 
 static void handle_find(Message msg) {
-    std::string peer_id(msg.data, sizeof(NutPunch_PeerId));
-    msg.data += sizeof(NutPunch_PeerId);
+    const auto peer_id = msg.read(sizeof(NutPunch_PeerId));
+    const auto game_id = msg.read0term(sizeof(NutPunch_GameId));
 
-    std::string queue_id(msg.data, sizeof(NutPunch_QueueId));
-    msg.data += sizeof(NutPunch_QueueId);
+    if (!matchmaking.contains(game_id))
+        matchmaking.emplace(game_id, Grindr(game_id));
 
-    if (!matchmaking.contains(queue_id))
-        matchmaking.emplace(queue_id, Grindr(queue_id));
-    matchmaking.at(queue_id).accept(peer_id, msg.from);
+    matchmaking.at(game_id).accept(peer_id, msg.from);
 }
 
 static void handle_disc(Message msg) {
@@ -581,14 +592,10 @@ static void handle_disc(Message msg) {
 }
 
 static void handle_join(Message msg) {
-    std::string peer_id(msg.data, sizeof(NutPunch_PeerId));
-    msg.data += sizeof(NutPunch_PeerId), msg.len -= sizeof(NutPunch_PeerId);
-
-    std::string lobby_id(msg.data, strnlen(msg.data, sizeof(NutPunch_LobbyId)));
-    msg.data += sizeof(NutPunch_LobbyId), msg.len -= sizeof(NutPunch_LobbyId);
-
-    auto flags = *(const NP_HeartbeatFlagsStorage*)msg.data;
-    msg.data += sizeof(flags), msg.len -= sizeof(flags);
+    const auto peer_id = msg.read(sizeof(NutPunch_PeerId));
+    const auto game_id = msg.read0term(sizeof(NutPunch_GameId));
+    const auto lobby_id = msg.read0term(sizeof(NutPunch_LobbyId));
+    const auto flags = msg.read<NP_HeartbeatFlagsStorage>();
 
     NutPunch_ErrorCode err = NPE_Ok;
 
@@ -597,14 +604,23 @@ static void handle_join(Message msg) {
             err = NPE_LobbyExists;
     } else if (flags & NP_HB_JoinExisting) {
         err = NPE_NoSuchLobby;
-    } else if (!create_lobby(lobby_id, msg.from)) {
+    } else if (lobbies.size() >= MAX_LOBBIES) {
+        err = NPE_NoSuchLobby;
+        NP_Warn("Reached lobby limit");
+    }
+
+    if (err != NPE_Ok) {
+        gtfo(msg.from, err);
         return;
     }
 
-    if (err == NPE_Ok)
-        lobbies[lobby_id].accept(peer_id, flags, msg);
+    create_lobby(lobby_id, game_id, msg.from);
+    auto& lobby = lobbies.at(lobby_id);
+
+    if (lobby.game == game_id)
+        lobby.accept(peer_id, flags, msg);
     else
-        gtfo(msg.from, err);
+        gtfo(msg.from, NPE_Sybau);
 }
 
 static void handle_recv(NP_SockAddr pub, const char* buf, int rcv) {
@@ -616,10 +632,11 @@ static void handle_recv(NP_SockAddr pub, const char* buf, int rcv) {
     buf += 4;
 
     constexpr const Packet packets[] = {
-        {"LIST", handle_list, 0                      },
-        {"FIND", handle_find, sizeof(NP_Find)        },
-        {"DISC", handle_disc, sizeof(NutPunch_PeerId)},
-        {"JOIN", handle_join, sizeof(NP_Heartbeat)   },
+        {"LIST", handle_list,  sizeof(NutPunch_GameId) },
+        {"LGMA", handle_ligma, sizeof(NutPunch_LobbyId)},
+        {"FIND", handle_find,  sizeof(NP_Find)         },
+        {"DISC", handle_disc,  sizeof(NutPunch_PeerId) },
+        {"JOIN", handle_join,  sizeof(NP_Heartbeat)    },
     };
 
     for (const auto& packet : packets) {

@@ -51,9 +51,13 @@ int main(int argc, char* argv[]) {
     if (argc < 1) {
         printf("YOU FIALED ME!!!! NOW SUFFERRRRR\n");
         return EXIT_FAILURE;
-    } else if (argc > 1) {
-        NutPunch_SetServerAddr(argv[1]);
     }
+
+    if (argc > 1)
+        NutPunch_SetGameId(argv[1]);
+
+    if (argc > 2)
+        NutPunch_SetServerAddr(argv[2]);
 
     NutPunch_Register(NPCB_FoundLobbies, handle_lobby_list);
     NutPunch_Register(NPCB_FoundLobbyMetadata, handle_lobby_data);

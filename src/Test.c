@@ -46,7 +46,7 @@ static void maybe_join_netgame() {
         return;
 
     if (poor_key_pressed(POOR_M)) {
-        NutPunch_EnterQueue("NutPunch Test");
+        NutPunch_EnterQueue();
     } else if (poor_key_pressed(POOR_J)) {
         NutPunch_Join(lobbyName);
     } else if (poor_key_pressed(POOR_H)) {
@@ -153,7 +153,9 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
+    NutPunch_SetGameId("NutPunch Test");
     NutPunch_SetChannelCount(CHAN_COUNT);
+
     NutPunch_Register(NPCB_PeerJoined, greet);
     NutPunch_Register(NPCB_PeerLeft, bye);
 

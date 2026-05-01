@@ -201,8 +201,8 @@ typedef char NutPunch_PeerId[8];
 /// A string uniquely identifying a NutPunch lobby.
 typedef char NutPunch_LobbyId[16];
 
-/// An identifier used in matchmaking for matching you with other peers on the same queue.
-typedef char NutPunch_QueueId[16];
+/// A string used to distinguish entirely different games' lobbies.
+typedef char NutPunch_GameId[16];
 
 /// As much as you can fit inside the name of a metadata field including the null terminator.
 typedef char NutPunch_FieldName[16];
@@ -328,6 +328,11 @@ typedef void (*NutPunch_Callback)(const void*);
 /// Sets a custom NutPuncher server address.
 void NutPunch_SetServerAddr(const char* hostname);
 
+/// Sets the game ID used to distinguish your game's lobbies from other games'.
+///
+/// It is highly recommended to set a game ID to avoid all sorts of confusion.
+void NutPunch_SetGameId(const char* game_id);
+
 /// Connects to NutPuncher without joining a lobby, mainly for lobby queries. Return `false` if a
 /// network error occurs and `true` otherwise.
 bool NutPunch_QueryMode();
@@ -345,9 +350,8 @@ bool NutPunch_Join(const char* lobby_id);
 /// than immediately here.
 bool NutPunch_Host(const char* lobby_id);
 
-/// Joins a matchmaking queue. The queue ID describes your game to find similar peers. Returns
-/// `false` if a network error occurs and `true` otherwise.
-bool NutPunch_EnterQueue(const char* queue_id);
+/// Joins the matchmaking queue for your game ID.
+bool NutPunch_EnterQueue();
 
 /// Returns the ping to the NutPuncher in milliseconds (0 ms if offline or querying).
 int NutPunch_ServerPing();
@@ -579,6 +583,7 @@ typedef struct {
 
 typedef struct {
     NutPunch_PeerId peer;
+    NutPunch_GameId game;
     NutPunch_LobbyId lobby;
     NP_HeartbeatFlagsStorage flags;
     NP_PeerAddr same_nat;
@@ -586,8 +591,13 @@ typedef struct {
 
 typedef struct {
     NutPunch_PeerId peer;
-    NutPunch_QueueId queue;
+    NutPunch_GameId game;
 } NP_Find;
+
+typedef struct {
+    NutPunch_GameId game;
+    NutPunch_Filter filters[NUTPUNCH_MAX_SEARCH_FILTERS];
+} NP_FindLobbies;
 
 #pragma pack(pop)
 
@@ -659,9 +669,9 @@ static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 static NP_Sock NP_Socket = NUTPUNCH_INVALID_SOCKET;
 static NutPunch_Clock NP_LastBeating = 0;
 
-static char NP_LobbyId[sizeof(NutPunch_LobbyId) + 1] = {0};
-static NutPunch_PeerId NP_PeerId = {0};
-static NutPunch_QueueId NP_QueueId = {0};
+static char NP_LobbyId[sizeof(NutPunch_LobbyId) + 1] = "";
+static char NP_PeerId[sizeof(NutPunch_PeerId) + 1] = "";
+static char NP_GameId[sizeof(NutPunch_GameId) + 1] = "";
 
 static NP_PeerInfo NP_Peers[NUTPUNCH_MAX_PLAYERS] = {0};
 static NutPunch_Peer NP_LocalPeer = NUTPUNCH_MAX_PLAYERS, NP_Master = NUTPUNCH_MAX_PLAYERS,
@@ -832,9 +842,11 @@ void NutPunch_Reset() {
 }
 
 void NutPunch_SetServerAddr(const char* hostname) {
-    if (!hostname)
-        hostname = "";
-    NutPunch_SNPrintF(NP_ServerHost, sizeof(NP_ServerHost), "%s", hostname);
+    NutPunch_SNPrintF(NP_ServerHost, sizeof(NP_ServerHost), "%s", hostname ? hostname : "");
+}
+
+void NutPunch_SetGameId(const char* game_id) {
+    NutPunch_SNPrintF(NP_GameId, sizeof(NP_GameId), "%s", game_id ? game_id : "");
 }
 
 static NutPunch_Field* NP_GetPeerFields(NutPunch_Peer peer) {
@@ -910,7 +922,7 @@ void NutPunch_RequestLobbyData(const NutPunch_LobbyId lobby) {
     if (NP_Socket == NUTPUNCH_INVALID_SOCKET)
         return;
 
-    static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "LIST";
+    static uint8_t buf[sizeof(NP_Header) + sizeof(NutPunch_LobbyId)] = "LGMA";
     NutPunch_Memcpy(buf + sizeof(NP_Header), lobby, sizeof(NutPunch_LobbyId));
 
     NP_JustSend(NP_ServerAddr, buf, sizeof(buf), false);
@@ -1081,18 +1093,11 @@ bool NutPunch_Join(const char* lobby_id) {
     return true;
 }
 
-bool NutPunch_EnterQueue(const char* queue_id) {
-    NP_LazyInit();
-
+bool NutPunch_EnterQueue() {
     if (!NP_Connect(NULL, false, 0))
         return false;
 
     NP_Mode = NPNM_Matchmaking;
-    NP_Memzero(NP_QueueId);
-
-    if (queue_id)
-        NutPunch_SNPrintF(NP_QueueId, sizeof(NP_QueueId), "%s", queue_id);
-
     return true;
 }
 
@@ -1152,9 +1157,11 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
         filter_count = NUTPUNCH_MAX_SEARCH_FILTERS;
     }
 
-    static uint8_t query[sizeof(NP_Header) + NUTPUNCH_MAX_SEARCH_FILTERS * sizeof(NutPunch_Filter)]
-        = "LIST";
+    static uint8_t query[sizeof(NP_Header) + sizeof(NP_FindLobbies)] = "LIST";
     uint8_t* ptr = query + sizeof(NP_Header);
+
+    NutPunch_Memcpy(ptr, NP_GameId, sizeof(NutPunch_GameId));
+    ptr += sizeof(NutPunch_GameId);
 
     if (filter_count > 0 && filters != NULL) {
         NutPunch_Memcpy(ptr, filters, filter_count * sizeof(NutPunch_Filter));
@@ -1486,6 +1493,7 @@ static void NP_HandleQueue(NP_Message msg) {
 static void NP_HandleDate(NP_Message msg) {
     if (NP_Mode == NPNM_Matchmaking && NP_AddrEq(msg.from, NP_ServerAddr)) {
         NP_Connect((char*)msg.data, true, NP_HB_Queue);
+        NutPunch_SetMaxPlayers(2);
         NP_HandleEventCb(NPCB_QueueCompleted, msg.data);
     }
 }
@@ -1517,6 +1525,9 @@ static void NP_SendHeartbeat() {
         NutPunch_Memcpy(ptr, NP_PeerId, sizeof(NutPunch_PeerId));
         ptr += sizeof(NutPunch_PeerId);
 
+        NutPunch_Memcpy(ptr, NP_GameId, sizeof(NutPunch_GameId));
+        ptr += sizeof(NutPunch_GameId);
+
         NutPunch_Memcpy(ptr, NP_LobbyId, sizeof(NutPunch_LobbyId));
         ptr += sizeof(NutPunch_LobbyId);
 
@@ -1537,8 +1548,8 @@ static void NP_SendHeartbeat() {
         NutPunch_Memcpy(ptr, NP_PeerId, sizeof(NutPunch_PeerId));
         ptr += sizeof(NutPunch_PeerId);
 
-        NutPunch_Memcpy(ptr, NP_QueueId, sizeof(NutPunch_QueueId));
-        ptr += sizeof(NutPunch_QueueId);
+        NutPunch_Memcpy(ptr, NP_GameId, sizeof(NutPunch_GameId));
+        ptr += sizeof(NutPunch_GameId);
 
         break;
 

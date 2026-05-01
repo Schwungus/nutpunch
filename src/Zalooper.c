@@ -9,6 +9,7 @@ enum {
 };
 
 int main(int argc, char* argv[]) {
+    NutPunch_SetGameId("Zalooper");
     NutPunch_SetChannelCount(CHAN_COUNT);
 
     if (argc > 1)
