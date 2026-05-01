@@ -1241,8 +1241,8 @@ static void NP_HandlePing(NP_Message msg) {
 
     for (NutPunch_Field* then = peer->metadata; then; then = then->next) {
         for (NutPunch_Field* now = metadata; now; now = now->next) {
-            if (!NutPunch_StrNCmp(then->name, now->name, sizeof(NutPunch_FieldName))
-                && NutPunch_StrNCmp(then->data, now->data, sizeof(NutPunch_FieldValue)))
+            if (0 == NutPunch_StrNCmp(then->name, now->name, sizeof(NutPunch_FieldName))
+                && 0 != NutPunch_StrNCmp(then->data, now->data, sizeof(NutPunch_FieldValue)))
             {
                 NutPunch_Memcpy(diffs[changed].name, then->name, sizeof(NutPunch_FieldName));
                 NutPunch_Memcpy(diffs[changed].then, then->data, sizeof(NutPunch_FieldValue));
@@ -1398,8 +1398,8 @@ static void NP_HandleBeating(NP_Message msg) {
 
     for (NutPunch_Field* then = NP_LobbyMetadata; then; then = then->next) {
         for (NutPunch_Field* now = metadata; now; now = now->next) {
-            if (!NutPunch_StrNCmp(then->name, now->name, sizeof(NutPunch_FieldName))
-                && NutPunch_StrNCmp(then->data, now->data, sizeof(NutPunch_FieldValue)))
+            if (0 == NutPunch_StrNCmp(then->name, now->name, sizeof(NutPunch_FieldName))
+                && 0 != NutPunch_StrNCmp(then->data, now->data, sizeof(NutPunch_FieldValue)))
             {
                 NutPunch_FieldDiff diff = {0};
                 NutPunch_Memcpy(diff.name, then->name, sizeof(NutPunch_FieldName));
@@ -1594,7 +1594,7 @@ static void NP_ReceiveShit() {
 
             if (size < type.min_packet_size)
                 continue;
-            if (NutPunch_Memcmp(buf + prefix, type.identifier, sizeof(NP_Header)))
+            if (0 != NutPunch_Memcmp(buf + prefix, type.identifier, sizeof(NP_Header)))
                 continue;
 
             NP_Message msg = {0};
