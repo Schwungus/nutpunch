@@ -82,7 +82,8 @@ Once [`NutPunch.h`](include/NutPunch.h) is in your include-path, using it is str
 int main(int argc, char* argv[]) {
     (void)argc, (void)argv;
 
-    NutPunch_Join("MyLobby");
+    NutPunch_SetGameId("My Cool Game");
+    NutPunch_Join("My Lobby");
 
     for (;;) { // your game's mainloop goes here...
         NutPunch_Update();
