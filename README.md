@@ -5,15 +5,18 @@
 <img align="right" src=".github/assets/nutpunch256.png">
 
 > [!CAUTION]
-> NutPunch implements **UDP-based peer-to-peer networking**. Use only if you know what you're getting yourself into. **Client-server architecture** is a lot more commonplace in games, and arguably much easier to implement and understand. You have been warned. Think for yourself to make the right decision.
+> NutPunch implements **UDP-based peer-to-peer networking**. **Client-server architecture** is a lot more commonplace in games, and arguably much easier to implement and understand. Use NutPunch only if you know what you're getting yourself into. You have been warned.
 
-NutPunch is a UDP hole-punching library for REAL men (and women). Header-only. Dependency-free. Brutal. Written in plain C.
+NutPunch is a header-only UDP hole-punching library, written in plain C. Dependency-free and brutal.
 
 Comes with a [public instance](#public-instance) for out-of-the-box integration.
 
 :heavy_check_mark: [Schwungus](https://github.com/Schwungus)-certified.
 
 ## Troubleshooting
+
+> [!NOTE]
+> For simplicity's sake, NutPunch does not implement [TURN](https://en.wikipedia.org/wiki/Traversal_Using_Relays_around_NAT) at the moment.
 
 If you're having **connectivity issues in a game powered by NutPunch**, please make sure **there is a direct route to your computer** from the public network. That means, even if you're on a hotel Wi-Fi network in rural Turkmenistan, NutPunch should still work, as long as you **aren't masking your outbound IP address system-wide**. Using a proxy service for accessing the Web shouldn't interfere as long as **you aren't routing your whole traffic in TUN mode** or something similar.
 
@@ -31,18 +34,22 @@ In order to run your own hole-puncher server, you'll need to get the server bina
 
 Once you've figured out how the players are to connect to your hole-puncher server, you can start coding up your game. [The complete example](src/Test.c) might be overwhelming at first, but make sure to skim through it before you do any heavy networking. Here's the general usage guide for the NutPunch library:
 
-1. Host a lobby with `NutPunch_Host("lobby-id")`, or join an existing one with `NutPunch_Join("lobby-id")`.
-2. Listen for events:
-   1. Call `NutPunch_Update()` each frame, regardless of whether you're still joining or already [playing with the boys](https://nonk.dev/blog/battlecry). This will also automatically send lobby metadata back and forth to the NutPuncher server.
-   2. Check your status by matching the returned value against `NPS_*` constants. `NPS_Online` is what you're looking for normally, but make sure to handle `NPS_Error`. To get a human-readable error description, call `NutPunch_GetLastError()`.
-3. Run the game logic.
-4. Keep in sync with the peers:
-   1. Send messages with `NutPunch_Send()` or `NutPunch_SendReliably()` (for reliable delivery).
-   2. Poll for incoming messages with `NutPunch_HasMessage()` and retrieve them with `NutPunch_NextMessage()`.
-   3. Set/retrieve lobby or peer metadata with `NutPunch_Set*Data()`/`NutPunch_Get*Data()`.
-5. Repeat steps 2 through 4. You're all Gucci!
+1. At the start of the program, set your game ID using `NutPunch_SetGameId("game-id")`.
+2. Host a lobby with `NutPunch_Host("lobby-name")`, or join an existing one with `NutPunch_Join("lobby-name")`.
+3. Listen for events:
+    1. Call `NutPunch_Update()` each frame. This will also automatically send lobby and peer metadata back and forth to the NutPuncher server.
+    2. Check your status by matching the returned value against `NPS_*` constants. `NPS_Online` is what you're looking for normally, but make sure to handle `NPS_Error`. To get a human-readable error description, call `NutPunch_GetLastError()`.
+4. Run the game logic.
+5. Keep in sync with the peers:
+    1. Send messages with `NutPunch_Send()` or `NutPunch_SendReliably()` (for reliable delivery).
+    2. Poll for incoming messages with `NutPunch_HasMessage()` and retrieve them with `NutPunch_NextMessage()`.
+    3. Set/retrieve lobby or peer metadata with `NutPunch_Set*Data()`/`NutPunch_Get*Data()`.
+6. Repeat steps 3 through 5 throughout the networking session.
+7. Use `NutPunch_Disconnect()` to leave the lobby, or `NutPunch_Shutdown()` at the end of your program to do final clean-up. You're all set!
 
-An important aspect of NutPunch networking is the ability to set peer/lobby metadata in a simplified key-value-store fashion. Peer metadata can include e.g. the peer's nickname, their skin spritesheet name, their lives count - anything you can squeeze into a 16-byte null-terminated string, mapped to 8-byte null-terminated string key. The same applies to lobby metadata: this could be the name of the map you're playing, a seed value to generate the map procedurally, the difficulty level, etc.
+An important aspect of NutPunch networking is the ability to set lobby/peer metadata in a simplified key-value-store fashion. Peer metadata can include e.g. the peer's username, their character - anything you can squeeze into a 32-byte null-terminated string, mapped to 16-byte null-terminated string key. The same applies to lobby metadata: this could be the name of the level to play on, the difficulty level, rules to alter the game's behavior, etc.
+
+For the lobby and each peer, the current limit to how many fields they can hold is 8.
 
 Call `NutPunch_Set*Data(...)`/`NutPunch_Get*Data(...)` to set/get key-value pairs; replace the asterisk with either `Peer` or `Lobby`. Setting metadata only does anything if you're "in charge" of the metadata object: either you're the lobby's master and want to set the lobby's metadata, or you're trying to set your own metadata as a peer.
 
@@ -50,7 +57,7 @@ Call `NutPunch_Set*Data(...)`/`NutPunch_Get*Data(...)` to set/get key-value pair
 
 None yet.
 
-> **TODO**: Add a [GekkoNet](https://github.com/HeatXD/GekkoNet) network adapter implementation. In the meantime, you can look into [the code of a real usecase](https://github.com/toggins/Klawiatura/blob/master/src/K_net.c).
+> **TODO**: Add a [GekkoNet](https://github.com/HeatXD/GekkoNet) network adapter implementation.
 
 ## Installation
 
@@ -90,6 +97,7 @@ int main(int argc, char* argv[]) {
         Sleep(1000 / 60);
     }
 
+    NutPunch_Shutdown();
     return EXIT_SUCCESS;
 }
 ```
