@@ -19,7 +19,8 @@ static void handle_lobby_list(const void* raw) {
     printf("Found %u lobbies:\n", list->count);
     for (int i = 0; i < list->count; i++) {
         const NutPunch_LobbyInfo* lobby = &list->lobbies[i];
-        printf("%i. %.*s (%u/%u)\n", i + 1, (int)sizeof(NutPunch_LobbyId), lobby->name,
+
+        printf("%i. %.*s (%u/%u)\n", i + 1, (int)sizeof(NutPunch_LobbyName), lobby->name,
             lobby->players, lobby->capacity);
 
         NutPunch_RequestLobbyData(lobby->name);
@@ -30,7 +31,7 @@ static void handle_lobby_list(const void* raw) {
 static void handle_lobby_data(const void* raw) {
     const NutPunch_LobbyMetadata* info = raw;
 
-    printf("%.*s has ", (int)sizeof(NutPunch_LobbyId), info->lobby);
+    printf("%.*s has ", (int)sizeof(NutPunch_LobbyName), info->name);
 
     if (!info->metadata) {
         printf("no data\n\n");
