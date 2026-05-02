@@ -935,7 +935,7 @@ void NutPunch_RequestLobbyData(const char* lobby) {
     char* ptr = buf + sizeof(NP_Header);
     NutPunch_Memset(ptr, 0, sizeof(NP_RequestLobbyData));
 
-    NutPunch_SNPrintF(ptr, sizeof(NutPunch_GameId), "%s", NP_GameId);
+    NutPunch_Memcpy(ptr, NP_GameId, sizeof(NutPunch_GameId));
     ptr += sizeof(NutPunch_GameId);
 
     NutPunch_SNPrintF(ptr, sizeof(NutPunch_LobbyName), "%s", lobby);
