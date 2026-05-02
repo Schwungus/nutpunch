@@ -1202,7 +1202,7 @@ static const char* NP_ReadUntilNull(
     char* out, size_t bufsize, const char* const start, const char* in, const size_t len) {
     NutPunch_Memset(out, 0, bufsize);
 
-    for (size_t i = 0; in - start < len && *in; i++, in++)
+    for (size_t i = 0; in < start + len && *in; i++, in++)
         if (i < bufsize - 1)
             out[i] = *in;
 
