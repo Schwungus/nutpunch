@@ -735,8 +735,6 @@ static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, b
     last->data = (uint8_t*)NutPunch_Malloc(last->len);
     *(uint32_t*)last->data = htonl(last->id);
     NutPunch_Memcpy(last->data + prefix, data, len);
-
-    NP_Trace("GONNA SEND %i BYTES TO %s", last->len, NP_FormatSockaddr(destination));
 }
 
 static void NP_JustSpam(NP_SockAddr destination, const void* data, size_t len) {
@@ -896,7 +894,7 @@ static bool NP_SetVar(NutPunch_Field** fields, const char* name, const char* dat
             break;
 
     if (!target) {
-        if (NP_GetVarCount(*fields) + 1 > NUTPUNCH_MAX_FIELDS) {
+        if (NP_GetVarCount(*fields) >= NUTPUNCH_MAX_FIELDS) {
             NP_Warn("Can't add more than %d fields!", NUTPUNCH_MAX_FIELDS);
             return false;
         }
@@ -909,6 +907,7 @@ static bool NP_SetVar(NutPunch_Field** fields, const char* name, const char* dat
     }
 
     NutPunch_SNPrintF(target->data, sizeof(target->data), "%s", data);
+
     return true;
 }
 
@@ -1226,7 +1225,7 @@ static const char* NP_ReadUntilNull(
 }
 
 static void NP_LoadMetadata(const void* raw_in, size_t len, NutPunch_Field** fields) {
-    const char *const start = (char*)raw_in, *in = (char*)raw_in;
+    const char *const start = (char*)raw_in, *in = start;
 
     NutPunch_FieldName name;
     NutPunch_FieldValue data;
@@ -1365,8 +1364,6 @@ static void NP_HandleBeating(NP_Message msg) {
     if (!NP_AddrEq(msg.from, NP_ServerAddr))
         return;
 
-    NP_Trace("GOT BEATEN!!!");
-
     const bool just_joined = NutPunch_LocalPeer() == NUTPUNCH_MAX_PLAYERS;
     const NutPunch_Peer old_master = NutPunch_MasterPeer();
     const uint8_t* ptr = msg.data;
@@ -1474,10 +1471,8 @@ static void NP_HandleLobbyData(NP_Message msg) {
 }
 
 static void NP_HandleData(NP_Message msg) {
-    if (NP_AddrEq(msg.from, NP_ServerAddr))
-        return;
-
     NutPunch_Peer peer_idx = NP_FindPeer(msg.from);
+    NP_Trace("DATA FROM %d", peer_idx);
 
     if (peer_idx == NUTPUNCH_MAX_PLAYERS)
         return;
@@ -1486,13 +1481,11 @@ static void NP_HandleData(NP_Message msg) {
     if (chan >= NP_ChannelCount)
         return;
 
-    NP_PeerInfo* const peer = &NP_Peers[peer_idx];
-
     NP_IncomingData* last = NP_Unread[chan];
     for (; last && last->next; last = last->next) {}
 
     last = *(last ? &last->next : &NP_Unread[chan])
-        = (NP_IncomingData*)NutPunch_Malloc(sizeof(NP_IncomingData));
+        = (NP_IncomingData*)NutPunch_Malloc(sizeof(*last));
 
     last->peer = peer_idx, last->len = msg.len, last->next = NULL;
     last->data = NutPunch_Malloc(last->len);
@@ -1603,7 +1596,6 @@ static void NP_ReceiveShit() {
             }
         }
 
-        NP_Trace("RECEIVED %i BYTES FROM %s", size, NP_FormatSockaddr(addr));
         size -= prefix + (int)sizeof(NP_Header);
 
         if (size < 0)
@@ -1771,15 +1763,15 @@ int NutPunch_NextMessage(NutPunch_Channel chan, void* out, int* size) {
         NutPunch_Memcpy(out, packet->data, packet->len);
 
     NP_Unread[chan] = packet->next;
+    const NutPunch_Peer peer = packet->peer;
+
     NutPunch_Free(packet->data);
     NutPunch_Free(packet);
 
-    if (packet->peer >= NUTPUNCH_MAX_PLAYERS)
-        return NUTPUNCH_MAX_PLAYERS;
-    return packet->peer;
+    return peer;
 }
 
-static void NP_SendPro(
+static void NP_SendDataPro(
     NutPunch_Channel channel, NutPunch_Peer peer, const void* data, int size, bool reliable) {
     if (!NutPunch_PeerAlive(peer) || NutPunch_LocalPeer() == peer || size <= 0
         || channel >= NUTPUNCH_MAX_CHANNELS || channel >= NP_ChannelCount)
@@ -1799,12 +1791,12 @@ static void NP_SendPro(
 }
 
 void NutPunch_Send(NutPunch_Channel channel, NutPunch_Peer peer, const void* data, int size) {
-    NP_SendPro(channel, peer, data, size, false);
+    NP_SendDataPro(channel, peer, data, size, false);
 }
 
 void
 NutPunch_SendReliably(NutPunch_Channel channel, NutPunch_Peer peer, const void* data, int size) {
-    NP_SendPro(channel, peer, data, size, true);
+    NP_SendDataPro(channel, peer, data, size, true);
 }
 
 int NutPunch_PeerCount() {
