@@ -1524,7 +1524,6 @@ static void NP_SendHeartbeat() {
     NP_SockAddr addr = {0};
     socklen_t addr_size = sizeof(addr);
     getsockname(NP_Socket, (struct sockaddr*)&addr, &addr_size);
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
     switch (NP_Mode) {
     case NPNM_Normal:

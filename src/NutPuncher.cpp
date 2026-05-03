@@ -299,6 +299,7 @@ struct Lobby {
         same_nat.sin_addr.s_addr = msg.read<uint32_t>();
         same_nat.sin_port = msg.read<uint16_t>();
 
+        // https://docs.libuv.org/en/v1.x/udp.html#c.uv_udp_send
         if (!ntohl(same_nat.sin_addr.s_addr))
             same_nat.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
