@@ -303,9 +303,12 @@ struct Lobby {
         if (!ntohl(same_nat.sin_addr.s_addr))
             same_nat.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
-        bool just_joined = false;
-
         if (index_of(id) == NUTPUNCH_MAX_PLAYERS) {
+            if (players.size() >= capacity) {
+                gtfo(msg.from, NPE_LobbyFull);
+                return;
+            }
+
             NutPunch_Peer idx = 0;
 
             for (; idx < capacity; idx++) {
@@ -322,18 +325,9 @@ struct Lobby {
                     break;
             }
 
-            just_joined = true;
-
-            if (idx >= capacity) {
-                gtfo(msg.from, NPE_LobbyFull);
-                return;
-            }
-
             players.emplace_back(idx, msg.from, same_nat, id);
+            NP_Info("Player %d joined lobby '%s'", idx + 1, fmt_id());
         }
-
-        if (just_joined)
-            NP_Info("Player %d joined lobby '%s'", index_of(id) + 1, fmt_id());
 
         for (auto& player : players) {
             if (player.id == id) {
@@ -430,6 +424,8 @@ struct Grindr {
     std::unordered_map<std::string, Player> players;
     bool closing = false;
 
+    static constexpr const size_t MATCH = 2;
+
     Grindr(const std::string& game_id) : game_id(game_id) {}
 
     explicit operator bool() const {
@@ -450,9 +446,7 @@ struct Grindr {
         if (closing)
             return;
 
-        constexpr const size_t match = 2;
-
-        if (players.size() < match && elapsed(last_match) > KEEP_QUEUE_FOR) {
+        if (players.size() < MATCH && elapsed(last_match) > KEEP_QUEUE_FOR) {
             if (!closing) {
                 for (const auto& [id, player] : players)
                     gtfo(player.pub, NPE_QueueNoMatch);
@@ -464,7 +458,7 @@ struct Grindr {
             return;
         }
 
-        while (players.size() >= match) // highly unlikely to loop but i like taking it rough :)
+        while (players.size() >= MATCH) // highly unlikely to loop but i like taking it rough :)
             LETSGOO();
 
         const size_t num_players = players.size();
@@ -508,16 +502,18 @@ struct Grindr {
 
 static std::unordered_map<std::string, Grindr> matchmaking;
 
-static void create_lobby(const std::string& game, const std::string& name, NP_SockAddr pub) {
+static NutPunch_ErrorCode
+create_lobby(const std::string& game, const std::string& name, NP_SockAddr pub) {
     // Match against existing peers to prevent creating multiple lobbies with the same master.
     for (const auto& [lobby_id, lobby] : lobbies) {
         for (const auto& player : lobby.players)
             if (NP_AddrEq(player.pub, pub))
-                return; // fuck you...
+                return NPE_LobbyExists; // fuck you...
     }
 
     lobbies.insert_or_assign({game, name}, Lobby(game, name));
     NP_Info("Created lobby '%s'", fmt_lobby_name(name));
+    return NPE_Ok;
 }
 
 static void send_lobby_metadata(NP_SockAddr pub, const std::string& game, const std::string& name) {
@@ -625,7 +621,7 @@ static void handle_join(Message msg) {
 
     NutPunch_ErrorCode err = NPE_Ok;
 
-    if (lobbies.count({game, lobby_name})) {
+    if (lobbies.contains({game, lobby_name})) {
         if (!(flags & (NP_HB_JoinExisting | NP_HB_Queue))
             && !lobbies[{game, lobby_name}].has(peer_id))
         {
@@ -637,7 +633,7 @@ static void handle_join(Message msg) {
         err = NPE_NoSuchLobby;
         NP_Warn("Reached lobby limit");
     } else {
-        create_lobby(game, lobby_name, msg.from);
+        err = create_lobby(game, lobby_name, msg.from);
     }
 
     if (err != NPE_Ok) {
@@ -647,10 +643,10 @@ static void handle_join(Message msg) {
 
     auto& lobby = lobbies.at({game, lobby_name});
 
-    if (lobby.game == game)
-        lobby.accept(peer_id, flags, msg);
-    else
-        gtfo(msg.from, NPE_Sybau);
+    if (flags & NP_HB_Queue) // unhack the initial capacity of 1...
+        lobby.capacity = Grindr::MATCH;
+
+    lobby.accept(peer_id, flags, msg);
 }
 
 static void handle_recv(NP_SockAddr pub, const char* buf, int rcv) {

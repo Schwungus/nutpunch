@@ -1622,6 +1622,9 @@ static void NP_ReceiveShit() {
 
             break;
         }
+
+        if (NP_LastStatus == NPS_Error)
+            break;
     }
 }
 
