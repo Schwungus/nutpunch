@@ -362,9 +362,6 @@ int NutPunch_PeerPing(NutPunch_Peer);
 /// Returns the remaining time before getting kicked out of a queue in seconds.
 int NutPunch_QueueTime();
 
-/// Returns the amount of peers waiting in the same queue.
-int NutPunch_QueueCount();
-
 /// Unlists the lobby you're the master of. Do this immediately after calling `NutPunch_Host`.
 void NutPunch_SetUnlisted(bool);
 
@@ -665,7 +662,7 @@ static const NP_MessageType NP_MessageTypes[] = {
     {"DATA", NP_HandleData,      1                         },
     {"GTFO", NP_HandleGTFO,      1                         },
     {"BEAT", NP_HandleBeating,   sizeof(NP_Beating)        },
-    {"QUEU", NP_HandleQueue,     1 + 2                     },
+    {"QUEU", NP_HandleQueue,     1                         },
     {"DATE", NP_HandleDate,      sizeof(NutPunch_LobbyName)},
 };
 
@@ -698,7 +695,7 @@ static bool NP_Unlisted = false;
 
 static NP_NetMode NP_Mode = NPNM_Normal;
 static NP_HeartbeatFlagsStorage NP_HeartbeatFlags = 0;
-static int NP_QueueCount = 0, NP_QueueTime = 0;
+static int NP_QueueTime = 0;
 
 static NutPunch_Field *NP_LobbyMetadata = NULL, *NP_PeerMetadata = NULL;
 
@@ -773,7 +770,7 @@ static void NP_NukeLobbyDataLite() {
     NP_LocalPeer = NP_Master = NUTPUNCH_MAX_PLAYERS;
 
     NP_Mode = NPNM_Normal;
-    NP_HeartbeatFlags = NP_QueueCount = NP_QueueTime = 0;
+    NP_HeartbeatFlags = NP_QueueTime = 0;
     NP_LobbyName[0] = 0;
 
     for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
@@ -1130,10 +1127,6 @@ int NutPunch_PeerPing(NutPunch_Peer idx) {
 
 int NutPunch_QueueTime() {
     return NP_QueueTime;
-}
-
-int NutPunch_QueueCount() {
-    return NP_QueueCount;
 }
 
 void NutPunch_SetUnlisted(bool unlisted) {
@@ -1493,10 +1486,8 @@ static void NP_HandleData(NP_Message msg) {
 }
 
 static void NP_HandleQueue(NP_Message msg) {
-    if (NP_AddrEq(msg.from, NP_ServerAddr)) {
+    if (NP_AddrEq(msg.from, NP_ServerAddr))
         NP_QueueTime = *msg.data++;
-        NP_QueueCount = ntohs(*(uint16_t*)msg.data);
-    }
 }
 
 static void NP_HandleDate(NP_Message msg) {

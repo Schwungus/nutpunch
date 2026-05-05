@@ -464,14 +464,13 @@ struct Grindr {
         if (!num_players)
             return;
 
-        static uint8_t buf[sizeof(NP_Header) + 1 + 2] = "QUEU";
+        static uint8_t buf[sizeof(NP_Header) + 1] = "QUEU";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
         const NutPunch_Clock since = elapsed(last_match),
                              diff = KEEP_QUEUE_FOR > since ? KEEP_QUEUE_FOR - since : 0;
 
         *ptr++ = (uint8_t)std::min(NutPunch_Clock(255), diff / NUTPUNCH_SEC);
-        *(uint16_t*)ptr = htons(std::min(size_t(65535), num_players - 1));
 
         for (const auto& [id, player] : players)
             just_send(player.pub, buf, sizeof(buf));
