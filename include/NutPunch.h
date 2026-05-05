@@ -1486,8 +1486,10 @@ static void NP_HandleData(NP_Message msg) {
 }
 
 static void NP_HandleQueue(NP_Message msg) {
-    if (NP_AddrEq(msg.from, NP_ServerAddr))
+    if (NP_AddrEq(msg.from, NP_ServerAddr)) {
         NP_QueueTime = *msg.data++;
+        NP_LastBeating = NutPunch_TimeNS();
+    }
 }
 
 static void NP_HandleDate(NP_Message msg) {
