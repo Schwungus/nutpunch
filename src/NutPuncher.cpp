@@ -159,9 +159,7 @@ static void just_send(NP_SockAddr addr, const void* buf, size_t len) {
 static void gtfo(NP_SockAddr addr, NutPunch_ErrorCode error) {
     static uint8_t buf[sizeof(NP_Header) + 1] = "GTFO";
     buf[sizeof(NP_Header)] = error;
-
-    for (int i = 0; i < 10; i++) // we dgaf about reliability, we're just proving a point......
-        just_send(addr, buf, sizeof(buf));
+    just_send(addr, buf, sizeof(buf));
 }
 
 struct Metadata {
