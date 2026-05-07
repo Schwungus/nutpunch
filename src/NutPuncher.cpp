@@ -460,10 +460,6 @@ struct Grindr {
         while (players.size() >= MATCH) // highly unlikely to loop but i like taking it rough :)
             LETSGOO();
 
-        const size_t num_players = players.size();
-        if (!num_players)
-            return;
-
         static uint8_t buf[sizeof(NP_Header) + 1] = "QUEU";
         uint8_t* ptr = buf + sizeof(NP_Header);
 
