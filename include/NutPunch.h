@@ -708,6 +708,17 @@ static const char* NP_FormatSockaddr(NP_SockAddr addr) {
     return buf;
 }
 
+static char* NP_Write(char* buf, const char* string, size_t size) {
+    NutPunch_Memcpy(buf, string, size);
+    return buf + size;
+}
+
+static char* NP_Print(char* buf, const char* string, size_t size) {
+    NutPunch_Memset(buf, 0, size);
+    NutPunch_SNPrintF(buf, size, "%s", string);
+    return buf + size;
+}
+
 static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, bool reliable) {
     const int prefix = 4;
 
@@ -929,13 +940,8 @@ void NutPunch_RequestLobbyData(const char* lobby) {
     static char buf[sizeof(NP_Header) + sizeof(NP_RequestLobbyData)] = "LGMA";
 
     char* ptr = buf + sizeof(NP_Header);
-    NutPunch_Memset(ptr, 0, sizeof(NP_RequestLobbyData));
-
-    NutPunch_Memcpy(ptr, NP_GameId, sizeof(NutPunch_GameId));
-    ptr += sizeof(NutPunch_GameId);
-
-    NutPunch_SNPrintF(ptr, sizeof(NutPunch_LobbyName), "%s", lobby);
-    ptr += sizeof(NutPunch_LobbyName);
+    ptr = NP_Write(ptr, NP_GameId, sizeof(NutPunch_GameId));
+    ptr = NP_Print(ptr, lobby, sizeof(NutPunch_LobbyName));
 
     NP_JustSend(NP_ServerAddr, buf, sizeof(buf), false);
 }
@@ -1509,10 +1515,10 @@ static void NP_SendHeartbeat() {
     if (NP_Socket == NUTPUNCH_INVALID_SOCKET)
         return;
 
-    static uint8_t heartbeat[sizeof(NP_Header) + sizeof(NP_Heartbeat) + sizeof(NP_Metadata)] = {0};
+    static char heartbeat[sizeof(NP_Header) + sizeof(NP_Heartbeat) + sizeof(NP_Metadata)] = {0};
     NP_Memzero(heartbeat);
 
-    uint8_t* ptr = heartbeat;
+    char* ptr = heartbeat;
 
     NP_SockAddr addr = {0};
     socklen_t addr_size = sizeof(addr);
@@ -1520,17 +1526,10 @@ static void NP_SendHeartbeat() {
 
     switch (NP_Mode) {
     case NPNM_Normal:
-        NutPunch_Memcpy(ptr, "JOIN", sizeof(NP_Header));
-        ptr += sizeof(NP_Header);
-
-        NutPunch_Memcpy(ptr, NP_PeerId, sizeof(NutPunch_PeerId));
-        ptr += sizeof(NutPunch_PeerId);
-
-        NutPunch_Memcpy(ptr, NP_GameId, sizeof(NutPunch_GameId));
-        ptr += sizeof(NutPunch_GameId);
-
-        NutPunch_Memcpy(ptr, NP_LobbyName, sizeof(NutPunch_LobbyName));
-        ptr += sizeof(NutPunch_LobbyName);
+        ptr = NP_Write(ptr, "JOIN", sizeof(NP_Header));
+        ptr = NP_Write(ptr, NP_PeerId, sizeof(NutPunch_PeerId));
+        ptr = NP_Write(ptr, NP_GameId, sizeof(NutPunch_GameId));
+        ptr = NP_Write(ptr, NP_LobbyName, sizeof(NutPunch_LobbyName));
 
         *(NP_HeartbeatFlagsStorage*)ptr = NP_HeartbeatFlags,
         ptr += sizeof(NP_HeartbeatFlagsStorage);
@@ -1543,14 +1542,9 @@ static void NP_SendHeartbeat() {
         break;
 
     case NPNM_Matchmaking:
-        NutPunch_Memcpy(ptr, "FIND", sizeof(NP_Header));
-        ptr += sizeof(NP_Header);
-
-        NutPunch_Memcpy(ptr, NP_PeerId, sizeof(NutPunch_PeerId));
-        ptr += sizeof(NutPunch_PeerId);
-
-        NutPunch_Memcpy(ptr, NP_GameId, sizeof(NutPunch_GameId));
-        ptr += sizeof(NutPunch_GameId);
+        ptr = NP_Write(ptr, "FIND", sizeof(NP_Header));
+        ptr = NP_Write(ptr, NP_PeerId, sizeof(NutPunch_PeerId));
+        ptr = NP_Write(ptr, NP_GameId, sizeof(NutPunch_GameId));
 
         break;
 
