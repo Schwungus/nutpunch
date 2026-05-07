@@ -919,9 +919,7 @@ static bool NP_SetVar(NutPunch_Field** fields, const char* name, const char* dat
     return true;
 }
 
-static int NP_DumpMetadata(void* start, const NutPunch_Field* fields) {
-    char* out = (char*)start;
-
+static char* NP_DumpMetadata(char* out, const NutPunch_Field* fields) {
     for (; fields; fields = fields->next) {
         int len = NutPunch_StrNLen(fields->name, sizeof(NutPunch_FieldName) - 1) + 1;
         NutPunch_SNPrintF(out, len, "%s", fields->name), out += len;
@@ -930,7 +928,7 @@ static int NP_DumpMetadata(void* start, const NutPunch_Field* fields) {
         NutPunch_SNPrintF(out, len, "%s", fields->data), out += len;
     }
 
-    return (int)(out - (char*)start);
+    return out;
 }
 
 void NutPunch_RequestLobbyData(const char* lobby) {
@@ -1350,10 +1348,10 @@ static void NP_SendPings(int idx, const uint8_t* data) {
     NP_PeerInfo* const peer = &NP_Peers[idx];
 
     static uint8_t ping[sizeof(NP_Header) + 1 + sizeof(NP_Metadata)] = "PING";
-    uint8_t* ptr = &ping[sizeof(NP_Header)];
 
+    uint8_t* ptr = ping + sizeof(NP_Header);
     *ptr++ = NP_LocalPeer;
-    ptr += NP_DumpMetadata(ptr, NP_PeerMetadata);
+    ptr = (uint8_t*)NP_DumpMetadata((char*)ptr, NP_PeerMetadata);
 
     NP_JustSend(pub, ping, ptr - ping, false);
     NP_JustSend(same_nat, ping, ptr - ping, false);
@@ -1537,7 +1535,7 @@ static void NP_SendHeartbeat() {
         *(uint32_t*)ptr = addr.sin_addr.s_addr, ptr += 4;
         *(uint16_t*)ptr = addr.sin_port, ptr += 2;
 
-        ptr += NP_DumpMetadata(ptr, NP_LobbyMetadata);
+        ptr = NP_DumpMetadata(ptr, NP_LobbyMetadata);
 
         break;
 

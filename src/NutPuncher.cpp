@@ -176,22 +176,22 @@ struct Metadata {
         return true;
     }
 
-    int dump(void* rawout) const {
-        auto out = reinterpret_cast<char*>(rawout);
-
+    char* dump(char* out) const {
         for (const auto& pair : fields) {
             const char *name = pair.first.c_str(), *data = pair.second.c_str();
 
             auto len = pair.first.length() + 1;
-            NutPunch_SNPrintF(out, len, "%s", name);
-            out += len;
+            out = NP_Print(out, name, len);
 
             len = pair.second.length() + 1;
-            NutPunch_SNPrintF(out, len, "%s", data);
-            out += len;
+            out = NP_Print(out, data, len);
         }
 
-        return (int)(out - (char*)rawout);
+        return out;
+    }
+
+    uint8_t* dump(uint8_t* out) const {
+        return (uint8_t*)dump((char*)out);
     }
 
     void load(const char* ptr, size_t len) {
@@ -361,7 +361,7 @@ struct Lobby {
             memcpy(ptr, &player.same_nat.sin_port, 2), ptr += 2;
         }
 
-        ptr += metadata.dump(ptr);
+        ptr = metadata.dump(ptr);
 
         just_send(player.pub, buf, ptr - buf);
     }
@@ -523,14 +523,11 @@ static void send_lobby_metadata(NP_SockAddr pub, const std::string& game, const 
 
     const auto& lobby = lobbies.at({game, name});
 
-    uint8_t* ptr = buf + sizeof(NP_Header);
+    char* ptr = (char*)buf + sizeof(NP_Header);
+    ptr = NP_Write(ptr, name.data(), sizeof(NutPunch_LobbyName));
+    ptr = lobby.metadata.dump(ptr);
 
-    std::memcpy(ptr, name.data(), sizeof(NutPunch_LobbyName));
-    ptr += sizeof(NutPunch_LobbyName);
-
-    ptr += lobby.metadata.dump(ptr);
-
-    just_send(pub, buf, ptr - buf);
+    just_send(pub, buf, ptr - (char*)buf);
 }
 
 static void send_lobbies(
