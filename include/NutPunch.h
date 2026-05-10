@@ -1667,7 +1667,7 @@ void NutPunch_Flush() {
 
     const NutPunch_Clock now = NutPunch_TimeNS();
 
-    for (NP_OutgoingPacket *prev = NULL, *cur = NP_Pending; cur; cur = cur->next) {
+    for (NP_OutgoingPacket *prev = NULL, *cur = NP_Pending; cur;) {
         bool send = false, nuke = false;
 
         if (cur->retries < 0) {
@@ -1690,9 +1690,14 @@ void NutPunch_Flush() {
 
         if (nuke) {
             *(prev ? &prev->next : &NP_Pending) = cur->next;
-            NutPunch_Free(cur->data), NutPunch_Free(cur);
+
+            NP_OutgoingPacket* tmp = cur;
+            cur = tmp->next;
+
+            NutPunch_Free(tmp->data), NutPunch_Free(tmp);
         } else {
             prev = cur;
+            cur = cur->next;
         }
     }
 }
