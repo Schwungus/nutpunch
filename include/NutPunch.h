@@ -117,25 +117,36 @@ typedef int64_t NP_Sock;
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h> // IWYU pragma: export
 #endif
 
 extern char NP_LastError[512];
 
 #ifndef NutPunch_Log
+
+#ifdef NUTPUNCH_NOSTD
+#warning NUTPUNCH_NOSTD defined but pulling in stdlib to implement NutPunch_Log
+#endif
+
 #include <stdio.h>
+
 #define NutPunch_Log(msg, ...)                                                                     \
     do {                                                                                           \
         fprintf(                                                                                   \
             stdout, "(%s:%d) " msg "\n", NutPunch_Basename(__FILE__), __LINE__, ##__VA_ARGS__);    \
         fflush(stdout);                                                                            \
     } while (0)
+
 #endif
 
 #if !defined(NutPunch_SNPrintF) && !defined(NutPunch_StrNCmp) && !defined(NutPunch_StrNLen)
 
+#ifdef NUTPUNCH_NOSTD
+#warning NUTPUNCH_NOSTD defined but pulling in stdlib to implement NutPunch_SNPrintF and NutPunch_StrN{Cmp,Len}
+#endif
+
 #include <stdio.h>
 #include <string.h>
+
 #define NutPunch_SNPrintF snprintf
 #define NutPunch_StrNCmp strncmp
 #define NutPunch_StrNLen strnlen
@@ -148,7 +159,12 @@ extern char NP_LastError[512];
 
 #if !defined(NutPunch_Malloc) && !defined(NutPunch_Free)
 
+#ifdef NUTPUNCH_NOSTD
+#warning NUTPUNCH_NOSTD defined but pulling in stdlib to implement NutPunch_{Malloc,Free}
+#endif
+
 #include <stdlib.h>
+
 #define NutPunch_Malloc malloc
 #define NutPunch_Free free
 
@@ -160,7 +176,12 @@ extern char NP_LastError[512];
 
 #if !defined(NutPunch_Memcpy) && !defined(NutPunch_Memset) && !defined(NutPunch_Memcmp)
 
+#ifdef NUTPUNCH_NOSTD
+#warning NUTPUNCH_NOSTD defined but pulling in stdlib to implement NutPunch_Mem{cpy,set,cmp}
+#endif
+
 #include <stdlib.h>
+
 #define NutPunch_Memcpy memcpy
 #define NutPunch_Memset memset
 #define NutPunch_Memcmp memcmp
