@@ -174,27 +174,27 @@ extern char NP_LastError[512];
 
 #endif // NutPunch_{Malloc,Free}
 
-#if !defined(NutPunch_Memcpy) && !defined(NutPunch_Memset) && !defined(NutPunch_Memcmp)
+#if !defined(NutPunch_MemCpy) && !defined(NutPunch_MemSet) && !defined(NutPunch_MemCmp)
 
 #ifdef NUTPUNCH_NOSTD
-#warning NUTPUNCH_NOSTD defined but pulling in stdlib to implement NutPunch_Mem{cpy,set,cmp}
+#warning NUTPUNCH_NOSTD defined but pulling in stdlib to implement NutPunch_Mem{Cpy,Set,Cmp}
 #endif
 
 #include <stdlib.h>
 
-#define NutPunch_Memcpy memcpy
-#define NutPunch_Memset memset
-#define NutPunch_Memcmp memcmp
+#define NutPunch_MemCpy memcpy
+#define NutPunch_MemSet memset
+#define NutPunch_MemCmp memcmp
 
-#elif !defined(NutPunch_Memcpy) || !defined(NutPunch_Memset) || !defined(NutPunch_Memcmp)
+#elif !defined(NutPunch_MemCpy) || !defined(NutPunch_MemSet) || !defined(NutPunch_MemCmp)
 
 #error Define NutPunch_Mem{cpy,set,cmp} together!
 
 #endif // NutPunch_Mem*
 
 #define NP_Entries(array) (sizeof(array) / sizeof(*(array)))
-#define NP_Memzero(array) NutPunch_Memset(array, 0, sizeof(array))
-#define NP_MemzeroRef(ref) NutPunch_Memset(&(ref), 0, sizeof(ref))
+#define NP_Memzero(array) NutPunch_MemSet(array, 0, sizeof(array))
+#define NP_MemzeroRef(ref) NutPunch_MemSet(&(ref), 0, sizeof(ref))
 
 #define NP_Info(...) NutPunch_Log("INFO: " __VA_ARGS__)
 #define NP_Warn(...)                                                                               \
@@ -752,12 +752,12 @@ static const char* NP_FormatSockAddr(NP_SockAddr addr) {
 }
 
 static char* NP_Write(char* buf, const char* string, size_t size) {
-    NutPunch_Memcpy(buf, string, size);
+    NutPunch_MemCpy(buf, string, size);
     return buf + size;
 }
 
 static char* NP_Print(char* buf, const char* string, size_t size) {
-    NutPunch_Memset(buf, 0, size);
+    NutPunch_MemSet(buf, 0, size);
     NutPunch_SNPrintF(buf, size, "%s", string);
     return buf + size;
 }
@@ -792,7 +792,7 @@ static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, b
     // prefixing the entire packet with an id...
     last->data = (uint8_t*)NutPunch_Malloc(last->len);
     *(uint32_t*)last->data = htonl(last->id);
-    NutPunch_Memcpy(last->data + prefix, data, len);
+    NutPunch_MemCpy(last->data + prefix, data, len);
 }
 
 static void NP_JustSpam(NP_SockAddr destination, const void* data, size_t len) {
@@ -1035,7 +1035,7 @@ static bool NP_ResolveNutpuncher() {
     }
 
     NP_MemzeroRef(NP_ServerAddr);
-    NutPunch_Memcpy(&NP_ServerAddr, resolved->ai_addr, resolved->ai_addrlen);
+    NutPunch_MemCpy(&NP_ServerAddr, resolved->ai_addr, resolved->ai_addrlen);
     freeaddrinfo(resolved);
 
     NP_Info("Resolved NutPuncher address");
@@ -1222,11 +1222,11 @@ void NutPunch_FindLobbies(int filter_count, const NutPunch_Filter* filters) {
     static uint8_t query[sizeof(NP_Header) + sizeof(NP_FindLobbies)] = "LIST";
     uint8_t* ptr = query + sizeof(NP_Header);
 
-    NutPunch_Memcpy(ptr, NP_GameId, sizeof(NutPunch_GameId));
+    NutPunch_MemCpy(ptr, NP_GameId, sizeof(NutPunch_GameId));
     ptr += sizeof(NutPunch_GameId);
 
     if (filter_count > 0 && filters != NULL) {
-        NutPunch_Memcpy(ptr, filters, filter_count * sizeof(NutPunch_Filter));
+        NutPunch_MemCpy(ptr, filters, filter_count * sizeof(NutPunch_Filter));
         ptr += filter_count * sizeof(NutPunch_Filter);
     }
 
@@ -1254,7 +1254,7 @@ static void NP_KillPeer(NutPunch_Peer peer) {
 
 static const char* NP_ReadUntilNull(
     char* out, size_t bufsize, const char* const start, const char* in, const size_t len) {
-    NutPunch_Memset(out, 0, bufsize);
+    NutPunch_MemSet(out, 0, bufsize);
 
     for (size_t i = 0; in < start + len && *in; i++, in++)
         if (i < bufsize - 1)
@@ -1353,9 +1353,9 @@ static void NP_HandlePeer(NP_Message msg) {
             if (0 == NutPunch_StrNCmp(then->name, now->name, sizeof(NutPunch_FieldName))
                 && 0 != NutPunch_StrNCmp(then->data, now->data, sizeof(NutPunch_FieldValue)))
             {
-                NutPunch_Memcpy(diffs[changed].name, then->name, sizeof(NutPunch_FieldName));
-                NutPunch_Memcpy(diffs[changed].then, then->data, sizeof(NutPunch_FieldValue));
-                NutPunch_Memcpy(diffs[changed].now, now->data, sizeof(NutPunch_FieldValue));
+                NutPunch_MemCpy(diffs[changed].name, then->name, sizeof(NutPunch_FieldName));
+                NutPunch_MemCpy(diffs[changed].then, then->data, sizeof(NutPunch_FieldValue));
+                NutPunch_MemCpy(diffs[changed].now, now->data, sizeof(NutPunch_FieldValue));
                 changed++;
                 break;
             }
@@ -1482,7 +1482,7 @@ static void NP_HandleBeating(NP_Message msg) {
     }
 
     static const uint8_t* addrs[NUTPUNCH_MAX_PLAYERS] = {0};
-    NutPunch_Memset((void*)addrs, 0, sizeof(addrs));
+    NutPunch_MemSet((void*)addrs, 0, sizeof(addrs));
 
     for (int i = 0; i < num_peers; i++) {
         const NutPunch_Peer pidx = *ptr++;
@@ -1506,9 +1506,9 @@ static void NP_HandleBeating(NP_Message msg) {
                 && 0 != NutPunch_StrNCmp(then->data, now->data, sizeof(NutPunch_FieldValue)))
             {
                 NutPunch_FieldDiff diff = {0};
-                NutPunch_Memcpy(diff.name, then->name, sizeof(NutPunch_FieldName));
-                NutPunch_Memcpy(diff.then, then->data, sizeof(NutPunch_FieldValue));
-                NutPunch_Memcpy(diff.now, now->data, sizeof(NutPunch_FieldValue));
+                NutPunch_MemCpy(diff.name, then->name, sizeof(NutPunch_FieldName));
+                NutPunch_MemCpy(diff.then, then->data, sizeof(NutPunch_FieldValue));
+                NutPunch_MemCpy(diff.now, now->data, sizeof(NutPunch_FieldValue));
                 NP_HandleEventCb(NPCB_LobbyMetadataChanged, &diff);
                 break;
             }
@@ -1545,7 +1545,7 @@ static void NP_HandleLobbyData(NP_Message msg) {
 
     NutPunch_LobbyMetadata info = {0};
 
-    NutPunch_Memcpy(info.name, msg.data, sizeof(info.name));
+    NutPunch_MemCpy(info.name, msg.data, sizeof(info.name));
     msg.data += sizeof(NutPunch_LobbyName), msg.len -= sizeof(NutPunch_LobbyName);
 
     NP_LoadMetadata(msg.data, msg.len, &info.metadata);
@@ -1573,7 +1573,7 @@ static void NP_HandleData(NP_Message msg) {
 
     last->peer = peer_idx, last->len = msg.len, last->next = NULL;
     last->data = NutPunch_Malloc(last->len);
-    NutPunch_Memcpy(last->data, msg.data, last->len);
+    NutPunch_MemCpy(last->data, msg.data, last->len);
 }
 
 static void NP_HandleQueue(NP_Message msg) {
@@ -1685,7 +1685,7 @@ static void NP_ReceiveShit() {
 
             if (size < type.min_packet_size)
                 continue;
-            if (0 != NutPunch_Memcmp(buf + prefix, type.identifier, sizeof(NP_Header)))
+            if (0 != NutPunch_MemCmp(buf + prefix, type.identifier, sizeof(NP_Header)))
                 continue;
 
             NP_Message msg = {0};
@@ -1709,7 +1709,7 @@ static void NP_SendGoodbyes() {
         return;
 
     static uint8_t bye[sizeof(NP_Header) + sizeof(NutPunch_PeerId)] = "DISC";
-    NutPunch_Memcpy(bye + sizeof(NP_Header), NP_PeerId, sizeof(NutPunch_PeerId));
+    NutPunch_MemCpy(bye + sizeof(NP_Header), NP_PeerId, sizeof(NutPunch_PeerId));
     NP_JustSpam(NP_ServerAddr, bye, sizeof(bye));
 }
 
@@ -1844,7 +1844,7 @@ int NutPunch_NextMessage(NutPunch_Channel chan, void* out, int* size) {
     if (size)
         *size = (int)packet->len;
     if (out)
-        NutPunch_Memcpy(out, packet->data, packet->len);
+        NutPunch_MemCpy(out, packet->data, packet->len);
 
     NP_Unread[chan] = packet->next;
     const NutPunch_Peer peer = packet->peer;
@@ -1867,8 +1867,8 @@ static void NP_SendDataPro(
     uint8_t* const buf = (uint8_t*)NutPunch_Malloc(total_size);
     uint8_t* ptr = buf + sizeof(NP_Header);
 
-    NutPunch_Memcpy(buf, "DATA", sizeof(NP_Header));
-    *ptr++ = channel, NutPunch_Memcpy(ptr, data, size);
+    NutPunch_MemCpy(buf, "DATA", sizeof(NP_Header));
+    *ptr++ = channel, NutPunch_MemCpy(ptr, data, size);
     NP_JustSend(NP_Peers[peer].address, buf, total_size, reliable);
 
     NutPunch_Free(buf);

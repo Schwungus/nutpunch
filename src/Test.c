@@ -36,7 +36,7 @@ static const int nameCount = sizeof(randomNames) / sizeof(*randomNames);
 static uint8_t targetPlayerCount = 0;
 
 static void reset_gamestate() {
-    NutPunch_Memset(players, 0, sizeof(players));
+    NutPunch_MemSet(players, 0, sizeof(players));
     players[NutPunch_LocalPeer()].x = poor_width() / 2;
     players[NutPunch_LocalPeer()].y = poor_height() / 2;
 }

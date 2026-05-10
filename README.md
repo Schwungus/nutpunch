@@ -134,9 +134,9 @@ Either way, here's a no-stdlib SDL3 example:
 #define NutPunch_SNPrintF SDL_snprintf
 #define NutPunch_StrNCmp SDL_strncmp
 #define NutPunch_StrNLen SDL_strnlen
-#define NutPunch_Memcmp SDL_memcmp
-#define NutPunch_Memset SDL_memset
-#define NutPunch_Memcpy SDL_memcpy
+#define NutPunch_MemCmp SDL_memcmp
+#define NutPunch_MemSet SDL_memset
+#define NutPunch_MemCpy SDL_memcpy
 #define NutPunch_Malloc SDL_malloc
 #define NutPunch_Free SDL_free
 #define NutPunch_TimeNS SDL_GetTicksNS
