@@ -1,0 +1,10 @@
+[Unit]
+Description=NutPuncher public instance (port %i)
+After=network.target
+
+[Service]
+ExecStart=%h/NutPuncher-%i
+Restart=always
+
+[Install]
+WantedBy=default.target
