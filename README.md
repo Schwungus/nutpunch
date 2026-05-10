@@ -7,7 +7,7 @@
 > [!CAUTION]
 > NutPunch implements **UDP-based peer-to-peer networking**. **Client-server architecture** is a lot more commonplace in games, and arguably much easier to implement and understand. Use NutPunch only if you know what you're getting yourself into. You have been warned.
 
-NutPunch is a header-only UDP hole-punching library, written in plain C. Dependency-free and brutal.
+NutPunch is a header-only UDP hole-punching library written in plain C. Dependency-free and brutal.
 
 Comes with a [public instance](#public-instance) for out-of-the-box integration.
 
@@ -117,11 +117,13 @@ NutPunch_Join("lobby-id");
 
 ## Advanced Usage
 
-### Customize Memory Handling
+### Replace Stdlib Dependencies
 
-You can `#define` custom memory handling functions for NutPunch to use, before including the header. They're only relevant to the implementation. If none are specified, C's standard library functions are used.
+NutPunch relies heavily on the C standard library. If you have a need or desire to cut that off from your project, just `#define` replacements NutPunch can use in its implementation.
 
-SDL3 example:
+Please note that you can't customize the APIs used for networking (yet). We're interfacing directly with raw winsock & BSD sockets; if none are available, your platform isn't supported.
+
+Either way, here's a no-stdlib SDL3 example:
 
 ```c
 #include <SDL3/SDL_stdinc.h>
@@ -138,6 +140,7 @@ SDL3 example:
 #define NutPunch_Malloc SDL_malloc
 #define NutPunch_Free SDL_free
 #define NutPunch_TimeNS SDL_GetTicksNS
+// NOTE: this still pulls in <stdio.h> unless you customize the logger as well (see the section below).
 
 #include <NutPunch.h>
 ```
