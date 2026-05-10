@@ -651,13 +651,13 @@ typedef struct {
     const int64_t min_packet_size;
 } NP_MessageType;
 
-static void NP_HandlePing(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
+static void NP_HandlePeer(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
     NP_HandleListing(NP_Message), NP_HandleLobbyData(NP_Message), NP_HandleData(NP_Message),
     NP_HandleQueue(NP_Message), NP_HandleDate(NP_Message), NP_HandleAcky(NP_Message);
 
 static const NP_MessageType NP_MessageTypes[] = {
     {"ACKY", NP_HandleAcky,      4                         },
-    {"PING", NP_HandlePing,      1                         },
+    {"PEER", NP_HandlePeer,      1                         },
     {"LIST", NP_HandleListing,   0                         },
     {"LGMA", NP_HandleLobbyData, sizeof(NutPunch_LobbyName)},
     {"DATA", NP_HandleData,      1                         },
@@ -1132,7 +1132,7 @@ int NutPunch_ServerPing() {
 }
 
 int NutPunch_PeerPing(NutPunch_Peer idx) {
-    if (!NutPunch_IsReady() || idx == NutPunch_LocalPeer() || !NutPunch_PeerAlive(idx))
+    if (idx == NutPunch_LocalPeer() || !NutPunch_PeerAlive(idx))
         return 0;
 
     NutPunch_Clock sum = 0;
@@ -1249,7 +1249,7 @@ static void NP_LoadMetadata(const void* raw_in, size_t len, NutPunch_Field** fie
     }
 }
 
-static void NP_HandlePing(NP_Message msg) {
+static void NP_HandlePeer(NP_Message msg) {
     const uint8_t* ptr = msg.data;
 
     const NutPunch_Peer idx = *ptr++;
@@ -1345,7 +1345,7 @@ static NutPunch_Peer NP_FindPeer(NP_SockAddr addr) {
     return NUTPUNCH_MAX_PLAYERS;
 }
 
-static void NP_SendPings(int idx, const uint8_t* data) {
+static void NP_NudgePeer(int idx, const uint8_t* data) {
     if (NP_Socket == NUTPUNCH_INVALID_SOCKET || idx == NP_LocalPeer)
         return;
 
@@ -1368,14 +1368,14 @@ static void NP_SendPings(int idx, const uint8_t* data) {
 
     NP_PeerInfo* const peer = &NP_Peers[idx];
 
-    static uint8_t ping[sizeof(NP_Header) + 1 + sizeof(NP_Metadata)] = "PING";
+    static uint8_t buf[sizeof(NP_Header) + 1 + sizeof(NP_Metadata)] = "PEER";
 
-    uint8_t* ptr = ping + sizeof(NP_Header);
+    uint8_t* ptr = buf + sizeof(NP_Header);
     *ptr++ = NP_LocalPeer;
     ptr = (uint8_t*)NP_DumpMetadata((char*)ptr, NP_PeerMetadata);
 
-    NP_JustSend(pub, ping, ptr - ping, false);
-    NP_JustSend(same_nat, ping, ptr - ping, false);
+    NP_JustSend(pub, buf, ptr - buf, false);
+    NP_JustSend(same_nat, buf, ptr - buf, false);
 }
 
 static void NP_UpdateLastBeating() {
@@ -1429,15 +1429,17 @@ static void NP_HandleBeating(NP_Message msg) {
 
     static const uint8_t* addrs[NUTPUNCH_MAX_PLAYERS] = {0};
     NutPunch_Memset((void*)addrs, 0, sizeof(addrs));
+
     for (int i = 0; i < num_peers; i++) {
         const NutPunch_Peer pidx = *ptr++;
         addrs[pidx] = ptr;
         ptr += 2 * sizeof(NP_PeerAddr);
     }
+
     msg.len -= expected_len;
 
     for (int i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
-        NP_SendPings(i, addrs[i]);
+        NP_NudgePeer(i, addrs[i]);
         if (i == NP_LocalPeer && just_joined && addrs[i])
             NP_PrintOurAddress(addrs[i]);
     }
