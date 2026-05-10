@@ -281,12 +281,12 @@ typedef struct {
 /// About as much data as you are allowed to see from lobbies you aren't part of.
 typedef struct {
     NutPunch_LobbyName name;
-    uint8_t players, capacity;
+    NutPunch_Peer players, capacity;
 } NutPunch_LobbyInfo;
 
 /// A list of lobbies returned by the NutPuncher.
 typedef struct {
-    uint8_t count;
+    size_t count;
     const NutPunch_LobbyInfo* lobbies;
 } NutPunch_LobbyList;
 
