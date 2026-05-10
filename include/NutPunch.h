@@ -616,10 +616,20 @@ enum {
 // BATSHIT CRAZY BATSHIT!!!
 #ifdef NUTPUNCH_IMPLEMENTATION
 
+#define NUTPUNCH_PING_INTERVAL (1000 * NUTPUNCH_MS)
+
+typedef struct {
+    NutPunch_Clock start, measurements[60];
+    int last_ping;
+} NP_Pinger;
+
+static NP_Pinger NP_ServerPinger = {0};
+
 typedef struct {
     NutPunch_Field* metadata;
     NP_SockAddr address;
-    NutPunch_Clock last_ping, ping_history[10];
+    NutPunch_Clock last_beating;
+    NP_Pinger pinger;
 } NP_PeerInfo;
 
 typedef struct {
@@ -651,11 +661,14 @@ typedef struct {
     const int64_t min_packet_size;
 } NP_MessageType;
 
-static void NP_HandlePeer(NP_Message), NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message),
-    NP_HandleListing(NP_Message), NP_HandleLobbyData(NP_Message), NP_HandleData(NP_Message),
-    NP_HandleQueue(NP_Message), NP_HandleDate(NP_Message), NP_HandleAcky(NP_Message);
+static void NP_HandlePing(NP_Message), NP_HandlePong(NP_Message), NP_HandlePeer(NP_Message),
+    NP_HandleGTFO(NP_Message), NP_HandleBeating(NP_Message), NP_HandleListing(NP_Message),
+    NP_HandleLobbyData(NP_Message), NP_HandleData(NP_Message), NP_HandleQueue(NP_Message),
+    NP_HandleDate(NP_Message), NP_HandleAcky(NP_Message);
 
 static const NP_MessageType NP_MessageTypes[] = {
+    {"PING", NP_HandlePing,      1                         },
+    {"PONG", NP_HandlePong,      1                         },
     {"ACKY", NP_HandleAcky,      4                         },
     {"PEER", NP_HandlePeer,      1                         },
     {"LIST", NP_HandleListing,   0                         },
@@ -674,7 +687,6 @@ static NutPunch_UpdateStatus NP_LastStatus = NPS_Idle;
 
 static NP_Sock NP_Socket = NUTPUNCH_INVALID_SOCKET;
 static NutPunch_Clock NP_LastBeating = 0;
-static NutPunch_Clock NP_BeatingHistory[10] = {0};
 
 static char NP_LobbyName[sizeof(NutPunch_LobbyName) + 1] = "";
 static char NP_PeerId[sizeof(NutPunch_PeerId) + 1] = "";
@@ -701,7 +713,15 @@ static int NP_QueueTime = 0;
 
 static NutPunch_Field *NP_LobbyMetadata = NULL, *NP_PeerMetadata = NULL;
 
-static const char* NP_FormatSockaddr(NP_SockAddr addr) {
+bool NP_AddrNull(NP_SockAddr addr) {
+    return !ntohl(addr.sin_addr.s_addr) && !ntohs(addr.sin_port);
+}
+
+bool NP_AddrEq(NP_SockAddr a, NP_SockAddr b) {
+    return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port;
+}
+
+static const char* NP_FormatSockAddr(NP_SockAddr addr) {
     static char buf[64] = "";
 
     const char* s = inet_ntoa(addr.sin_addr);
@@ -719,6 +739,13 @@ static char* NP_Print(char* buf, const char* string, size_t size) {
     NutPunch_Memset(buf, 0, size);
     NutPunch_SNPrintF(buf, size, "%s", string);
     return buf + size;
+}
+
+static NutPunch_Peer NP_FindPeer(NP_SockAddr addr) {
+    for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
+        if (NP_AddrEq(NP_Peers[i].address, addr))
+            return i;
+    return NUTPUNCH_MAX_PLAYERS;
 }
 
 static void NP_JustSend(NP_SockAddr destination, const void* data, size_t len, bool reliable) {
@@ -1079,7 +1106,6 @@ static bool NP_Connect(const char* name, bool sane, NP_HeartbeatFlagsStorage fla
     if (name)
         NutPunch_SNPrintF(NP_LobbyName, sizeof(NP_LobbyName), "%s", name);
 
-    NP_Memzero(NP_BeatingHistory);
     NP_LastBeating = NutPunch_TimeNS();
 
     return true;
@@ -1123,23 +1149,13 @@ bool NutPunch_EnterQueue() {
 int NutPunch_ServerPing() {
     if (!NutPunch_IsOnline() || NP_Mode == NPNM_Query)
         return 0;
-
-    NutPunch_Clock sum = 0;
-    for (size_t i = 0; i < NP_Entries(NP_BeatingHistory); i++)
-        sum += NP_BeatingHistory[i];
-
-    return (int)((sum / NP_Entries(NP_BeatingHistory)) / NUTPUNCH_MS);
+    return NP_ServerPinger.last_ping;
 }
 
 int NutPunch_PeerPing(NutPunch_Peer idx) {
     if (idx == NutPunch_LocalPeer() || !NutPunch_PeerAlive(idx))
         return 0;
-
-    NutPunch_Clock sum = 0;
-    for (size_t i = 0; i < NP_Entries(NP_Peers[idx].ping_history); i++)
-        sum += NP_Peers[idx].ping_history[i];
-
-    return (int)((sum / NP_Entries(NP_Peers[idx].ping_history)) / NUTPUNCH_MS);
+    return NP_Peers[idx].pinger.last_ping;
 }
 
 int NutPunch_QueueTime() {
@@ -1215,14 +1231,6 @@ static void NP_KillPeer(NutPunch_Peer peer) {
     NP_NukePeer(peer);
 }
 
-bool NP_AddrNull(NP_SockAddr addr) {
-    return !ntohl(addr.sin_addr.s_addr) && !ntohs(addr.sin_port);
-}
-
-bool NP_AddrEq(NP_SockAddr a, NP_SockAddr b) {
-    return a.sin_addr.s_addr == b.sin_addr.s_addr && a.sin_port == b.sin_port;
-}
-
 static const char* NP_ReadUntilNull(
     char* out, size_t bufsize, const char* const start, const char* in, const size_t len) {
     NutPunch_Memset(out, 0, bufsize);
@@ -1249,6 +1257,54 @@ static void NP_LoadMetadata(const void* raw_in, size_t len, NutPunch_Field** fie
     }
 }
 
+static void NP_SendPings(NP_Pinger* pinger, NP_SockAddr address) {
+    if (pinger->start && NutPunch_TimeNS() - pinger->start < NUTPUNCH_PING_INTERVAL)
+        return;
+
+    NutPunch_Clock sum = 0;
+
+    for (size_t i = 0; i < NP_Entries(pinger->measurements); i++) {
+        // halve the round-trip time as an approximation for how long it took to send the packet in
+        // one direction
+        sum += (pinger->measurements[i] - pinger->start) / 2;
+    }
+
+    pinger->last_ping = (int)((sum / NP_Entries(pinger->measurements)) / NUTPUNCH_MS);
+    pinger->start = NutPunch_TimeNS();
+
+    uint8_t buf[sizeof(NP_Header) + 1] = "PING";
+
+    for (uint8_t i = 0; (size_t)i < NP_Entries(pinger->measurements); i++) {
+        // by default, assume the pong never arrived within the pinging interval window
+        pinger->measurements[i] = pinger->start + NUTPUNCH_PING_INTERVAL;
+
+        buf[sizeof(NP_Header)] = i;
+        NP_JustSend(address, buf, sizeof(buf), false);
+    }
+}
+
+static void NP_HandlePing(NP_Message msg) {
+    uint8_t buf[sizeof(NP_Header) + 1] = "PONG";
+    buf[sizeof(NP_Header)] = *msg.data++;
+    NP_JustSend(msg.from, buf, sizeof(buf), false);
+}
+
+static void NP_HandlePong(NP_Message msg) {
+    NP_Pinger* pinger = NULL;
+
+    if (NP_AddrEq(msg.from, NP_ServerAddr))
+        pinger = &NP_ServerPinger;
+    else if (NP_FindPeer(msg.from) != NUTPUNCH_MAX_PLAYERS)
+        pinger = &NP_Peers[NP_FindPeer(msg.from)].pinger;
+
+    if (!pinger)
+        return;
+
+    const uint8_t measurement = *msg.data++;
+    if (measurement < NP_Entries(pinger->measurements))
+        pinger->measurements[measurement] = NutPunch_TimeNS();
+}
+
 static void NP_HandlePeer(NP_Message msg) {
     const uint8_t* ptr = msg.data;
 
@@ -1261,15 +1317,7 @@ static void NP_HandlePeer(NP_Message msg) {
     const bool was_dead = !NutPunch_PeerAlive(idx);
 
     NP_PeerInfo* const peer = &NP_Peers[idx];
-    peer->address = msg.from;
-
-    const NutPunch_Clock now = NutPunch_TimeNS();
-
-    for (size_t i = NP_Entries(peer->ping_history); i-- > 1;)
-        peer->ping_history[i] = peer->ping_history[i - 1];
-    peer->ping_history[0] = now - peer->last_ping;
-
-    peer->last_ping = now;
+    peer->address = msg.from, peer->last_beating = NutPunch_TimeNS();
 
     NutPunch_Field* metadata = NULL;
     NP_LoadMetadata(ptr, msg.len, &metadata);
@@ -1335,14 +1383,7 @@ static void NP_PrintOurAddress(const uint8_t* data) {
     NP_SockAddr addr = {0};
     addr.sin_addr.s_addr = *(uint32_t*)data, data += 4;
     addr.sin_port = ntohs(*(uint16_t*)data), data += 2;
-    NP_Info("Server thinks you are %s", NP_FormatSockaddr(addr));
-}
-
-static NutPunch_Peer NP_FindPeer(NP_SockAddr addr) {
-    for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++)
-        if (NP_AddrEq(NP_Peers[i].address, addr))
-            return i;
-    return NUTPUNCH_MAX_PLAYERS;
+    NP_Info("Server thinks you are %s", NP_FormatSockAddr(addr));
 }
 
 static void NP_NudgePeer(int idx, const uint8_t* data) {
@@ -1376,16 +1417,6 @@ static void NP_NudgePeer(int idx, const uint8_t* data) {
 
     NP_JustSend(pub, buf, ptr - buf, false);
     NP_JustSend(same_nat, buf, ptr - buf, false);
-}
-
-static void NP_UpdateLastBeating() {
-    const NutPunch_Clock now = NutPunch_TimeNS();
-
-    for (size_t i = NP_Entries(NP_BeatingHistory); i-- > 1;)
-        NP_BeatingHistory[i] = NP_BeatingHistory[i - 1];
-    NP_BeatingHistory[0] = now - NP_LastBeating;
-
-    NP_LastBeating = now;
 }
 
 static void NP_HandleBeating(NP_Message msg) {
@@ -1471,7 +1502,7 @@ done_getting_beat:
         NP_HandleEventCb(NPCB_NewMaster, &new_master);
     }
 
-    NP_UpdateLastBeating();
+    NP_LastBeating = NutPunch_TimeNS();
 }
 
 static void NP_HandleListing(NP_Message msg) {
@@ -1525,7 +1556,7 @@ static void NP_HandleData(NP_Message msg) {
 static void NP_HandleQueue(NP_Message msg) {
     if (NP_AddrEq(msg.from, NP_ServerAddr)) {
         NP_QueueTime = *msg.data++;
-        NP_UpdateLastBeating();
+        NP_LastBeating = NutPunch_TimeNS();
     }
 }
 
@@ -1584,6 +1615,7 @@ static void NP_SendHeartbeat() {
     }
 
     NP_JustSend(NP_ServerAddr, heartbeat, ptr - heartbeat, false);
+    NP_SendPings(&NP_ServerPinger, NP_ServerAddr);
 }
 
 static int NP_UglyRecvFrom(NP_SockAddr* addr, void* buf, int buf_size) {
@@ -1713,7 +1745,7 @@ static void NP_TimeOutPeers() {
     for (NutPunch_Peer i = 0; i < NUTPUNCH_MAX_PLAYERS; i++) {
         const NP_PeerInfo* p = &NP_Peers[i];
 
-        if (i != NutPunch_LocalPeer() && p->last_ping && now - p->last_ping >= timeout)
+        if (i != NutPunch_LocalPeer() && p->last_beating && now - p->last_beating >= timeout)
             NP_KillPeer(i);
     }
 }
@@ -1732,6 +1764,10 @@ NutPunch_UpdateStatus NutPunch_Update() {
             return NP_LastStatus;
         }
     }
+
+    for (NutPunch_Peer peer = 0; peer < NUTPUNCH_MAX_PLAYERS; peer++)
+        if (NutPunch_PeerAlive(peer) && peer != NutPunch_LocalPeer())
+            NP_SendPings(&NP_Peers[peer].pinger, NP_Peers[peer].address);
 
     NP_LastStatus = NPS_Online;
     NP_TimeOutPeers();

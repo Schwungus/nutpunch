@@ -135,6 +135,15 @@ static void draw_debug_bits(int status) {
     poor_printf(0, 0, "DBG:%c%c:%d/%d:%d", NPS_Online == status ? '+' : '-',
         NutPunch_MasterPeer() == NutPunch_LocalPeer() ? 'M' : 'S', NutPunch_PeerCount(),
         NutPunch_GetMaxPlayers(), 1 + NutPunch_LocalPeer());
+
+    const int x = poor_width() - 6;
+
+    if (NutPunch_IsOnline())
+        poor_printf(x, 0, "S=%4d", NutPunch_ServerPing());
+
+    for (int peer = 0; peer < NUTPUNCH_MAX_PLAYERS; peer++)
+        if (NutPunch_PeerAlive(peer) && peer != NutPunch_LocalPeer())
+            poor_printf(x, 1 + peer, "%1d=%4d", peer + 1, NutPunch_PeerPing(peer));
 }
 
 static void greet(const void* raw) {

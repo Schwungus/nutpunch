@@ -575,6 +575,12 @@ struct Packet {
     const size_t min_size;
 };
 
+static void handle_ping(Message msg) {
+    static uint8_t buf[sizeof(NP_Header) + 1] = "PONG";
+    buf[sizeof(NP_Header)] = *msg.data++;
+    just_send(msg.from, buf, sizeof(buf));
+}
+
 static void handle_ligma(Message msg) {
     const auto game = msg.read0term(sizeof(NutPunch_GameId));
     const auto name = msg.read0term(sizeof(NutPunch_LobbyName));
@@ -649,6 +655,7 @@ static void handle_recv(NP_SockAddr pub, const char* buf, int rcv) {
     buf += 4;
 
     constexpr const Packet packets[] = {
+        {"PING", handle_ping,  1                         },
         {"LIST", handle_list,  sizeof(NutPunch_GameId)   },
         {"LGMA", handle_ligma, sizeof(NutPunch_LobbyName)},
         {"FIND", handle_find,  sizeof(NP_Find)           },
