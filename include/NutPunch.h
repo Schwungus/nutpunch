@@ -1407,16 +1407,18 @@ static void NP_NudgePeer(int idx, const uint8_t* data) {
         return;
     }
 
-    NP_PeerInfo* const peer = &NP_Peers[idx];
-
     static uint8_t buf[sizeof(NP_Header) + 1 + sizeof(NP_Metadata)] = "PEER";
 
     uint8_t* ptr = buf + sizeof(NP_Header);
     *ptr++ = NP_LocalPeer;
     ptr = (uint8_t*)NP_DumpMetadata((char*)ptr, NP_PeerMetadata);
 
-    NP_JustSend(pub, buf, ptr - buf, false);
-    NP_JustSend(same_nat, buf, ptr - buf, false);
+    if (NutPunch_PeerAlive(idx)) {
+        NP_JustSend(NP_Peers[idx].address, buf, ptr - buf, false);
+    } else {
+        NP_JustSend(pub, buf, ptr - buf, false);
+        NP_JustSend(same_nat, buf, ptr - buf, false);
+    }
 }
 
 static void NP_HandleBeating(NP_Message msg) {
