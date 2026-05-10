@@ -67,7 +67,7 @@ If you're using CMake, you can include this library in your project by adding th
 include(FetchContent)
 FetchContent_Declare(NutPunch
     GIT_REPOSITORY https://github.com/Schwungus/nutpunch.git
-    GIT_TAG stable) # you can use a specific commit hash here
+    GIT_TAG master) # you can use a specific commit hash here
 FetchContent_MakeAvailable(NutPunch)
 
 add_executable(MyGame main.c) # your game's CMake target goes here
