@@ -24,6 +24,10 @@ Here's a short infographic for troubleshooting connectivity with [v2rayN](https:
 
 ![An infographic telling you to disable TUN mode.](.github/assets/infographic.png)
 
+Alternatively, if you don't feel like switching TUN on and off, you can set up your VPN client to route NutPunch-powered games directly rather than through the target proxy server. For example, in [AmneziaVPN](https://amnezia.org), use the split tunneling feature to exclude the game's binary from VPN routing. Just follow this infographic from the [split-tunneling docs](https://docs.amnezia.org/documentation/instructions/vpn-split-tunneling#split-tunneling-by-apps-on-windows):
+
+![An infographic telling you to how to enable per-app split-tunnelling.](.github/assets/amnezia.png)
+
 ## Introductory Lecture
 
 This library implements P2P networking, where **each peer communicates with all others**. It's a complex model, and it could be counterproductive to use if you don't know what you're signing yourself up for. If you don't feel like reading the immediately following blanket of words and scribbles, you may skip to [using premade integrations](#premade-integrations).
