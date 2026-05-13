@@ -1947,7 +1947,11 @@ void NP_SleepMs(int ms) {
 
 #endif // NP_SleepMs
 
-#if !defined(NUTPUNCH_NOSTD) && !defined(NutPunch_TimeNS)
+#ifndef NutPunch_TimeNS
+
+#ifdef NUTPUNCH_NOSTD
+#warning NUTPUNCH_NOSTD defined but pulling in stdlib to implement NutPunch_TimeNS
+#endif
 
 #include <time.h>
 
@@ -1957,11 +1961,7 @@ NutPunch_Clock NutPunch_TimeNS() {
     return (NutPunch_Clock)ts.tv_sec * NUTPUNCH_SEC + (NutPunch_Clock)ts.tv_nsec;
 }
 
-#elif defined(NUTPUNCH_NOSTD) && !defined(NutPunch_TimeNS)
-
-#error You have to define NutPunch_TimeNS in order to use NUTPUNCH_NOSTD!
-
-#endif // NutPunch_TimeNS
+#endif
 
 #endif // NUTPUNCH_IMPLEMENTATION
 
